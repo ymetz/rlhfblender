@@ -1,0 +1,24 @@
+{
+    "id": 6,
+    "name": "Atari Input",
+    "description": "",
+    "uiComponents": {
+        "progressBar": true,
+        "interactiveEpisodeSelect": false,
+        "episodePreview": false,
+        "episodeItem": true,
+        "episodeItemVideo": true,
+        "horizontalRanking": false
+    },
+    "feedbackComponents": {
+        "rating": true,
+        "ranking": true,
+        "demonstration": false,
+        "correction": true,
+        "featureSelection": true,
+        "text": false
+    },
+    "max_ranking_elements": 5,
+    "samplingStrategy": "sequential",
+    "customInput": "Atari"
+}
