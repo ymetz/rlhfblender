@@ -26,7 +26,7 @@ This project is licensed under the terms of the `MIT` license. See [LICENSE](htt
 ## 📃 Citation
 
 ```bibtex
-@article{language-control-diffusion,
+@article{rlhfblender,
 @article{metz2023rlhf,
   title={RLHF-Blender: A Configurable Interactive Interface for Learning from Diverse Human Feedback},
   author={Metz, Yannick and Lindner, David and Baur, Rapha{\"e}l and Keim, Daniel A and El-Assady, Mennatallah},
