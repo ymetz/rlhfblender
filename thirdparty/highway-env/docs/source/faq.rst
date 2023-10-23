@@ -30,7 +30,7 @@ My videos are too fast / have a low framerate.
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import highway_env
 
   # Wrap the env by a RecordVideo wrapper

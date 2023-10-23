@@ -356,16 +356,8 @@ class MDPVehicle(ControlledVehicle):
         :param speed: an input speed [m/s]
         :return: the index of the closest speed allowed []
         """
-        x = (speed - cls.DEFAULT_TARGET_SPEEDS[0]) / (
-            cls.DEFAULT_TARGET_SPEEDS[-1] - cls.DEFAULT_TARGET_SPEEDS[0]
-        )
-        return np.int(
-            np.clip(
-                np.round(x * (cls.DEFAULT_TARGET_SPEEDS.size - 1)),
-                0,
-                cls.DEFAULT_TARGET_SPEEDS.size - 1,
-            )
-        )
+        x = (speed - cls.DEFAULT_TARGET_SPEEDS[0]) / (cls.DEFAULT_TARGET_SPEEDS[-1] - cls.DEFAULT_TARGET_SPEEDS[0])
+        return np.int64(np.clip(np.round(x * (cls.DEFAULT_TARGET_SPEEDS.size - 1)), 0, cls.DEFAULT_TARGET_SPEEDS.size - 1))
 
     @classmethod
     def get_speed_index(cls, vehicle: Vehicle) -> int:

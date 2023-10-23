@@ -1,11 +1,11 @@
 from typing import List
 
-import gym
+import gymnasium as gym
 import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from data_models.feedback_models import EpisodeFeedback
+from data_models.feedback_models import StandardizedFeedback
 from data_models.global_models import Experiment
 from imitation.rewards.reward_nets import RewardNet
 from torch.utils.data import DataLoader, Dataset
@@ -85,7 +85,7 @@ class FeedbackModel:
         self.model = None
 
         self.selected_episodes: List[str] = []
-        self.selected_episodes_feedback: List[EpisodeFeedback] = []
+        self.selected_episodes_feedback: List[StandardizedFeedback] = []
 
     def train(self, epochs: int = 10):
         """

@@ -3,8 +3,8 @@
 import argparse
 import time
 
-import gym
-import gym_minigrid
+import gymnasium as gym
+import gymnasium as gym_minigrid
 from gym_minigrid.wrappers import *
 
 parser = argparse.ArgumentParser()

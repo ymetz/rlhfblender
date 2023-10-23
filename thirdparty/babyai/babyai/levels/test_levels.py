@@ -2,7 +2,7 @@
 Regression tests.
 """
 
-import gym
+import gymnasium as gym
 import numpy as np
 from gym_minigrid.minigrid import *
 

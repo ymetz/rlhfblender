@@ -2,8 +2,8 @@
 
 import unittest
 
-import gym
-import gym.spaces
+import gymnasium as gym
+import gymnasium as gym.spaces
 import numpy as np
 from safety_gym.envs.engine import Engine
 

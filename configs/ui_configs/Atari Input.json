@@ -1,5 +1,5 @@
 {
-    "id": 6,
+    "id": 1,
     "name": "Atari Input",
     "description": "",
     "uiComponents": {
@@ -8,7 +8,14 @@
         "episodePreview": false,
         "episodeItem": true,
         "episodeItemVideo": true,
-        "horizontalRanking": false
+        "rightSidebar": false,
+        "horizontalRanking": false,
+        "allowEqualRanking": true,
+        "videoScrollbar": false,
+        "fullTimeLine": true,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": true
     },
     "feedbackComponents": {
         "rating": true,

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from gym_minigrid.minigrid import Ball, Box, Key
 
 from .levelgen import *

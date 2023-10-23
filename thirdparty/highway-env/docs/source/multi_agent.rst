@@ -12,7 +12,7 @@ To that end, update the :ref:`environment configuration <Configuring an environm
 
 .. jupyter-execute::
 
-  import gym
+  import gymnasium as gym
   import highway_env
 
   env = gym.make('highway-v0')

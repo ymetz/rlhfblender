@@ -1,5 +1,6 @@
 import io
 import os
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List
 
@@ -13,24 +14,23 @@ from data_collection.environment_handler import (get_environment,
 from data_collection.episode_recorder import (BenchmarkSummary,
                                               EpisodeRecorder, convert_infos)
 from data_models.agent import RandomAgent
-from data_models.feedback_models import EpisodeFeedback, StandardizedFeedback
+from data_models.feedback_models import UnprocessedFeedback, StandardizedFeedback
 from data_models.global_models import (AggregatedRecordedEpisodes, Dataset,
                                        Environment, EpisodeID, Experiment,
                                        RecordedEpisodes)
 from databases import Database
 from fastapi import APIRouter, File, Request, Response, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel
-from utils.data_container import DataContainer
 from utils.input_attribution import get_input_attribution_for_image
+
+from data_collection.demo_session import create_new_session, demo_perform_step, close_demo_session, check_socket_connection
 
 database = Database(DB_HOST)
 
 router = APIRouter(prefix="/data")
 
-obs_cache = DataContainer(name="obs_cache")
-render_cache = DataContainer(name="render_cache")
 
 
 @router.get("/get_available_frameworks", response_model=List[str])
@@ -312,106 +312,6 @@ async def get_aggregated_benchmark_data(
         additional_metrics=load_episodes.additional_metrics.tolist(),
     )
 
-
-@router.get("/get_single_obs")
-async def get_single_obs(
-    type: str = "obs",
-    gym_registration_id: str = "",
-    benchmark_type: str = "random",
-    benchmark_id: int = -1,
-    checkpoint_step: int = -1,
-    step: int = 0,
-    channels: List[int] = None,
-):
-    """
-    Get the observation space of an environment.
-    :param benchmark_id:
-    :param type:
-    :param gym_registration_id: Here the gym registration id is sufficient because we do not need additional env info
-    :param benchmark_type:
-    :param checkpoint_step:
-    :param exp_id:
-    :param step:
-    :param dataset_id:
-    :param channels:
-    :return:
-    """
-
-    if benchmark_type == "dataset":
-        result_hash = f"dataset_{benchmark_id}"
-    else:
-        result_hash = (
-            f"{gym_registration_id}_{benchmark_type}_{benchmark_id}_{checkpoint_step}"
-        )
-
-    if type == "obs":
-        cache = obs_cache
-    else:
-        cache = render_cache
-
-    if result_hash not in cache:
-        image_data = Image.fromarray(np.zeros((50, 50, 3), dtype=np.uint8))
-    else:
-        image_data = cache.get_single_entry(result_hash, step, channels)
-    file_object = io.BytesIO()
-    image_data.save(file_object, "PNG")
-    file_object.seek(0)
-
-    return Response(content=file_object.getvalue(), media_type="image/png")
-
-
-@router.get("/get_single_attribution")
-async def get_single_attribution(
-    gym_registration_id: str = "",
-    benchmark_type: str = "trained",
-    benchmark_id: int = -1,
-    checkpoint_step: int = -1,
-    step: int = 0,
-    target: int = 0,
-    framework: str = "StableBaselines3",
-    channels: List[int] = None,
-):
-    """
-    Create an input attribution image with the given parameter settings and model
-    Utilizing the captum library
-    :param benchmark_id:
-    :param target:
-    :param framework:
-    :param gym_registration_id: Here the gym registration id is sufficient
-    :param benchmark_type:
-    :param checkpoint_step:
-    :param step:
-    :param channels:
-    :return:
-    """
-    if framework != "StableBaselines3":
-        raise NotImplementedError(
-            f"Framework {framework} is not supported for input attribution yet."
-        )
-
-    result_hash = (
-        f"{gym_registration_id}_{benchmark_type}_{benchmark_id}_{checkpoint_step}"
-    )
-
-    if result_hash in obs_cache:
-        obs = obs_cache.get_single_entry(
-            result_hash, step, channels, as_original_type=True
-        )
-
-    exp: Experiment = await db_handler.get_single_entry(
-        database, Experiment, id=benchmark_id
-    )
-
-    input_attribution_image = get_input_attribution_for_image(
-        obs, target, exp, checkpoint_step, framework
-    )
-    file_object = io.BytesIO()
-    input_attribution_image.save(file_object, "PNG")
-    file_object.seek(0)
-
-    return Response(content=file_object.getvalue(), media_type="image/png")
-
-
 @router.get("/get_rewards", response_model=List, tags=["DATA"])
 async def get_rewards(
     env_name: str,
@@ -432,6 +332,28 @@ async def get_rewards(
     )
 
     return rewards.tolist()
+
+
+@router.get("/get_uncertainty", response_model=List, tags=["DATA"])
+async def get_uncertainty(
+    env_name: str,
+    benchmark_type: str,
+    benchmark_id: int,
+    checkpoint_step: int,
+    episode_num: int,
+):
+    """Return step rewards a list for the selected episode"""
+    # Replace with your rewards file path
+    uncertainty = np.load(
+        os.path.join(
+            "data",
+            "uncertainty",
+            f"{env_name}_{benchmark_type}_{benchmark_id}_{checkpoint_step}",
+            f"uncertainty_{episode_num}.npy",
+        ),
+    )
+
+    return uncertainty.tolist()
 
 
 @router.get("/get_video", response_class=FileResponse)
@@ -477,12 +399,14 @@ async def get_thumbnail(
     )
 
 
-class SingleStepDetailRequest(BaseModel):
+class DetailRequest(BaseModel):
     env_name: str
     benchmark_type: str
     benchmark_id: int
     checkpoint_step: int
     episode_num: int
+
+class SingleStepDetailRequest(DetailRequest):
     step: int
 
 
@@ -518,7 +442,6 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     reward = episode_benchmark_data["rewards"][request.step]
     info = episode_benchmark_data["infos"][request.step]
 
-    print(action_distribution, action, reward, info, action_space)
     return {
         "action_distribution": action_distribution.tolist(),
         "action": action.item(),
@@ -526,6 +449,24 @@ async def get_single_step_details(request: SingleStepDetailRequest):
         "info": info,
         "action_space": action_space,
     }
+
+
+@router.post("/get_actions_for_episode", response_model=List[int], tags=["DATA"])
+async def get_actions_for_episode(request: DetailRequest):
+    """
+    Returns a list of all actions for a given episode
+    """
+    episode_benchmark_data = np.load(
+        os.path.join(
+            "data",
+            "episodes",
+            f"{request.env_name}_{request.benchmark_type}_{request.benchmark_id}_{request.checkpoint_step}",
+            f"benchmark_{request.episode_num}.npz",
+        ),
+        allow_pickle=True,
+    )
+
+    return episode_benchmark_data["actions"].tolist()
 
 
 @router.post("/save_feature_feedback")
@@ -547,7 +488,10 @@ async def save_feature_feedback(image: UploadFile = File(...)):
 
     # Save image
     os.makedirs(os.path.join("data", "feature_feedback"), exist_ok=True)
-    img.save(os.path.join("data", "feature_feedback", "feature_feedback.png"))
+    # get current time formatted as string
+    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    img.save(os.path.join("data", "feature_feedback", "feature_feedback_" + current_time + ".png"))
 
     return {"message": "Image saved successfully"}
 
@@ -589,6 +533,32 @@ async def get_episode_ids_chronologically():
     return episode_ids
 
 
+class ActionLabelRequest(BaseModel):
+    envId: int
+
+
+@router.post("/get_action_label_urls", response_model=List[str])
+async def get_action_label_urls(request: ActionLabelRequest):
+    """
+    Returns a list of urls for the action labels of the given environment
+    """
+    db_env = await db_handler.get_single_entry(database, Environment, id=request.envId)
+    if db_env is None:
+        return []
+    db_env_name = db_env.env_name
+
+    # Check in data/action_labels/<env_name> for all files
+    action_label_dir = os.path.join("data", "action_labels", db_env_name)
+    if not os.path.isdir(action_label_dir):
+        return []
+    action_label_files = [file for file in os.listdir(action_label_dir) if file.endswith(".png") or file.endswith(".svg")]
+
+
+    # Return the urls
+    return [f"/action_labels/{db_env_name}/{file}" for file in action_label_files]
+
+
+
 @router.post("/reset_sampler")
 async def reset_sampler(request: Request):
     """
@@ -606,10 +576,12 @@ async def reset_sampler(request: Request):
     )
 
     request.app.state.sampler.set_sampler(experiment, environment, sampling_strategy)
+
     return {
         "session_id": request.app.state.feedback_translator.set_translator(
             experiment, environment
-        )
+        ),
+        "environment_id": experiment.env_id,
     }
 
 
@@ -634,13 +606,15 @@ async def sample_episodes(request: Request):
 
 
 @router.post("/give_feedback")
-async def provide_feedback(request: Request):
+async def give_feedback(request: Request):
     """
     Provides feedback for a given episode
     """
-    feedback = EpisodeFeedback(**await request.json())
+    feedback = UnprocessedFeedback(**await request.json())
 
-    request.app.state.feedback_translator.give_feedback(feedback)
+    print("UNPROCESSED FEEDBACK: ", feedback)
+
+    request.app.state.feedback_translator.give_feedback(feedback.session_id, feedback)
 
 
 @router.post("/submit_current_feedback")
@@ -653,6 +627,95 @@ async def submit_current_feedback(request: Request):
         return "No session id given"
     request.app.state.feedback_translator.submit(session_id)
     return "Feedback submitted"
+
+
+@router.post("/initialize_demo_session")
+async def initialize_demo_session(request: Request):
+    """
+    To generate demos, we initialize a gym environment in a separate process, then communicate with it via
+    a socket. This function initializes the environment via a gym id, optional seed and returns the port
+    :param request:
+    :return:
+    """
+    request = await request.json()
+    env_id = request["env_id"]
+    seed = request["seed"]
+    session_id = request["session_id"]
+
+    action_space = {}
+    db_env = await db_handler.get_single_entry(database, Environment, id=env_id)
+    if db_env is not None:
+        action_space = db_env.action_space_info
+
+    try:
+        pid, demo_number = await create_new_session(session_id, db_env.registration_id, int(seed))
+
+        first_step = demo_perform_step(session_id, [])
+        success = True
+    except Exception as e:
+        pid = -1
+        first_step = {"reward": 0, "done": False, "infos": {}}
+        success = False
+
+    return {"pid": pid, "demo_number": demo_number, "action_space": action_space, "step": first_step, "success": success}
+
+
+@router.post("/demo_step")
+async def demo_step(request: Request):
+    """
+    Performs a step in the demo environment
+    :param request:
+    :return:
+    """
+    request = await request.json()
+    session_id = request["session_id"]
+    action = request["action"]
+
+    try:
+        return_data = demo_perform_step(session_id, action)
+        success = True
+    except Exception as e:
+        return_data = {"reward": 0, "done": False, "infos": {}}
+        success = False
+
+    return {"step": return_data, "success": success}
+
+
+@router.post("/end_demo_session")
+async def end_demo_session(request: Request):
+    """
+    Closes the demo session
+    :param request:
+    :return:
+    """
+    request = await request.json()
+    session_id = request["session_id"]
+    pid = request["pid"]
+
+    return close_demo_session(session_id, pid)
+
+
+@router.get("/get_demo_image", response_class=FileResponse)
+async def get_demo_image(session_id: str):
+    """
+    Returns the demo image
+    :param session_id:
+    :return:
+    """
+    return FileResponse(
+        os.path.join("data", "current_demos", f"{session_id}.jpg"),
+        media_type="image/jpg",
+    )
+
+
+@router.get("/check_demo_connection")
+async def check_demo_connection(session_id: str):
+    """
+    Checks whether the demo session is still alive
+    :param session_id:
+    :return:
+    """
+    return check_socket_connection(session_id)
 
 
 def _load_data(
@@ -669,10 +732,6 @@ def _load_data(
 
     if load_episodes.obs.size == 0:
         return RecordedEpisodes()
-
-    # Hashing the data for access of single steps
-    obs_cache.set_data(load_file_name, load_episodes.obs)
-    render_cache.set_data(load_file_name, load_episodes.renders)
 
     if not split_by_episode:
         split_indices = [0, len(load_episodes.dones)]
@@ -761,12 +820,6 @@ def _load_dataset(
 
     # For datasets, make sure the last step is also marked as done
     load_episodes.dones[-1] = True
-
-    # Hashing the data for access of single steps
-    obs_cache.set_data(f"dataset_{db_dataset.id}", load_episodes.obs)
-    # render_cache.set_data(f"dataset_{db_dataset.id}", load_episodes.renders)
-    render_cache.set_data(f"dataset_{db_dataset.id}", load_episodes.renders[:250])
-    print("[INFO] RENDER CACHE SET")
 
     if not return_raw and np.prod(load_episodes.obs.shape[1:]) > 100:
         load_episodes.obs = np.zeros(1)

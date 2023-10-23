@@ -6,7 +6,7 @@ from functools import wraps
 from threading import Thread
 from typing import Any, Dict, Optional
 
-import gym
+import gymnasium as gym
 import optuna
 import torch as th
 from sb3_contrib import TQC

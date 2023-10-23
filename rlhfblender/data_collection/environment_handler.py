@@ -2,7 +2,7 @@ import importlib
 import os
 from typing import Union
 
-import gym
+import gymnasium as gym
 from data_handling.database_handler import add_entry
 from data_models.global_models import Environment
 from databases import Database

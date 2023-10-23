@@ -2,7 +2,7 @@
 Levels described in the ICLR 2019 submission.
 """
 
-import gym
+import gymnasium as gym
 
 from .levelgen import *
 from .verifier import *

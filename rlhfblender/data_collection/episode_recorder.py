@@ -2,13 +2,24 @@ import os
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
+from copy import deepcopy
+import random
+
+from pydantic import BaseModel
+from stable_baselines3.common.vec_env import (
+    VecEnv,
+    VecMonitor,
+    is_vecenv_wrapped,
+)
+from data_models.agent import BaseAgent
+from data_collection.metrics_processor import process_metrics
 from data_collection import RecordedEpisodesContainer
 from data_collection.metrics_processor import process_metrics
 from data_models.agent import BaseAgent
 from pydantic import BaseModel
-from stable_baselines3.common.vec_env import (DummyVecEnv, VecEnv, VecMonitor,
+from stable_baselines3.common.vec_env import (VecEnv, VecMonitor,
                                               is_vecenv_wrapped)
 
 
@@ -101,12 +112,31 @@ class EpisodeRecorder(object):
         infos_buffer = []
         probs_buffer = []
 
-        observations = env.reset()
+        seed = random.randint(0, 2000)
+        env.seed(seed)
+        observations = env.reset() if not isinstance(env, VecEnv) else env.reset()
+        if not isinstance(env, VecEnv):
+            rewards = 0
+            dones = False
+            infos = {}
+            # A bit of a special case for babyai, but in the future, we might use gymnasium with reset infos anyways
+            if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations.keys():
+                infos["mission"] = observations["mission"]
+                infos["seed"] = seed
+        else:
+            rewards = np.zeros(n_envs)
+            dones = np.zeros(n_envs, dtype=bool)
+            infos = [{} for _ in range(n_envs)]
+            if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations[0].keys():
+                for i in range(n_envs):
+                    infos[i]["mission"] = observations[i]["mission"]
+                    infos[i]["seed"] = seed
         if reset_to_initial_state:
             initial_states = tuple(deepcopy(e) for e in env.envs)
         else:
             initial_states = None
         reset_obs = observations.copy()
+
         states = None
         values = None
         probs = None
@@ -114,7 +144,6 @@ class EpisodeRecorder(object):
         while (
             episode_counts < episode_count_targets
         ).any() and total_steps <= max_steps:
-            obs_buffer.append(np.squeeze(observations))
             actions = agent.act(observations)
             # If policy is not part of the model, we have directly loaded a policy
             additional_out_attributes = agent.additional_outputs(
@@ -128,7 +157,6 @@ class EpisodeRecorder(object):
                 ],
             )
 
-            observations, rewards, dones, infos = env.step(actions)
             # Expand dims, if env was not wrapped with DummyVecEnv
             if not isinstance(env, VecEnv):
                 rewards = np.expand_dims(rewards, axis=0)
@@ -136,7 +164,13 @@ class EpisodeRecorder(object):
                 infos = [infos]
                 # If not dummy vec env, we need to reset ourselves
                 if dones:
+                    seed = random.randint(0, 1000000)
+                    env.seed(seed)
                     observation = env.reset()
+                    if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observation.keys():
+                        infos[0]["mission"] = observation["mission"]
+                        infos[0]["seed"] = seed
+            obs_buffer.append(np.squeeze(observations))
             actions_buffer.append(np.squeeze(actions))
             rew_buffer.append(np.squeeze(rewards))
             dones_buffer.append(np.squeeze(dones))
@@ -229,10 +263,14 @@ class EpisodeRecorder(object):
                 render_frame = env.render(mode="rgb_array")
                 render_buffer.append(np.squeeze(render_frame))
             total_steps += 1
-        # For now, only allow a single env (in vec_env)
-        # Now, turn the nested list into a sequential list (i.e. just put the nested list after each other)
 
-        # infos_buffer = np.array(infos_buffer)
+            observations, rewards, dones, infos = env.step(actions)
+
+        # Add last render frame to buffer
+        if render:
+            render_frame = env.render(mode="rgb_array")
+            render_buffer.append(np.squeeze(render_frame))
+
         if n_envs == 1:
             if len(infos_buffer) > 0 and len(infos_buffer[0].shape) > 0:
                 infos_buffer = [info[0].item() for info in infos_buffer]

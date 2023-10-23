@@ -1,9 +1,8 @@
 import os
 from typing import Dict, Optional
 
-import babyai
 import data_models.connector as connector
-import gym
+import gymnasium as gym
 import numpy as np
 import torch as th
 from config import DB_HOST

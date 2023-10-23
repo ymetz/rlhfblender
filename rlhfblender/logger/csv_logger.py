@@ -1,3 +1,7 @@
+import os
+
+from logger.logger import Logger
+import csv
 import asyncio
 import csv
 
@@ -39,7 +43,8 @@ class CSVLogger(Logger):
             fb: BaseModel = self.feedback[0]
             with open(self.logger_csv_path, "a") as f:
                 writer = csv.DictWriter(f, fieldnames=fb.dict().keys())
-                writer.writeheader()
+                if os.path.getsize(self.logger_csv_path) == 0:
+                    writer.writeheader()
                 for feedback in self.feedback:
                     writer.writerow(feedback.dict())
         self.feedback = []
@@ -50,6 +55,7 @@ class CSVLogger(Logger):
             # Create dir if not exists
             with open(self.raw_logger_csv_path, "a") as f:
                 writer = csv.DictWriter(f, fieldnames=fb.dict().keys())
-                writer.writeheader()
+                if os.path.getsize(self.raw_logger_csv_path) == 0:
+                    writer.writeheader()
                 for feedback in self.raw_feedback:
                     writer.writerow(feedback.dict())

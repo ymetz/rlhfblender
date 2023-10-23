@@ -1,5 +1,5 @@
 {
-    "id": 4,
+    "id": 2,
     "name": "Full Interface",
     "description": "Shows the full interface",
     "uiComponents": {
@@ -8,14 +8,21 @@
         "episodePreview": true,
         "episodeItem": true,
         "episodeItemVideo": true,
-        "horizontalRanking": false
+        "rightSidebar": false,
+        "horizontalRanking": false,
+        "allowEqualRanking": true,
+        "videoScrollbar": false,
+        "fullTimeLine": true,
+        "showProposedFeedback": true,
+        "uncertaintyLine": true,
+        "actionLabels": true
     },
     "feedbackComponents": {
         "rating": true,
         "ranking": true,
-        "demonstration": false,
-        "correction": false,
-        "featureSelection": false,
+        "demonstration": true,
+        "correction": true,
+        "featureSelection": true,
         "text": false
     },
     "max_ranking_elements": "10",

@@ -8,7 +8,7 @@ import argparse
 import time
 
 import babyai.utils as utils
-import gym
+import gymnasium as gym
 
 # Parse arguments
 

@@ -1,6 +1,6 @@
 from multiprocessing import Pipe, Process
 
-import gym
+import gymnasium as gym
 
 
 def worker(conn, env):

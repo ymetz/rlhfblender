@@ -2,8 +2,8 @@
 
 import argparse
 
-import gym
-import gym_minigrid
+import gymnasium as gym
+import gymnasium as gym_minigrid
 import numpy as np
 from gym_minigrid.window import Window
 from gym_minigrid.wrappers import *

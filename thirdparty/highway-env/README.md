@@ -152,7 +152,7 @@ This agent leverages a transition and reward models to perform a stochastic tree
 ## Usage
 
 ```python
-import gym
+import gymnasium as gym
 import highway_env
 
 env = gym.make("highway-v0")

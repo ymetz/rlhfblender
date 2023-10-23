@@ -1,6 +1,6 @@
 import functools
 
-import gym
+import gymnasium as gym
 import highway_env
 import numpy as np
 import pygame

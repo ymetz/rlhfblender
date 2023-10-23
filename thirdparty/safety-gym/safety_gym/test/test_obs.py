@@ -4,7 +4,7 @@ import os
 import os.path as osp
 import unittest
 
-import gym
+import gymnasium as gym
 import joblib
 import numpy as np
 import safety_gym

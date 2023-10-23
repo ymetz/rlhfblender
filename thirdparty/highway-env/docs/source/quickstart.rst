@@ -11,7 +11,7 @@ Here is a quick example of how to create an environment:
 
 .. jupyter-execute::
 
-  import gym
+  import gymnasium as gym
   import highway_env
   from matplotlib import pyplot as plt
   %matplotlib inline
@@ -88,7 +88,7 @@ Here is an example of SB3's DQN implementation trained on ``highway-fast-v0`` wi
 
 .. code-block:: python
 
-  import gym
+  import gymnasium as gym
   import highway_env
   from stable_baselines3 import DQN
 

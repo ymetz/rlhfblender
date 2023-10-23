@@ -9,7 +9,7 @@ import datetime
 import time
 
 import babyai.utils as utils
-import gym
+import gymnasium as gym
 from babyai.evaluate import batch_evaluate, evaluate, evaluate_demo_agent
 
 # Parse arguments

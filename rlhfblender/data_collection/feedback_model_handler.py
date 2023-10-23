@@ -5,7 +5,7 @@ Collected feedback can be submitted to the model handler, and training/re-traini
 """
 import numpy as np
 from data_collection import feedback_model
-from data_models.feedback_models import (EpisodeFeedback, FeedbackType,
+from data_models.feedback_models import (UnprocessedFeedback, FeedbackType,
                                          StandardizedFeedback)
 from imitation.rewards.reward_nets import (BasicRewardNet,
                                            BasicShapedRewardNet, CnnRewardNet,

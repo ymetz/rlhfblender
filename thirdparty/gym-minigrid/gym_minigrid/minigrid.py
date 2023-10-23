@@ -2,7 +2,7 @@ import hashlib
 from enum import IntEnum
 from typing import Tuple, Union
 
-import gym
+import gymnasium as gym
 from gym import spaces
 from gym.utils import seeding
 from gym_minigrid.rendering import *
@@ -1484,7 +1484,7 @@ class MiniGridEnv(gym.Env):
             return
 
         if mode == "human" and not self.window:
-            import gym_minigrid.window
+            import gymnasium as gym_minigrid.window
 
             self.window = gym_minigrid.window.Window("gym_minigrid")
             self.window.show(block=False)

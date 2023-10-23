@@ -1,7 +1,7 @@
 import enum
 from typing import List, Union
 
-import gym
+import gymnasium as gym
 from data_models.global_models import EpisodeID
 from pydantic import BaseModel
 
@@ -11,14 +11,13 @@ class FeedbackType(enum.Enum):
     This is the type of feedback we get from the user when evaluating an episode.
     """
 
-    rating = "rating"
-    comparison = "comparison"
-    ranking = "ranking"
-    demonstration = "demonstration"
-    correction = "correction"
-    auxiliary_reward = "auxiliary_reward"
+    rating = "evaluative"
+    comparison = "comparative"
+    ranking = "comparative"
+    demonstration = "demonstrative"
+    correction = "corrective"
     goal = "goal"
-    comment = "comment"
+    featureSelection = "featureSelection"
     other = "other"
 
     def __str__(self):
@@ -36,28 +35,42 @@ class FeedbackDimension(enum.Enum):
         return self.name
 
 
-class EpisodeFeedback(BaseModel):
+class UnprocessedFeedback(BaseModel):
     """
     This is the feedback we get from the user when evaluating an episode.
+    It's a superset of the feedback types we support, potentially containing different feedback content.
+    Needs to be translated into a standardized format.
     """
-
-    episode_id: EpisodeID
-    timestamp: int = -1
+    session_id: str = ""
     feedback_type: FeedbackType = FeedbackType.rating
+
+    targets: List[dict] = []
+    granularity: str = "episode"
+    timestamp: int = -1
     text_feedback: str = ""  # e.g.: "The agent is doing well in the beginning, but then it fails to collect the key."
-    text_assignment: List[
-        float
-    ] = []  # If we already have a step assignment for the text feedback, we can provide it here.
-    numeric_feedback: float = 0.0  # e.g.: 0.5
-    numeric_assignment: List[
-        float
-    ] = []  # If we already have a step assignment for the numeric feedback, we can provide it here.
-    array_feedback: List[
-        Union[float, int]
-    ] = []  # e.g.: [0.1, 0.2, 0.3, 0.4, 0.5], array feedback is already assigned to steps.
-    ranking_array_feedback: List[
-        Union[int]
-    ] = []  # e.g.: [0.1, 0.2, 0.3, 0.4, 0.5], array feedback is already assigned to steps.
+
+    # Evaluative feedback content
+    score: Union[float, None] = 0.0  # e.g.: 0.5
+    preferences: Union[List[int], None] = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
+
+    # Instructional feedback content
+    action: Union[int, List[float], None] = None
+    state: Union[dict, None] = None
+    action_preferences: Union[List[int], List[List[float]], None] = None
+    state_preferences: Union[List[dict], None] = None
+
+    # Demo feedback is handled separately
+    is_demo: bool = False
+    demo_preferences: Union[List[int], None] = None
+
+    # Descriptive feedback content
+    feature_selection: List[dict] = None
+    feature_importance: Union[float, List[float]] = None
+    feature_selections_preferences: List[List[dict]] = None
+    feature_importance_preferences: List[Union[float, List[float]]] = None
+
+    # Meta information
+    user_id: int = -1
 
 
 class Intention(FeedbackDimension):
@@ -94,9 +107,25 @@ class Granularity(FeedbackDimension):
     entire = 4
 
 
+class Origin(enum.Enum):
+    # This is the target origin. Offline and online targets both are observed, generated targets materialize by human
+    # input. Therefore, online/offline correspond to observed and generated to hypothetical feedback.
+    offline = 1
+    online = 2
+    generated = 3
+
+    def __str__(self):
+        # just return the enum value
+        return self.name
+
+    def __repr__(self):
+        # just return the enum value
+        return self.name
+
+
 class Target(BaseModel):
-    id: int = -1
-    origin: str = "replay"
+    target_id: str = ""
+    origin: Origin = Origin.offline
     timestamp: int = -1
 
 
@@ -115,6 +144,11 @@ class Segment(Target):
     end: int = -1
 
 
+class Entire(Target):
+    # No target-specific reference necessary (except potentially the model/agent)
+    pass
+
+
 class StandardizedFeedbackType(BaseModel):
     intention: Intention = Intention.evaluate
     actuality: Actuality = Actuality.observed
@@ -122,37 +156,89 @@ class StandardizedFeedbackType(BaseModel):
     content: Content = Content.instance
     granularity: Granularity = Granularity.episode
 
+    # hash function
+    def __hash__(self):
+        return hash((self.intention, self.actuality, self.relation, self.content, self.granularity))
+
 
 class Evaluation(BaseModel):
-    rating: Union[float, int, List[float], List[int]] = None
-    comparison: Union[float, int, List[float], List[int]] = None
+    # A scalar value representing the evaluative value for a given target
+    score: float = None
+
+
+class RelativeEvaluation(BaseModel):
+    # An array of preference values (gives as a ranking), needs to match the list of targets,
+    # we assume a consistent partial ordering
+    preferences: List[float] = None
 
 
 class Instruction(BaseModel):
-    demonstration: Union[Episode, State, Segment] = None
-    correction: Union[Episode, State, Segment] = None
-    goal: Union[Episode, State, Segment] = None
-    optimalilty: Union[float, List[float]] = None
+    # An instruction might either be an action or a goal
+    action: Union[int, List[float]] = None
+    goal: dict = None
+
+
+class RelativeInstruction(Instruction):
+    # A relative instruction is a preference over actions or goals
+    action_preferences: List[int] = None
+    goal_preferences: List[dict] = None
 
 
 class Description(BaseModel):
     feature_selection: List[dict] = None
     feature_importance: Union[float, List[float]] = None
-    feature_ranking: Union[float, List[float]] = None
+
+
+class RelativeDescription(Description):
+    # A relative description is a preference over feature selections, importances, or rankings
+    feature_selections_preferences: List[List[dict]] = None
+    feature_importance_preferences: List[Union[float, List[float]]] = None
 
 
 class StandardizedFeedback(BaseModel):
     feedback_id: int = -1
     feedback_timestamp: int = -1
     feedback_type: StandardizedFeedbackType = StandardizedFeedbackType()
-    content: Union[Evaluation, Instruction, Description] = None
 
 
 class AbsoluteFeedback(StandardizedFeedback):
-    episode_id: EpisodeID
-    target: Union[Episode, State, Segment] = None
+    target: Target = None
+    content: Union[Evaluation, Instruction, Description] = None
 
 
 class RelativeFeedback(StandardizedFeedback):
-    episode_ids: List[EpisodeID] = []
-    target: List[Union[Episode, State, Segment]] = []
+    target: List[Target] = []
+    content: Union[RelativeEvaluation, RelativeInstruction, RelativeDescription] = None
+
+
+def get_target(target: dict, granularity: str) -> Target:
+
+    if granularity == "episode":
+        return Episode(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"])
+    elif granularity == "state":
+        return State(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"], step=target["step"])
+    elif granularity == "segment":
+        return Segment(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"],
+                       start=target["start"], end=target["end"])
+    elif granularity == "entire":
+        return Entire(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"])
+
+
+def get_granularity(granularity: str) -> Granularity:
+    if granularity == "episode":
+        return Granularity.episode
+    elif granularity == "state":
+        return Granularity.state
+    elif granularity == "segment":
+        return Granularity.segment
+    elif granularity == "entire":
+        return Granularity.entire
+
+
+def get_origin(origin: str) -> Origin:
+    if origin == "offline":
+        return Origin.offline
+    elif origin == "online":
+        return Origin.online
+    elif origin == "generated":
+        return Origin.generated

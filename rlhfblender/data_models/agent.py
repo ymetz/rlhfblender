@@ -1,7 +1,7 @@
 from abc import ABC
 from typing import Dict, Optional
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 

@@ -1,7 +1,7 @@
 import random
 from collections import OrderedDict
 
-import gym
+import gymnasium as gym
 from gym_minigrid.roomgrid import RoomGrid
 
 from .verifier import *

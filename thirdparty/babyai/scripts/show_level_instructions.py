@@ -5,7 +5,7 @@ Randomly sample and print out instructions from a level.
 import argparse
 
 import babyai
-import gym
+import gymnasium as gym
 
 parser = argparse.ArgumentParser("Show level instructions")
 parser.add_argument(

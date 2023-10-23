@@ -3,8 +3,8 @@
 import random
 import time
 
-import gym
-import gym_minigrid
+import gymnasium as gym
+import gymnasium as gym_minigrid
 
 # Load the gym environment
 env = gym.make("MiniGrid-Empty-8x8-v0")

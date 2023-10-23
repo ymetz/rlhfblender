@@ -8,7 +8,14 @@
         "episodePreview": true,
         "episodeItem": true,
         "episodeItemVideo": true,
-        "horizontalRanking": false
+        "rightSidebar": false,
+        "horizontalRanking": false,
+        "allowEqualRanking": false,
+        "videoScrollbar": false,
+        "fullTimeLine": true,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": false
     },
     "feedbackComponents": {
         "rating": true,

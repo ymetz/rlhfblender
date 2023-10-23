@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.2.2-cudnn8-runtime-ubuntu20.04
+FROM nvidia/cuda:11.2.2-cudnn8-runtime-ubuntu20.04 as builder
 
 # Set timezone:
 RUN ln -snf /usr/share/zoneinfo/$CONTAINER_TIMEZONE /etc/localtime && echo $CONTAINER_TIMEZONE > /etc/timezone
@@ -16,10 +16,17 @@ libopencv-dev x264 libx264-dev libssl-dev ffmpeg
 
 RUN python3 -m pip install --no-binary opencv-python-headless opencv-python-headless
 
+FROM nvidia/cuda:11.2.2-cudnn8-runtime-ubuntu20.04 as runtime
+
+# Set timezone:
+RUN ln -snf /usr/share/zoneinfo/$CONTAINER_TIMEZONE /etc/localtime && echo $CONTAINER_TIMEZONE > /etc/timezone
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN  apt-get update && apt-get install -y --no-install-recommends git gcc python3.10 python3-distutils python3-pip python3-dev
+
+COPY --from=builder /usr/local/lib/python3.8/dist-packages/cv2 /usr/local/lib/python3.8/dist-packages/cv2
+
 RUN apt-get purge -y --auto-remove && rm -rf /var/lib/apt/lists/*
-
-# == Now we can continue with the actual dockerfile ==
-
 
 # Install Python requirements
 COPY requirements.txt /tmp/

@@ -1,6 +1,6 @@
 import timeit
 
-import gym
+import gymnasium as gym
 import highway_env
 import pytest
 

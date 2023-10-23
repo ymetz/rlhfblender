@@ -6,7 +6,7 @@ import uuid
 from typing import List, Optional
 
 import data_models.connector as connector
-import gym
+import gymnasium as gym
 import imitation
 import numpy as np
 # Register custom envs

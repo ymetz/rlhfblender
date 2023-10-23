@@ -2,7 +2,7 @@ import math
 import operator
 from functools import reduce
 
-import gym
+import gymnasium as gym
 import numpy as np
 from gym import error, spaces, utils
 

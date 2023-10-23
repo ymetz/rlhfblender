@@ -9,7 +9,7 @@ import logging
 import os
 
 import babyai.utils as utils
-import gym
+import gymnasium as gym
 import numpy as np
 import torch
 from babyai.arguments import ArgumentParser

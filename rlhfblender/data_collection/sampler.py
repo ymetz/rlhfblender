@@ -37,7 +37,7 @@ class Sampler:
 
         self.episode_count = None
         self.episode_buffer: List[EpisodeID] = []
-        self.episode_pointer = None
+        self.episode_pointer = 0
 
         if experiment is not None and env is not None:
             self.set_sampler(experiment, env)
@@ -54,12 +54,7 @@ class Sampler:
 
         env_name = (
             env.env_name if "ALE" not in env.env_name else env.env_name.split("/")[-1]
-        )  # Kinda special case but oaky
-        # TODO: Dirty, change this
-        if env_name == "Breakout-v5":
-            env_name = "BreakoutNoFrameskip-v4"
-        # Check if we have already generated the episodes for this experiment (For each episode we should save a npz
-        # and a mp4 file)
+        )  # Kinda special case but okay
         self.episode_buffer = []
         for checkpoint in self.experiment.checkpoint_list:
             cp_path = os.path.join(
@@ -130,7 +125,7 @@ class Sampler:
         """
         if self.sampler_type == SamplerType.sequential:
             sampled_batch = self.episode_buffer[
-                self.episode_pointer : self.episode_pointer + batch_size
+                self.episode_pointer: self.episode_pointer + batch_size
             ]
             self.episode_pointer += batch_size
         elif self.sampler_type == SamplerType.random:

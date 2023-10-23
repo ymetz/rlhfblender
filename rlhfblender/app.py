@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import sys
+import json
+import zipfile
 
 import data_handling.database_handler as db_handler
 import uvicorn
@@ -14,7 +16,7 @@ from data_models.global_models import (Dataset, Environment, Experiment,
 from databases import Database
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from routes import data
@@ -23,6 +25,11 @@ from routes import data
 # from fastapi_sessions.frontends.implementations import SessionCookie, CookieParameters
 # from session import SessionData, BasicVerifier
 
+
+# Create some cache directories which are expected later on (do before startup to allow for mounting)
+os.makedirs("logs", exist_ok=True)
+os.makedirs("data", exist_ok=True)
+os.makedirs("data/action_labels", exist_ok=True)
 
 # == App ==
 app = FastAPI(
@@ -34,8 +41,10 @@ app = FastAPI(
 app.include_router(data.router)
 
 app.mount("/files", StaticFiles(directory="app/static_files"), name="files")
+app.mount("/action_labels", StaticFiles(directory="data/action_labels"), name="action_labels")
+app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
-database = Database(DB_HOST)
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", DB_HOST))
 
 
 @app.on_event("startup")
@@ -162,6 +171,44 @@ async def delete_ui_config(ui_config_name: str):
     # Delete UI config from configs/ui_configs directory
     os.remove(os.path.join("configs/ui_configs", ui_config_name + ".json"))
     return {"message": "OK"}
+
+
+@app.get("/retreive_logs", tags=["LOGS"])
+async def retreive_logs():
+    # Return list of CSV files from logs directory, zip them and proide download link
+    logs = []
+    for filename in os.listdir("logs"):
+        if filename.endswith(".csv"):
+            logs.append(filename)
+    with zipfile.ZipFile("logs.zip", "w") as zip:
+        for log in logs:
+            zip.write(os.path.join("logs", log))
+    return FileResponse("logs.zip", media_type="application/zip", filename="logs.zip")
+
+@app.get("/retreive_demos", tags=["LOGS"])
+async def retreive_logs():
+    # Return list of CSV files from logs directory, zip them and proide download link
+    logs = []
+    for filename in os.listdir(os.path.join("data", "generated_demos")):
+        if filename.endswith(".npz"):
+            logs.append(filename)
+    with zipfile.ZipFile("logs.zip", "w") as zip:
+        for log in logs:
+            zip.write(os.path.join("data", "generated_demos", log))
+    return FileResponse("demos.zip", media_type="application/zip", filename="demos.zip")
+
+
+@app.get("/retreive_feature_feedback", tags=["LOGS"])
+async def retreive_logs():
+    # Return list of CSV files from logs directory, zip them and proide download link
+    logs = []
+    for filename in os.listdir(os.path.join("data", "feature_feedback")):
+        if filename.endswith(".png"):
+            logs.append(filename)
+    with zipfile.ZipFile("logs.zip", "w") as zip:
+        for log in logs:
+            zip.write(os.path.join("data", "feature_feedback", log))
+    return FileResponse("feature_selections.zip", media_type="application/zip", filename="feature_selections.zip")
 
 
 def main(args):

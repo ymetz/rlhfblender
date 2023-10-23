@@ -4,8 +4,8 @@ from collections import OrderedDict
 from copy import deepcopy
 from typing import Optional
 
-import gym
-import gym.spaces
+import gymnasium as gym
+import gymnasium as gym.spaces
 import mujoco_py
 import numpy as np
 from mujoco_py import (MjRenderContextOffscreen, MjViewer, MujocoException,

@@ -36,7 +36,7 @@ To use the pre-configured environments from the Safety Gym benchmark suite, simp
 
 ```
 import safety_gym
-import gym
+import gymnasium as gym
 
 env = gym.make('Safexp-PointGoal1-v0')
 ```

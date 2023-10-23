@@ -5,7 +5,7 @@ from abc import abstractmethod
 from datetime import datetime
 from typing import List
 
-from data_models.feedback_models import (EpisodeFeedback, FeedbackType,
+from data_models.feedback_models import (UnprocessedFeedback, FeedbackType,
                                          StandardizedFeedback)
 from data_models.global_models import Environment, Experiment
 
@@ -48,7 +48,7 @@ class Logger:
         """
 
     @abstractmethod
-    def log_raw(self, feedback: EpisodeFeedback):
+    def log_raw(self, feedback: UnprocessedFeedback):
         """
         Logs the feedback to a file or database
         :param feedback:
@@ -63,7 +63,7 @@ class Logger:
         """
 
     @abstractmethod
-    def read_raw(self) -> List[EpisodeFeedback]:
+    def read_raw(self) -> List[UnprocessedFeedback]:
         """
         Reads all feedback from the logger
         :return:

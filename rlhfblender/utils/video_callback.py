@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict
 
-import gym
+import gymnasium as gym
 import torch as th
 import torchvision
 from stable_baselines3 import A2C

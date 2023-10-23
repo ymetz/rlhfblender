@@ -1,6 +1,6 @@
 from typing import Type
 
-from data_models.feedback_models import EpisodeFeedback, StandardizedFeedback
+from data_models.feedback_models import UnprocessedFeedback, StandardizedFeedback
 from data_models.global_models import (Dataset, Environment, EvaluationConfig,
                                        Experiment, Project, RecordedEpisodes,
                                        TrackingItem)
@@ -23,7 +23,7 @@ def get_model_by_name(name) -> Type[BaseModel]:
     elif name == "recordedEpisodes":
         return RecordedEpisodes
     elif name == "episodeFeedback":
-        return EpisodeFeedback
+        return UnprocessedFeedback
     elif name == "standardizedFeedback":
         return StandardizedFeedback
     else:

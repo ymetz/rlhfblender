@@ -2,7 +2,7 @@ import copy
 import os
 from typing import List, Optional, Tuple
 
-import gym
+import gymnasium as gym
 import numpy as np
 from gym import Wrapper
 from gym.utils import seeding

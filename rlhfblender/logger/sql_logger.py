@@ -2,9 +2,8 @@ import asyncio
 from typing import List
 
 from data_handling import database_handler
-from data_models import EpisodeFeedback, StandardizedFeedback
+from data_models import UnprocessedFeedback, StandardizedFeedback
 from logger.logger import Logger
-from pydantic import BaseModel
 
 
 class SQLLogger(Logger):
@@ -25,7 +24,7 @@ class SQLLogger(Logger):
             self.db, StandardizedFeedback, self.sql_table
         )
         database_handler.create_table_from_model(
-            self.db, EpisodeFeedback, self.sql_table + "_raw"
+            self.db, UnprocessedFeedback, self.sql_table + "_raw"
         )
 
     def log(self, feedback):
@@ -45,7 +44,7 @@ class SQLLogger(Logger):
     async def dump_raw(self):
         # Append the feedback to the json file
         for feedback in self.raw_feedback:
-            await database_handler.add_entry(self.db, EpisodeFeedback, feedback)
+            await database_handler.add_entry(self.db, UnprocessedFeedback, feedback)
         self.raw_feedback = []
 
     async def read(self) -> List[StandardizedFeedback]:
@@ -53,7 +52,7 @@ class SQLLogger(Logger):
             self.db, StandardizedFeedback, self.sql_table
         )
 
-    async def read_raw(self) -> List[EpisodeFeedback]:
+    async def read_raw(self) -> List[UnprocessedFeedback]:
         return await database_handler.get_all(
-            self.db, EpisodeFeedback, self.sql_table + "_raw"
+            self.db, UnprocessedFeedback, self.sql_table + "_raw"
         )

@@ -6,7 +6,7 @@ import os
 import time
 
 import babyai.utils as utils
-import gym
+import gymnasium as gym
 import numpy as np
 import torch
 from babyai.evaluate import batch_evaluate

@@ -7,7 +7,7 @@ from collections import OrderedDict
 from pprint import pprint
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import gym
+import gymnasium as gym
 import numpy as np
 import optuna
 # Register custom envs

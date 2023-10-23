@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "rlhfblender"
+version = "0.1.0"
+description = "A package to work with various sources of human feedback for reinforcement learning"
+authors = ["Yannick Metz <yannick.metz@uni-konstanz.de>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9.12,<3.13"
+fastapi = "^0.103.2"
+uvicorn = "^0.15.0"
+databases = {version = "^0.8.0", extras = ["sqlite"]}
+numpy = "^1.26.1"
+autorom = {extras = ["accept-rom-license"], version = "^0.6.1"}
+gymnasium = "^0.29.1"
+stable-baselines3 = "^2.1.0"
+sb3-contrib = "^2.1.0"
+ale-py = "^0.8.1"
+matplotlib = "^3.8.0"
+imitation = { git="https://github.com/HumanCompatibleAI/imitation.git" }
+torchvision = "^0.16.0"
+torch = "^2.1.0"
+poetry = "^1.6.1"
+opencv-python-headless = "^4.8.1.78"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

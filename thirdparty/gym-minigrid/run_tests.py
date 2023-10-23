@@ -2,7 +2,7 @@
 
 import random
 
-import gym_minigrid
+import gymnasium as gym_minigrid
 from gym_minigrid.minigrid import Grid
 from gym_minigrid.register import env_list
 # Test importing wrappers
