@@ -1,5 +1,5 @@
 import numpy as np
-from data_collection import RecordedEpisodesContainer
+from rlhfblender.data_collection import RecordedEpisodesContainer
 
 
 def process_metrics(benchmark_results: RecordedEpisodesContainer) -> dict:

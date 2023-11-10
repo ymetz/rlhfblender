@@ -11,16 +11,16 @@ import numpy as np
 import stable_baselines3.common.policies
 import torch as th
 # Register custom envs
-import utils.import_envs  # noqa: F401 pytype: disable=import-error
-from data_handling.database_handler import get_single_entry
-from data_models.agent import BaseAgent, TrainedAgent
-from data_models.global_models import (Environment, EvaluationConfig,
+import rlhfblender.utils.import_envs  # noqa: F401 pytype: disable=import-error
+from rlhfblender.data_handling.database_handler import get_single_entry
+from rlhfblender.data_models.agent import BaseAgent, TrainedAgent
+from rlhfblender.data_models.global_models import (Environment, EvaluationConfig,
                                        Experiment, Project)
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.utils import set_random_seed
 from torch import Tensor
-from utils.exp_manager import ExperimentManager
-from utils.utils import ALGOS
+from rlhfblender.utils.exp_manager import ExperimentManager
+from rlhfblender.utils.utils import ALGOS
 
 
 class StableBaselines3Agent(TrainedAgent):

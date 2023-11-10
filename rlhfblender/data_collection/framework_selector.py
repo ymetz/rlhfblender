@@ -1,10 +1,10 @@
 from typing import Type
 
-from data_collection.babyai_connector import BabyAIAgent
-from data_collection.sb_zoo_connector import (StableBaselines3Agent,
+from rlhfblender.data_collection.babyai_connector import BabyAIAgent
+from rlhfblender.data_collection.sb_zoo_connector import (StableBaselines3Agent,
                                               StableBaselines3ZooConnector)
-from data_models.agent import TrainedAgent
-from data_models.connector import Connector
+from rlhfblender.data_models.agent import TrainedAgent
+from rlhfblender.data_models.connector import Connector
 
 SUPPORTED_FRAMEWORK_LIST = ["StableBaselines3", "BabyAI"]
 

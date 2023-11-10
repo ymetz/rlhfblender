@@ -4,8 +4,8 @@ It contains a reference to a FeedbackDataset and a FeedbackNet.
 Collected feedback can be submitted to the model handler, and training/re-training can be initiated.
 """
 import numpy as np
-from data_collection import feedback_model
-from data_models.feedback_models import (UnprocessedFeedback, FeedbackType,
+from rlhfblender.data_collection import feedback_model
+from rlhfblender.data_models.feedback_models import (UnprocessedFeedback, FeedbackType,
                                          StandardizedFeedback)
 from imitation.rewards.reward_nets import (BasicRewardNet,
                                            BasicShapedRewardNet, CnnRewardNet,

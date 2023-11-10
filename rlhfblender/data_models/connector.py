@@ -1,8 +1,8 @@
 from abc import abstractmethod
 from typing import List
 
-from data_models.agent import BaseAgent
-from data_models.global_models import EvaluationConfig, Experiment, Project
+from rlhfblender.data_models.agent import BaseAgent
+from rlhfblender.data_models.global_models import EvaluationConfig, Experiment, Project
 from databases import Database
 
 

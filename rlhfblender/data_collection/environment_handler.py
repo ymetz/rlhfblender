@@ -3,8 +3,8 @@ import os
 from typing import Union
 
 import gymnasium as gym
-from data_handling.database_handler import add_entry
-from data_models.global_models import Environment
+from rlhfblender.data_handling.database_handler import add_entry
+from rlhfblender.data_models.global_models import Environment
 from databases import Database
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (DummyVecEnv, VecEnv,

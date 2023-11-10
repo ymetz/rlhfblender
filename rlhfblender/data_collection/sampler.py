@@ -4,10 +4,10 @@ A sampler for episodes for HITL experiments
 import os
 from enum import Enum
 from typing import List, Optional
-
 import numpy as np
-from data_collection.feedback_model import FeedbackModel
-from data_models.global_models import Environment, EpisodeID, Experiment
+
+from rlhfblender.data_collection.feedback_model import FeedbackModel
+from rlhfblender.data_models.global_models import Environment, EpisodeID, Experiment
 
 
 class SamplerType(Enum):

@@ -4,19 +4,19 @@ import os
 import time
 import uuid
 from typing import List, Optional
-
-import data_models.connector as connector
+import rl_baselines3_zoo.utils.import_envs  # noqa: F401 pytype: disable=import-error
+import stable_baselines3.common.policies
+import torch as th
 import gymnasium as gym
 import imitation
 import numpy as np
 # Register custom envs
-import rl_baselines3_zoo.utils.import_envs  # noqa: F401 pytype: disable=import-error
-import stable_baselines3.common.policies
-import torch as th
-from data_handling.database_handler import get_single_entry
-from data_models.agent import BaseAgent, TrainedAgent
-from data_models.global_models import (Environment, EvaluationConfig,
+
+from rlhfblender.data_handling.database_handler import get_single_entry
+from rlhfblender.data_models.agent import BaseAgent, TrainedAgent
+from rlhfblender.data_models.global_models import (Environment, EvaluationConfig,
                                        Experiment, Project)
+import rlhfblender.data_models.connector as connector
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.utils import set_random_seed
 from torch import Tensor

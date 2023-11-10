@@ -7,18 +7,18 @@ import asyncio
 import os
 from types import SimpleNamespace as sn
 from typing import Dict, List
-
-import cv2
-import data_collection.framework_selector as framework_selector
-import data_handling.database_handler as db_handler
-import gymnasium as gym
-import numpy as np
-from config import DB_HOST
-from data_collection.environment_handler import get_environment
-from data_collection.episode_recorder import EpisodeRecorder
-from data_models import Experiment
 from databases import Database
 from pydantic import BaseModel
+import cv2
+import gymnasium as gym
+import numpy as np
+
+import rlhfblender.data_collection.framework_selector as framework_selector
+import rlhfblender.data_handling.database_handler as db_handler
+from rlhfblender.config import DB_HOST
+from rlhfblender.data_collection.environment_handler import get_environment
+from rlhfblender.data_collection.episode_recorder import EpisodeRecorder
+from rlhfblender.data_models import Experiment
 
 DATA_ROOT_DIR = "data"
 BENCHMARK_DIR = "saved_benchmarks"

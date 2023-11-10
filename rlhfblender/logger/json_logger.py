@@ -1,8 +1,7 @@
 import asyncio
 import json
 
-from logger.logger import Logger
-from pydantic import BaseModel
+from rlhfblender.logger.logger import Logger
 
 
 class JSONLogger(Logger):

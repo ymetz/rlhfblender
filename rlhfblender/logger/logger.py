@@ -5,9 +5,9 @@ from abc import abstractmethod
 from datetime import datetime
 from typing import List
 
-from data_models.feedback_models import (UnprocessedFeedback, FeedbackType,
+from rlhfblender.data_models.feedback_models import (UnprocessedFeedback,
                                          StandardizedFeedback)
-from data_models.global_models import Environment, Experiment
+from rlhfblender.data_models.global_models import Environment, Experiment
 
 
 class Logger:

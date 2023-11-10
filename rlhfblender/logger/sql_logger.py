@@ -1,9 +1,9 @@
 import asyncio
 from typing import List
 
-from data_handling import database_handler
-from data_models import UnprocessedFeedback, StandardizedFeedback
-from logger.logger import Logger
+from rlhfblender.data_handling import database_handler
+from rlhfblender.data_models import UnprocessedFeedback, StandardizedFeedback
+from rlhfblender.logger.logger import Logger
 
 
 class SQLLogger(Logger):

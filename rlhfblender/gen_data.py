@@ -1,9 +1,8 @@
 import asyncio
 import os
-
-import safety_gym
 from pydantic import BaseModel
-from routes.data import run_benchmark
+
+from rlhfblender.routes.data import run_benchmark
 
 
 class BenchmarkRequestModel(BaseModel):

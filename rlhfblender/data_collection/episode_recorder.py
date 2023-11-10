@@ -13,11 +13,11 @@ from stable_baselines3.common.vec_env import (
     VecMonitor,
     is_vecenv_wrapped,
 )
-from data_models.agent import BaseAgent
-from data_collection.metrics_processor import process_metrics
-from data_collection import RecordedEpisodesContainer
-from data_collection.metrics_processor import process_metrics
-from data_models.agent import BaseAgent
+from rlhfblender.data_models.agent import BaseAgent
+from rlhfblender.data_collection.metrics_processor import process_metrics
+from rlhfblender.data_collection import RecordedEpisodesContainer
+from rlhfblender.data_collection.metrics_processor import process_metrics
+from rlhfblender.data_models.agent import BaseAgent
 from pydantic import BaseModel
 from stable_baselines3.common.vec_env import (VecEnv, VecMonitor,
                                               is_vecenv_wrapped)

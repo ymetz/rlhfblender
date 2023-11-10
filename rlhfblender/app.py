@@ -4,22 +4,22 @@ import os
 import sys
 import json
 import zipfile
-
-import data_handling.database_handler as db_handler
 import uvicorn
-from config import DB_HOST
-from data_collection.feedback_translator import FeedbackTranslator
-from data_collection.sampler import Sampler
-from data_models import get_model_by_name
-from data_models.global_models import (Dataset, Environment, Experiment,
-                                       Project, TrackingItem)
 from databases import Database
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from routes import data
+
+from rlhfblender.config import DB_HOST
+import rlhfblender.data_handling.database_handler as db_handler
+from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
+from rlhfblender.data_collection.sampler import Sampler
+from rlhfblender.data_models import get_model_by_name
+from rlhfblender.data_models.global_models import (Dataset, Environment, Experiment,
+                                       Project, TrackingItem)
+from rlhfblender.routes import data
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend
 # from fastapi_sessions.frontends.implementations import SessionCookie, CookieParameters

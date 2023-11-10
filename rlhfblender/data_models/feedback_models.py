@@ -2,7 +2,7 @@ import enum
 from typing import List, Union
 
 import gymnasium as gym
-from data_models.global_models import EpisodeID
+from rlhfblender.data_models.global_models import EpisodeID
 from pydantic import BaseModel
 
 
