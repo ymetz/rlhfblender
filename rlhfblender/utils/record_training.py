@@ -131,7 +131,7 @@ if __name__ == "__main__":  # noqa: C901
     episode_videos_names = [
         dir_ent.name
         for dir_ent in os.scandir(video_folder)
-        if dir_ent.name.endswith(".mp4")
+        if dir_ent.name.endswith(".webm")
     ]
 
     checkpoints_videos_names = list(
@@ -177,7 +177,7 @@ if __name__ == "__main__":  # noqa: C901
     # In some cases, ffmpeg needs a tmp file
     # https://stackoverflow.com/questions/28877049/issue-with-overwriting-file-while-using-ffmpeg-for-converting
     tmp_videos_path = deepcopy(episode_videos_path)
-    tmp_videos_path = [path_[:-4] + "_with_text" + ".mp4" for path_ in tmp_videos_path]
+    tmp_videos_path = [path_[:-4] + "_with_text" + ".webm" for path_ in tmp_videos_path]
 
     for i in range(len(episode_videos_path)):
         ffmpeg_command_to_add_text = (
@@ -193,7 +193,7 @@ if __name__ == "__main__":  # noqa: C901
         for video_path in tmp_videos_path:
             file.write(f"file {video_path}\n")
 
-    final_video_path = os.path.abspath(os.path.join(video_folder, "training.mp4"))
+    final_video_path = os.path.abspath(os.path.join(video_folder, "training.webm"))
     os.system(
         f"ffmpeg -f concat -safe 0 -i {ffmpeg_text_file} -c copy {final_video_path} -hide_banner -loglevel error"
     )

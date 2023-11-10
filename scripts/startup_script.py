@@ -119,13 +119,13 @@ def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
 
 def encode_video(renders: np.ndarray, path: str) -> None:
     """
-    Encodes renders of shape [n_frames, height, width, 3] into a .mp4 video and
+    Encodes renders of shape [n_frames, height, width, 3] into a .webm video and
     saves it at path.
     """
     # Create video in H264 format
     out = cv2.VideoWriter(
-        f"{path}.mp4",
-        cv2.VideoWriter_fourcc(*"avc1"),
+        f"{path}.webm",
+        cv2.VideoWriter_fourcc(*"vp09"),
         24,
         (renders.shape[2], renders.shape[1]),
     )

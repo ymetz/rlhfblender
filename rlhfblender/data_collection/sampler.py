@@ -68,7 +68,7 @@ class Sampler:
             if not os.path.exists(cp_path):
                 continue
             for file in os.listdir(cp_path):
-                if file.endswith(".mp4"):
+                if file.endswith(".webm"):
                     episode_info = EpisodeID(
                         benchmark_id=self.experiment.id,
                         benchmark_type="trained",

@@ -209,107 +209,6 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkRespon
         },
     )
 
-
-@router.post(
-    "/load_benchmark_data", response_model=List[RecordedEpisodes], tags=["DATA"]
-)
-async def load_benchmark_data(
-    request: List[BenchmarkRequestModel],
-) -> List[RecordedEpisodes]:
-    """
-    Get the data of a benchmark run.
-    :param request:
-    :return:
-    """
-    return_list = []
-
-    # Clear render and obs cache
-    obs_cache.clear()
-    render_cache.clear()
-
-    for benchmark_run in request:
-        print(f"{benchmark_run.benchmark_type=}")
-
-        if benchmark_run.benchmark_type == "dataset":
-            print("Loading dataset")
-            db_dataset = await db_handler.get_single_entry(
-                database, Dataset, id=benchmark_run.benchmark_id
-            )
-            return_list.extend(
-                _load_dataset(
-                    db_dataset, split_by_episode=benchmark_run.split_by_episode,
-                )
-            )
-            continue
-
-        db_env = await db_handler.get_single_entry(
-            database, Environment, id=benchmark_run.env_id
-        )
-        load_file_name = f"{db_env.registration_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
-
-        return_list.extend(
-            _load_data(
-                load_file_name,
-                return_raw=False,
-                env_id=benchmark_run.env_id,
-                env_space_info={
-                    "obs_space": db_env.observation_space_info,
-                    "action_space": db_env.action_space_info,
-                },
-                split_by_episode=benchmark_run.split_by_episode,
-                record_videos=benchmark_run.record_episode_videos,
-            )
-        )
-
-
-@router.get("/has_step_data", tags=["DATA"])
-async def has_step_data(
-    env_id: int = 0,
-    benchmark_type: str = "random",
-    benchmark_id: int = -1,
-    checkpoint_step: int = -1,
-):
-    db_env = await db_handler.get_single_entry(database, Environment, id=env_id)
-    load_file_name = (
-        f"{db_env.registration_id}_{benchmark_type}_{benchmark_id}_{checkpoint_step}"
-    )
-
-    return os.path.isfile(os.path.join("data", "saved_benchmarks", load_file_name))
-
-
-@router.get("/get_aggregated_benchmark_data", response_model=BaseModel, tags=["DATA"])
-async def get_aggregated_benchmark_data(
-    env_id: int = 0,
-    benchmark_type: str = "random",
-    exp_id: int = -1,
-    checkpoint_step: int = -1,
-):
-    """
-    Get the episode-aggregated data of a benchmark run.
-    :param env_id: Environment to run the benchmark for (can diverge from the environment id in the experiment)
-    :param benchmark_type: (random|trained) Whether to run a random agent or a trained agent
-    :param exp_id: (optional) The id of the experiment to run the agent in
-    :param checkpoint_step: (optional) The step of the checkpoint to load the agent from
-    :return:
-    """
-    db_env = await db_handler.get_single_entry(database, Environment, id=env_id)
-    load_file_name = (
-        f"{db_env.registration_id}_{benchmark_type}_{exp_id}_{checkpoint_step}"
-    )
-
-    load_episodes = EpisodeRecorder.get_aggregated_data(
-        os.path.join("data", "saved_benchmarks", load_file_name)
-    )
-
-    if load_episodes.obs.size == 0:
-        return RecordedEpisodes()
-
-    return AggregatedRecordedEpisodes(
-        episode_rewards=load_episodes.episode_rewards.tolist(),
-        episode_lengths=load_episodes.episode_lengths.tolist(),
-        additional_metrics=load_episodes.additional_metrics.tolist(),
-    )
-
 @router.get("/get_rewards", response_model=List, tags=["DATA"])
 async def get_rewards(
     env_name: str,
@@ -368,9 +267,9 @@ async def get_video(
             "data",
             "renders",
             f"{env_name}_{benchmark_type}_{benchmark_id}_{checkpoint_step}",
-            f"{episode_num}.mp4",
+            f"{episode_num}.webm",
         ),
-        media_type="video/mp4",
+        media_type="video/webm",
     )
 
 
@@ -780,8 +679,8 @@ def _load_data(
         for i, episode in enumerate(recorded_episodes):
             renders = np.array(episode.renders)
             out = cv2.VideoWriter(
-                os.path.join("data", "saved_renders", f"{load_file_name}_{i}.mp4"),
-                cv2.VideoWriter_fourcc(*"mp4v"),
+                os.path.join("data", "saved_renders", f"{load_file_name}_{i}.webm"),
+                cv2.VideoWriter_fourcc(*"vp09"),
                 24,
                 (renders.shape[2], renders.shape[1]),
             )

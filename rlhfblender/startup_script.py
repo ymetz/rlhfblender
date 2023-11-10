@@ -125,13 +125,13 @@ def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
 
 def encode_video(renders: np.ndarray, path: str) -> None:
     """
-    Encodes renders of shape [n_frames, height, width, 3] into a .mp4 video and
+    Encodes renders of shape [n_frames, height, width, 3] into a .webm video and
     saves it at path.
     """
     # Create video in H264 format
     out = cv2.VideoWriter(
-        f"{path}.mp4",
-        cv2.VideoWriter_fourcc(*"avc1"),
+        f"{path}.webm",
+        cv2.VideoWriter_fourcc(*'vp09'),
         24,
         (renders.shape[2], renders.shape[1]),
     )
@@ -245,7 +245,7 @@ async def main(benchmark_dicts: List[Dict]):
         os.remove(f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{len(episode_data['dones']) - 1}.npy")
         if 'infos' in episode_data:
             os.remove(f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{len(episode_data['dones']) - 1}.npy")
-        os.remove(f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.mp4")
+        os.remove(f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.webm")
         os.remove(f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.jpg")
 
 
