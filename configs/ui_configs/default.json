@@ -1,0 +1,31 @@
+{
+    "id": 0,
+    "name": "Default",
+    "description": "Default configuration",
+    "uiComponents": {
+        "progressBar": false,
+        "interactiveEpisodeSelect": true,
+        "episodePreview": true,
+        "episodeItem": true,
+        "episodeItemVideo": true,
+        "rightSidebar": false,
+        "horizontalRanking": false,
+        "allowEqualRanking": false,
+        "videoScrollbar": false,
+        "fullTimeLine": true,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": false
+    },
+    "feedbackComponents": {
+        "rating": true,
+        "ranking": true,
+        "demonstration": false,
+        "correction": false,
+        "featureSelection": false,
+        "text": false
+    },
+    "max_ranking_elements": 5,
+    "samplingStrategy": "sequential",
+    "customInput": ""
+}

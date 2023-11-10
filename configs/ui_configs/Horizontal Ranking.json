@@ -1,0 +1,31 @@
+{
+    "id": 3,
+    "name": "Horizontal Ranking",
+    "description": "",
+    "uiComponents": {
+        "progressBar": false,
+        "interactiveEpisodeSelect": true,
+        "episodePreview": false,
+        "episodeItem": true,
+        "episodeItemVideo": true,
+        "rightSidebar": false,
+        "horizontalRanking": true,
+        "allowEqualRanking": true,
+        "videoScrollbar": false,
+        "fullTimeLine": false,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": false
+    },
+    "feedbackComponents": {
+        "rating": true,
+        "ranking": true,
+        "demonstration": false,
+        "correction": false,
+        "featureSelection": false,
+        "text": false
+    },
+    "max_ranking_elements": 5,
+    "samplingStrategy": "sequential",
+    "customInput": ""
+}

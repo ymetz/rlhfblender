@@ -1,0 +1,27 @@
+fastapi
+databases[sqlite]
+uvicorn
+numpy
+scipy
+git+https://github.com/openai/gym.git@9180d12e1b66e7e2a1a622614f787a6ec147ac40#egg=gym
+autorom[accept-rom-license]
+stable-baselines3==1.6.2
+sb3-contrib==1.6.2
+imitation==0.3.1
+ale-py==0.7.4
+matplotlib
+scikit-image
+scikit-learn
+seaborn
+UltraDict
+torchvision
+captum
+tensorboard
+#opencv-python-headless
+torch==1.13.1
+python-multipart
+optuna
+git+http://github.com/nikitadurasov/masksembles.git#egg=masksembles
+-e ./thirdparty/gym-minigrid
+-e ./thirdparty/babyai
+-e ./thirdparty/highway-env
