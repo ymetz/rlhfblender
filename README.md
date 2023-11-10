@@ -18,7 +18,7 @@ Implementation for RLHF-Blender: A Configurable Interactive Interface for Learni
 Documentation: https://rlhfblender.readthedocs.io/en/latest/
 
 > [!NOTE]  
-> The following repository is part of of the RLHF-Blender project. The frontend is part of a separate repository: [RLHF-Blender-UI](https://github.com/ymetz/rlhfblender-ui
+> The following repository is part of of the RLHF-Blender project. The frontend is part of a separate repository: [RLHF-Blender-UI](https://github.com/ymetz/rlhfblender-ui)
 > you may follow the installation instructions to also install the frontend
 
 ## Installation
