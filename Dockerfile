@@ -1,32 +1,29 @@
-FROM nvidia/cuda:11.2.2-cudnn8-runtime-ubuntu20.04
+ARG PARENT_IMAGE
+FROM $PARENT_IMAGE
+ARG PYTORCH_DEPS=cpuonly
+ARG PYTHON_VERSION=3.10
+ARG MAMBA_DOCKERFILE_ACTIVATE=1  # (otherwise python will not be found)
 
-# Set timezone:
-RUN ln -snf /usr/share/zoneinfo/$CONTAINER_TIMEZONE /etc/localtime && echo $CONTAINER_TIMEZONE > /etc/timezone
-ARG DEBIAN_FRONTEND=noninteractive
+# Install micromamba env and dependencies
+RUN micromamba install -n base -y python=$PYTHON_VERSION \
+    pytorch $PYTORCH_DEPS -c conda-forge -c pytorch -c nvidia && \
+    micromamba clean --all --yes
 
-RUN  apt-get update && apt-get install -y --no-install-recommends git gcc python3.10 python3-distutils python3-pip python3-dev
+ENV CODE_DIR /home/$MAMBA_USER
 
-RUN apt-get purge -y --auto-remove && rm -rf /var/lib/apt/lists/*
+# Copy setup file only to install dependencies
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./setup.py ${CODE_DIR}/rlhfblender/setup.py
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender/version.txt ${CODE_DIR}/rlhfblender/rlhfblender/version.txt
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender/ ${CODE_DIR}/rlhfblender/rlhfblender/
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./configs/ ${CODE_DIR}/rlhfblender/configs/
 
-# Install Python requirements
-COPY requirements.txt /tmp/
+RUN cd ${CODE_DIR}/rlhfblender && \
+    pip install -e .[tests,docs] && \
+    # Use headless version for docker
+    pip uninstall -y opencv-python && \
+    pip install opencv-python-headless && \
+    pip cache purge
 
-RUN pip3 install --upgrade pip
+WORKDIR ${CODE_DIR}/rlhfblender
 
-# Copy the application code
-COPY rlhfblender/ /app/
-COPY configs/ /app/configs
-
-# Only install packages after copying the code (because we do want to install local third-party packages)
-RUN pip3 install -r /tmp/requirements.txt
-
-# Make sure python output is printed directly to stdout
-ENV PYTHONUNBUFFERED=1
-
-# Add Pythonpath
-ENV PYTHONPATH=/app
-
-EXPOSE 8080 8080
-
-# Run the application
-ENTRYPOINT ["python3", "app/app.py"]
+CMD python rlhfblender/app.py

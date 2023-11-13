@@ -4,7 +4,6 @@ from typing import Any, Dict
 import gymnasium as gym
 import torch as th
 import torchvision
-from stable_baselines3 import A2C
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import Video
