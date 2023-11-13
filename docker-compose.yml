@@ -13,12 +13,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - BACKEND_HOST="localhost"
-      - BACKEND_PORT="8080"
+      - BACKEND_HOST=backend
+      - BACKEND_PORT=8080
     volumes:
       - ./rlhfblender-ui/app/:/usr/src/app/
       - node-modules:/usr/src/app/node_modules/
-    working_dir: /usr/src/app/
 
   backend:
     container_name: rlhfblender-backend
@@ -26,9 +25,9 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
+      args:
+        - PARENT_IMAGE=mambaorg/micromamba:1.5-jammy
+        - PYTORCH_DEPS=cpuonly
     ports:
       - "8080:8080"
-    volumes:
-      - ./rlhfblender/:/usr/src/
-    working_dir: /usr/src/
-    command: ["python", "app/app.py", "--port", "8080", "--dev"]
+    command: ["python", "rlhfblender/app.py", "--port", "8080"]

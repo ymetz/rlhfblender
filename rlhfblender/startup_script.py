@@ -80,7 +80,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]):
                 additional_packages=[],
             )
             if "BabyAI" not in benchmark_run.env_id
-            else gym.make(benchmark_run.env_id)
+            else gym.make(benchmark_run.env_id, render_mode="rgb_array")
         )
 
         agent = framework_selector.get_agent(framework=exp.framework)(
@@ -288,7 +288,7 @@ if __name__ == "__main__":
             "benchmark_id": str(1),
             "checkpoint_step": (i + 1) * 1000000,
             "n_episodes": 1,
-            "path": os.path.join(f"experiments/Atari Breakout"),
+            "path": os.path.join(f"rlhfblender_demo_models/Atari Breakout"),
         }
         for i in range(10)
     ]
@@ -306,7 +306,11 @@ if __name__ == "__main__":
             "benchmark_id": str(8),
             "checkpoint_step": 10000000,
             "n_episodes": 20,
+<<<<<<< HEAD
             "path": os.path.join(f"experiments/BabyAI"),
+=======
+            "path": os.path.join(f"rlhfblender_demo_models/BabyAI"),
+>>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
         }
     ]
 
@@ -323,7 +327,11 @@ if __name__ == "__main__":
             "benchmark_id": str(7),
             "checkpoint_step": (i + 1) * 4000,
             "n_episodes": 10,
+<<<<<<< HEAD
             "path": os.path.join(f"experiments/Highway_env"),
+=======
+            "path": os.path.join(f"rlhfblender_demo_models/Highway_env"),
+>>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
         }
         for i in range(3)
     ]
@@ -341,7 +349,7 @@ if __name__ == "__main__":
          "benchmark_id": str(i),
          "checkpoint_step": (i + 1) * 1000000,
          "n_episodes": 1,
-         "path": os.path.join(f"experiments/Safety_Gym")}
+         "path": os.path.join(f"rlhfblender_demo_models/Safety_Gym")}
         for i in range(10)]
 
     asyncio.run(main(benchmark_dicts))

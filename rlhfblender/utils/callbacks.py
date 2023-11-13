@@ -246,7 +246,7 @@ class VideoRecorderCallback(BaseCallback):
                 :param _locals: A dictionary containing all local variables of the callback's scope
                 :param _globals: A dictionary containing all global variables of the callback's scope
                 """
-                screen = self._eval_env.render(mode="rgb_array")
+                screen = self._eval_env.render()
                 # PyTorch uses CxHxW vs HxWxC gym (and tensorflow) image convention
                 screens.append(screen.transpose(2, 0, 1))
 
@@ -262,45 +262,4 @@ class VideoRecorderCallback(BaseCallback):
                 Video(th.ByteTensor([screens]), fps=40),
                 exclude=("stdout", "log", "json", "csv"),
             )
-        return True
-
-
-class LogNormCallback(BaseCallback):
-    def __init__(self):
-        """
-        Records a video of an agent's trajectory traversing ``eval_env`` and logs it to TensorBoard
-
-        :param eval_env: A gym environment from which the trajectory is recorded
-        :param render_freq: Render the agent's trajectory every eval_freq call of the callback.
-        :param n_eval_episodes: Number of episodes to render
-        :param deterministic: Whether to use deterministic or stochastic policy
-        """
-        super().__init__()
-
-    def _on_step(self) -> bool:
-        if self.n_calls > 1:
-            with th.no_grad():
-                weight_norm = th.norm(
-                    th.nn.utils.parameters_to_vector(
-                        [p for p in self.model.policy.parameters() if p.requires_grad]
-                    )
-                ).item()
-                grad_norm = th.norm(
-                    th.nn.utils.parameters_to_vector(
-                        [
-                            p.grad.data
-                            for p in self.model.policy.parameters()
-                            if p.requires_grad
-                        ]
-                    )
-                ).item()
-                bam_norm = th.norm(
-                    th.nn.utils.parameters_to_vector(
-                        self.model.policy.features_extractor.cnn[2].parameters()
-                    )
-                ).item()
-                self.logger.record("gen_weight_norm", weight_norm)
-                self.logger.record("gen_grad_norm", grad_norm)
-                self.logger.record("gen_bam_norm", bam_norm)
-
         return True

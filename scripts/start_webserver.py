@@ -38,7 +38,7 @@ app = FastAPI(
 )
 app.include_router(data.router)
 
-app.mount("/files", StaticFiles(directory="app/static_files"), name="files")
+app.mount("/files", StaticFiles(directory="rlhfblender/static_files"), name="files")
 
 database = Database(DB_HOST)
 

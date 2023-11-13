@@ -37,9 +37,12 @@ from stable_baselines3.common.preprocessing import (
     is_image_space,
     is_image_space_channels_first,
 )
+<<<<<<< HEAD
 from stable_baselines3.common.sb2_compat.rmsprop_tf_like import (
     RMSpropTFLike,
 )  # noqa: F401
+=======
+>>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
 from stable_baselines3.common.utils import constant_fn
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -52,9 +55,14 @@ from stable_baselines3.common.vec_env import (
 )
 
 # For custom activation fn
+<<<<<<< HEAD
 from torch import nn as nn  # noqa: F401
 from utils.bam_layer import BAM
 from utils.callbacks import LogNormCallback, SaveVecNormalizeCallback, TrialEvalCallback
+=======
+from torch import nn as nn 
+from utils.callbacks import SaveVecNormalizeCallback, TrialEvalCallback
+>>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
 from utils.hyperparams_opt import HYPERPARAMS_SAMPLER
 from utils.reward_wrapper import RewardVecEnvWrapper
 from utils.utils import (
@@ -221,13 +229,11 @@ class ExperimentManager(object):
         elif self.optimize_hyperparameters:
             return None
         else:
-            print("use shared_bam_policy_path:", self.shared_bam_policy_path)
             model = ALGOS[self.algo](
                 env=env,
                 tensorboard_log=self.tensorboard_log,
                 seed=self.seed,
                 verbose=self.verbose,
-                # policy_kwargs={"features_extractor_kwargs": {"shared_bam_policy_path": self.shared_bam_policy_path}} if self.shared_bam_policy_path != "" else None,
                 **self._hyperparams,
             )
 
@@ -504,12 +510,6 @@ class ExperimentManager(object):
 
             self.callbacks.append(eval_callback)
 
-        if self.norm_logging:
-            norm_logging_callback = EveryNTimesteps(
-                n_steps=1000, callback=LogNormCallback()
-            )
-            self.callbacks.append(norm_logging_callback)
-
         if not self.no_video_callback:
 
             video_save_freq = max(self.video_save_freq // self.n_envs, 1)
@@ -738,20 +738,13 @@ class ExperimentManager(object):
         sampled_hyperparams = HYPERPARAMS_SAMPLER[self.algo](trial)
         kwargs.update(sampled_hyperparams)
 
-        print("use shared_bam_policy_path:", self.shared_bam_policy_path)
         model = ALGOS[self.algo](
             env=self.create_envs(self.n_envs, no_log=True),
             tensorboard_log=None,
             # We do not seed the trial
             seed=None,
             verbose=0,
-            policy_kwargs={
-                "features_extractor_kwargs": {
-                    "shared_bam_policy_path": self.shared_bam_policy_path
-                }
-            }
-            if self.shared_bam_policy_path != ""
-            else None,
+            policy_kwargs=None,
             **kwargs,
         )
 
