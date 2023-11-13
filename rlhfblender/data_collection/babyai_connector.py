@@ -6,15 +6,15 @@ import gymnasium as gym
 import numpy as np
 import torch as th
 from config import DB_HOST
-from rlhfblender.data_handling.database_handler import get_single_entry
-from rlhfblender.data_models.agent import TrainedAgent
-from rlhfblender.data_models.global_models import Environment, Experiment
 from databases import Database
 from scipy.stats import entropy
 
-DATABASE = Database(DB_HOST)
+from rlhfblender.data_handling.database_handler import get_single_entry
+from rlhfblender.data_models.agent import TrainedAgent
+from rlhfblender.data_models.global_models import Environment, Experiment
+import rlhfblender.utils.babyai_utils as utils
 
-import babyai.utils as utils
+DATABASE = Database(DB_HOST)
 
 
 class BabyAIAgent(TrainedAgent):
@@ -42,7 +42,7 @@ class BabyAIAgent(TrainedAgent):
         obss_preprocessor = utils.ObssPreprocessor(
             "TrainedModel", env.observation_space, load_vocab_from=path
         )
-        self.model = utils.agent.ModelAgent(torch_model, obss_preprocessor, argmax=True)
+        self.model = utils.ModelAgent(torch_model, obss_preprocessor, argmax=True)
         self.agent_state = None
         if "deterministic" in kwargs:
             self.deterministic = kwargs["deterministic"]

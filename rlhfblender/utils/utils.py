@@ -13,11 +13,17 @@ from sb3_contrib import QRDQN, TQC
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.sb2_compat.rmsprop_tf_like import \
-    RMSpropTFLike  # noqa: F401
-from stable_baselines3.common.vec_env import (DummyVecEnv, SubprocVecEnv,
-                                              VecEnv, VecFrameStack,
-                                              VecNormalize)
+from stable_baselines3.common.sb2_compat.rmsprop_tf_like import (
+    RMSpropTFLike,
+)  # noqa: F401
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    SubprocVecEnv,
+    VecEnv,
+    VecFrameStack,
+    VecNormalize,
+)
+
 # For custom activation fn
 from torch import nn as nn  # noqa: F401 pylint: disable=unused-import
 
@@ -645,7 +651,9 @@ def get_latest_run_id(log_path: str, env_id: str) -> int:
 
 
 def get_saved_hyperparams(
-    stats_path: str, norm_reward: bool = False, test_mode: bool = False,
+    stats_path: str,
+    norm_reward: bool = False,
+    test_mode: bool = False,
 ) -> Tuple[Dict[str, Any], str]:
     """
     :param stats_path:

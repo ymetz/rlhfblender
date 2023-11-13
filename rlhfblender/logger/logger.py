@@ -5,8 +5,10 @@ from abc import abstractmethod
 from datetime import datetime
 from typing import List
 
-from rlhfblender.data_models.feedback_models import (UnprocessedFeedback,
-                                         StandardizedFeedback)
+from rlhfblender.data_models.feedback_models import (
+    StandardizedFeedback,
+    UnprocessedFeedback,
+)
 from rlhfblender.data_models.global_models import Environment, Experiment
 
 

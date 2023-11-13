@@ -49,7 +49,6 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
         venv: vec_env.VecEnv,
         reward_fn_load_path: str,
         ep_history: int = 100,
-        shared_bam_layer=None,
     ):
         """Builds RewardVecEnvWrapper.
 
@@ -66,7 +65,6 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
         self.episode_rewards = collections.deque(maxlen=ep_history)
         self._cumulative_rew = np.zeros((venv.num_envs,))
         self.reward_fn = self.load_reward_function(reward_fn_load_path)
-        self.shared_bam_layer = shared_bam_layer
         self.reset()
 
     def make_log_callback(self) -> WrappedRewardCallback:

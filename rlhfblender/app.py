@@ -2,23 +2,28 @@ import argparse
 import json
 import os
 import sys
-import json
 import zipfile
+
 import uvicorn
 from databases import Database
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from rlhfblender.config import DB_HOST
 import rlhfblender.data_handling.database_handler as db_handler
+from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.sampler import Sampler
 from rlhfblender.data_models import get_model_by_name
-from rlhfblender.data_models.global_models import (Dataset, Environment, Experiment,
-                                       Project, TrackingItem)
+from rlhfblender.data_models.global_models import (
+    Dataset,
+    Environment,
+    Experiment,
+    Project,
+    TrackingItem,
+)
 from rlhfblender.routes import data
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend
@@ -40,8 +45,10 @@ app = FastAPI(
 )
 app.include_router(data.router)
 
-app.mount("/files", StaticFiles(directory="app/static_files"), name="files")
-app.mount("/action_labels", StaticFiles(directory="data/action_labels"), name="action_labels")
+app.mount("/files", StaticFiles(directory="rlhfblender/static_files"), name="files")
+app.mount(
+    "/action_labels", StaticFiles(directory="data/action_labels"), name="action_labels"
+)
 app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", DB_HOST))
@@ -77,7 +84,10 @@ async def shutdown():
 
 # Allow CORS
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -185,6 +195,7 @@ async def retreive_logs():
             zip.write(os.path.join("logs", log))
     return FileResponse("logs.zip", media_type="application/zip", filename="logs.zip")
 
+
 @app.get("/retreive_demos", tags=["LOGS"])
 async def retreive_logs():
     # Return list of CSV files from logs directory, zip them and proide download link
@@ -208,7 +219,11 @@ async def retreive_logs():
     with zipfile.ZipFile("logs.zip", "w") as zip:
         for log in logs:
             zip.write(os.path.join("data", "feature_feedback", log))
-    return FileResponse("feature_selections.zip", media_type="application/zip", filename="feature_selections.zip")
+    return FileResponse(
+        "feature_selections.zip",
+        media_type="application/zip",
+        filename="feature_selections.zip",
+    )
 
 
 def main(args):

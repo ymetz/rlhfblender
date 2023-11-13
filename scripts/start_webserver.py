@@ -9,8 +9,13 @@ from config import DB_HOST
 from data_collection.feedback_translator import FeedbackTranslator
 from data_collection.sampler import Sampler
 from data_models import get_model_by_name
-from data_models.global_models import (Dataset, Environment, Experiment,
-                                       Project, TrackingItem)
+from data_models.global_models import (
+    Dataset,
+    Environment,
+    Experiment,
+    Project,
+    TrackingItem,
+)
 from databases import Database
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,7 +38,7 @@ app = FastAPI(
 )
 app.include_router(data.router)
 
-app.mount("/files", StaticFiles(directory="app/static_files"), name="files")
+app.mount("/files", StaticFiles(directory="rlhfblender/static_files"), name="files")
 
 database = Database(DB_HOST)
 
@@ -68,7 +73,10 @@ async def shutdown():
 
 # Allow CORS
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

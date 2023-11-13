@@ -1,1 +1,1 @@
-DB_HOST = "sqlite:///app/test.db"
+DB_HOST = "sqlite:///rlhfblender/test.db"

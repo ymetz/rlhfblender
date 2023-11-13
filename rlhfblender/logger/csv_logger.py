@@ -1,11 +1,10 @@
-import os
-
-import csv
 import asyncio
 import csv
+import os
+
+from pydantic import BaseModel
 
 from rlhfblender.logger.logger import Logger
-from pydantic import BaseModel
 
 
 class CSVLogger(Logger):

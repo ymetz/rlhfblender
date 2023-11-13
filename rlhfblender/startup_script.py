@@ -7,11 +7,12 @@ import asyncio
 import os
 from types import SimpleNamespace as sn
 from typing import Dict, List
-from databases import Database
-from pydantic import BaseModel
+
 import cv2
 import gymnasium as gym
 import numpy as np
+from databases import Database
+from pydantic import BaseModel
 
 import rlhfblender.data_collection.framework_selector as framework_selector
 import rlhfblender.data_handling.database_handler as db_handler
@@ -25,12 +26,15 @@ BENCHMARK_DIR = "saved_benchmarks"
 
 database = Database(DB_HOST)
 
+
 def get_custom_thumbnail_creator(env_id: str):
     if "BabyAI" in env_id:
         import babyai.utils.trajectory_plotter as tp
+
         return tp.generate_thumbnail
 
     return None
+
 
 class BenchmarkRequestModel(BaseModel):
     """
@@ -76,7 +80,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]):
                 additional_packages=[],
             )
             if "BabyAI" not in benchmark_run.env_id
-            else gym.make(benchmark_run.env_id)
+            else gym.make(benchmark_run.env_id, render_mode="rgb_array")
         )
 
         agent = framework_selector.get_agent(framework=exp.framework)(
@@ -131,7 +135,7 @@ def encode_video(renders: np.ndarray, path: str) -> None:
     # Create video in H264 format
     out = cv2.VideoWriter(
         f"{path}.webm",
-        cv2.VideoWriter_fourcc(*'vp09'),
+        cv2.VideoWriter_fourcc(*"vp09"),
         24,
         (renders.shape[2], renders.shape[1]),
     )
@@ -191,7 +195,7 @@ async def main(benchmark_dicts: List[Dict]):
             dir_name = f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"
             save_episode = {}
             for name, _ in episode_data.items():
-                if name == 'additional_metrics' or name == 'renders':
+                if name == "additional_metrics" or name == "renders":
                     continue
                 save_episode[name] = episode_data[name][episode_idx]
             os.makedirs(dir_name, exist_ok=True)
@@ -206,10 +210,17 @@ async def main(benchmark_dicts: List[Dict]):
             )
 
             # Save uncertainty data if available (for now, just use entropy from info dict)
-            if 'infos' in episode_data:
-                os.makedirs(f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}", exist_ok=True)
-                np.save(f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{episode_idx}.npy",
-                        np.array([info['entropy'] for info in episode_data['infos'][episode_idx]]))
+            if "infos" in episode_data:
+                os.makedirs(
+                    f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}",
+                    exist_ok=True,
+                )
+                np.save(
+                    f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{episode_idx}.npy",
+                    np.array(
+                        [info["entropy"] for info in episode_data["infos"][episode_idx]]
+                    ),
+                )
 
         # Create video
         for episode_idx, renders in enumerate(episode_data["renders"]):
@@ -225,10 +236,16 @@ async def main(benchmark_dicts: List[Dict]):
                 os.makedirs(dir_name)
 
             # Check if custom thumbnail creator exists
-            custom_thumbnail_creator = get_custom_thumbnail_creator(benchmark_run.env_id)
+            custom_thumbnail_creator = get_custom_thumbnail_creator(
+                benchmark_run.env_id
+            )
             if custom_thumbnail_creator is not None:
                 # Create custom thumbnail with env id and seed (info the info dict)
-                save_image = custom_thumbnail_creator(benchmark_run.env_id, episode_data['infos'][episode_idx][0].get("seed", None), episode_data['actions'][episode_idx])
+                save_image = custom_thumbnail_creator(
+                    benchmark_run.env_id,
+                    episode_data["infos"][episode_idx][0].get("seed", None),
+                    episode_data["actions"][episode_idx],
+                )
             else:
                 save_image = renders[0]
                 # Save first frame of the episode, first convert to BGR
@@ -241,13 +258,22 @@ async def main(benchmark_dicts: List[Dict]):
 
         # Delete the last episode, as it is not complete (TODO: Fix this)
         print(f"Deleting last episode of {len(episode_data['dones']) - 1}")
-        os.remove(f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}/benchmark_{len(episode_data['dones']) - 1}.npz")
-        os.remove(f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{len(episode_data['dones']) - 1}.npy")
-        if 'infos' in episode_data:
-            os.remove(f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{len(episode_data['dones']) - 1}.npy")
-        os.remove(f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.webm")
-        os.remove(f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.jpg")
-
+        os.remove(
+            f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}/benchmark_{len(episode_data['dones']) - 1}.npz"
+        )
+        os.remove(
+            f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{len(episode_data['dones']) - 1}.npy"
+        )
+        if "infos" in episode_data:
+            os.remove(
+                f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{len(episode_data['dones']) - 1}.npy"
+            )
+        os.remove(
+            f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.webm"
+        )
+        os.remove(
+            f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.jpg"
+        )
 
 
 if __name__ == "__main__":
@@ -262,7 +288,7 @@ if __name__ == "__main__":
             "benchmark_id": str(1),
             "checkpoint_step": (i + 1) * 1000000,
             "n_episodes": 1,
-            "path": os.path.join(f"experiments/Atari Breakout"),
+            "path": os.path.join(f"rlhfblender_demo_models/Atari Breakout"),
         }
         for i in range(10)
     ]
@@ -274,12 +300,15 @@ if __name__ == "__main__":
 
     # Run benchmarks for BabyAI
     benchmark_dicts = [
-        {"env_id": "BabyAI-MiniBossLevel-v0",
-         "benchmark_type": "trained",
-         "benchmark_id": str(8),
-         "checkpoint_step": 10000000,
-         "n_episodes": 20,
-         "path": os.path.join(f"experiments/BabyAI")}]
+        {
+            "env_id": "BabyAI-MiniBossLevel-v0",
+            "benchmark_type": "trained",
+            "benchmark_id": str(8),
+            "checkpoint_step": 10000000,
+            "n_episodes": 20,
+            "path": os.path.join(f"rlhfblender_demo_models/BabyAI"),
+        }
+    ]
 
     try:
         asyncio.run(main(benchmark_dicts))
@@ -288,13 +317,16 @@ if __name__ == "__main__":
 
     # Run benchmarks for Highway-Env
     benchmark_dicts = [
-        {"env_id": "roundabout-v0",
-         "benchmark_type": "trained",
-         "benchmark_id": str(7),
-         "checkpoint_step": (i + 1) * 4000,
-         "n_episodes": 10,
-         "path": os.path.join(f"experiments/Highway_env")}
-        for i in range(3)]
+        {
+            "env_id": "roundabout-v0",
+            "benchmark_type": "trained",
+            "benchmark_id": str(7),
+            "checkpoint_step": (i + 1) * 4000,
+            "n_episodes": 10,
+            "path": os.path.join(f"rlhfblender_demo_models/Highway_env"),
+        }
+        for i in range(3)
+    ]
 
     try:
         asyncio.run(main(benchmark_dicts))
@@ -309,7 +341,7 @@ if __name__ == "__main__":
          "benchmark_id": str(i),
          "checkpoint_step": (i + 1) * 1000000,
          "n_episodes": 1,
-         "path": os.path.join(f"experiments/Safety_Gym")}
+         "path": os.path.join(f"rlhfblender_demo_models/Safety_Gym")}
         for i in range(10)]
 
     asyncio.run(main(benchmark_dicts))

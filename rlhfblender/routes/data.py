@@ -2,33 +2,46 @@ import os
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List
+
+import cv2
 import numpy as np
+from data_collection.demo_session import (
+    check_socket_connection,
+    close_demo_session,
+    create_new_session,
+    demo_perform_step,
+)
 from databases import Database
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import cv2
 
 import rlhfblender.data_handling.database_handler as db_handler
 from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection import framework_selector
-from rlhfblender.data_collection.environment_handler import (get_environment,
-                                                 initial_registration)
-from rlhfblender.data_collection.episode_recorder import (BenchmarkSummary,
-                                              EpisodeRecorder, convert_infos)
+from rlhfblender.data_collection.environment_handler import (
+    get_environment,
+    initial_registration,
+)
+from rlhfblender.data_collection.episode_recorder import (
+    BenchmarkSummary,
+    EpisodeRecorder,
+    convert_infos,
+)
 from rlhfblender.data_models.agent import RandomAgent
 from rlhfblender.data_models.feedback_models import UnprocessedFeedback
-from rlhfblender.data_models.global_models import (AggregatedRecordedEpisodes, Dataset,
-                                       Environment, EpisodeID, Experiment,
-                                       RecordedEpisodes)
-
-
-from data_collection.demo_session import create_new_session, demo_perform_step, close_demo_session, check_socket_connection
+from rlhfblender.data_models.global_models import (
+    AggregatedRecordedEpisodes,
+    Dataset,
+    Environment,
+    EpisodeID,
+    Experiment,
+    RecordedEpisodes,
+)
 
 database = Database(DB_HOST)
 
 router = APIRouter(prefix="/data")
-
 
 
 @router.get("/get_available_frameworks", response_model=List[str])
@@ -209,6 +222,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkRespon
         },
     )
 
+
 @router.get("/get_rewards", response_model=List, tags=["DATA"])
 async def get_rewards(
     env_name: str,
@@ -303,6 +317,7 @@ class DetailRequest(BaseModel):
     checkpoint_step: int
     episode_num: int
 
+
 class SingleStepDetailRequest(DetailRequest):
     step: int
 
@@ -388,7 +403,11 @@ async def save_feature_feedback(image: UploadFile = File(...)):
     # get current time formatted as string
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    img.save(os.path.join("data", "feature_feedback", "feature_feedback_" + current_time + ".png"))
+    img.save(
+        os.path.join(
+            "data", "feature_feedback", "feature_feedback_" + current_time + ".png"
+        )
+    )
 
     return {"message": "Image saved successfully"}
 
@@ -448,12 +467,14 @@ async def get_action_label_urls(request: ActionLabelRequest):
     action_label_dir = os.path.join("data", "action_labels", db_env_name)
     if not os.path.isdir(action_label_dir):
         return []
-    action_label_files = [file for file in os.listdir(action_label_dir) if file.endswith(".png") or file.endswith(".svg")]
-
+    action_label_files = [
+        file
+        for file in os.listdir(action_label_dir)
+        if file.endswith(".png") or file.endswith(".svg")
+    ]
 
     # Return the urls
     return [f"/action_labels/{db_env_name}/{file}" for file in action_label_files]
-
 
 
 @router.post("/reset_sampler")
@@ -545,7 +566,9 @@ async def initialize_demo_session(request: Request):
         action_space = db_env.action_space_info
 
     try:
-        pid, demo_number = await create_new_session(session_id, db_env.registration_id, int(seed))
+        pid, demo_number = await create_new_session(
+            session_id, db_env.registration_id, int(seed)
+        )
 
         first_step = demo_perform_step(session_id, [])
         success = True
@@ -554,7 +577,13 @@ async def initialize_demo_session(request: Request):
         first_step = {"reward": 0, "done": False, "infos": {}}
         success = False
 
-    return {"pid": pid, "demo_number": demo_number, "action_space": action_space, "step": first_step, "success": success}
+    return {
+        "pid": pid,
+        "demo_number": demo_number,
+        "action_space": action_space,
+        "step": first_step,
+        "success": success,
+    }
 
 
 @router.post("/demo_step")

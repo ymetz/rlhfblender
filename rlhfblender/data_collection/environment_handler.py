@@ -3,13 +3,18 @@ import os
 from typing import Union
 
 import gymnasium as gym
-from rlhfblender.data_handling.database_handler import add_entry
-from rlhfblender.data_models.global_models import Environment
 from databases import Database
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import (DummyVecEnv, VecEnv,
-                                              VecFrameStack, VecNormalize)
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    VecEnv,
+    VecFrameStack,
+    VecNormalize,
+)
 from utils import get_wrapper_class
+
+from rlhfblender.data_handling.database_handler import add_entry
+from rlhfblender.data_models.global_models import Environment
 
 
 def get_environment(
@@ -108,7 +113,7 @@ async def initial_registration(database: Database, env_name: str = "CartPole-v0"
     :param env_name:
     :return:
     """
-    env = gym.make(env_name)
+    env = gym.make(env_name, render_mode="rgb_array")
 
     # Replace inf/-inf values inside of the spaces with the max/min values of the spaces with min/max float values
     if hasattr(env.observation_space, "low"):

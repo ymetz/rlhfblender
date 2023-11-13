@@ -4,7 +4,6 @@ from typing import Any, Dict
 import gymnasium as gym
 import torch as th
 import torchvision
-from stable_baselines3 import A2C
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import Video
@@ -44,7 +43,7 @@ class VideoRecorderCallback(BaseCallback):
                 :param _locals: A dictionary containing all local variables of the callback's scope
                 :param _globals: A dictionary containing all global variables of the callback's scope
                 """
-                screen = self._eval_env.render(mode="rgb_array")
+                screen = self._eval_env.render()
                 # PyTorch uses CxHxW vs HxWxC gym (and tensorflow) image convention
                 screens.append(screen)
 

@@ -7,6 +7,7 @@
 
 
 Implementation for RLHF-Blender: A Configurable Interactive Interface for Learning from Diverse Human Feedback
+Paper: https://arxiv.org/abs/2308.04332 (Presented at the ICML2023 Interactive Learning from Implicit Human Feedback Workshop)
 
 <div align="center">
 
@@ -54,13 +55,21 @@ npm install
 npm run start
 ```
 
-## Features
+## 📦 Features
 
 RLHF-Blender allows to configure experimental setups for RLHF-experiments based on several modular components:
 
 - A freely configurable user interface for different feedback type interactions
 - Feedback processors, handling the translation of different types of feedback, incl. meta-data, into a common format
-- Adaptor to different reward models (e.g. reward model ensembles, AIRL-style models, etc.) 
+- Adaptor to different reward models (e.g. reward model ensembles, AIRL-style models, etc.)
+
+## 📖 Example
+
+RLHF-Blender allows to quickly setup experiments for experimenting with different types of feedback and reward models across different environments. 
+The following example shows how to setup an experiment for the CartPole environment with a reward model ensemble and a textual feedback interface.
+
+```python
+
 
 ## 🎯 What's next
 
