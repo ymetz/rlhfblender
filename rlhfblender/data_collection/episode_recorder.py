@@ -103,8 +103,7 @@ class EpisodeRecorder(object):
         probs_buffer = []
 
         seed = random.randint(0, 2000)
-        env.seed(seed)
-        observations = env.reset() if not isinstance(env, VecEnv) else env.reset()
+        observations = env.reset(seed=seed) if not isinstance(env, VecEnv) else env.reset(seed=seed)
         if not isinstance(env, VecEnv):
             rewards = 0
             dones = False
@@ -161,8 +160,7 @@ class EpisodeRecorder(object):
                 # If not dummy vec env, we need to reset ourselves
                 if dones:
                     seed = random.randint(0, 1000000)
-                    env.seed(seed)
-                    observation = env.reset()
+                    observation = env.reset(seed=seed)
                     if (
                         isinstance(env.observation_space, gym.spaces.Dict)
                         and "mission" in observation.keys()
@@ -259,15 +257,16 @@ class EpisodeRecorder(object):
             )
 
             if render:
-                render_frame = env.render(mode="rgb_array")
+                render_frame = env.render()
                 render_buffer.append(np.squeeze(render_frame))
             total_steps += 1
 
-            observations, rewards, dones, infos = env.step(actions)
+            observation, reward, terminated, truncated, info = env.step(actions)
+            done = terminated or truncated
 
         # Add last render frame to buffer
         if render:
-            render_frame = env.render(mode="rgb_array")
+            render_frame = env.render()
             render_buffer.append(np.squeeze(render_frame))
 
         if n_envs == 1:

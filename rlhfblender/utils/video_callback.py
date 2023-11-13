@@ -44,7 +44,7 @@ class VideoRecorderCallback(BaseCallback):
                 :param _locals: A dictionary containing all local variables of the callback's scope
                 :param _globals: A dictionary containing all global variables of the callback's scope
                 """
-                screen = self._eval_env.render(mode="rgb_array")
+                screen = self._eval_env.render()
                 # PyTorch uses CxHxW vs HxWxC gym (and tensorflow) image convention
                 screens.append(screen)
 

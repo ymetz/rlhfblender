@@ -68,8 +68,7 @@ def run_env_session(
     :return:
     """
     # Create the gym environment
-    env = gym.make(gym_env)
-    env.seed(seed)
+    env = gym.make(gym_env, render_mode="rgb_array")
 
     obs_buffer = []
     rew_buffer = []
@@ -105,10 +104,10 @@ def run_env_session(
                     break
                 elif data["command"] == "step":
                     if not env_init:
-                        obs = env.reset()
+                        obs = env.reset(seed=seed)
                         obs_buffer.append(obs)
                         env_init = True
-                        render = env.render(mode="rgb_array")
+                        render = env.render()
                         reward = 0
                         done = False
                         if not "BabyAI" in gym_env:
@@ -117,7 +116,8 @@ def run_env_session(
                             # Such that first frame of demo modal also shows the mission
                             info = {"mission": obs["mission"]}
                     else:
-                        obs, reward, done, info = env.step(data["action"])
+                        observation, reward, terminated, truncated, info = env.step(data["action"])
+                        done = terminated or truncated
                         if data["action"] == 6:
                             # 6 is the "done" action in BabyAI
                             done = True
@@ -151,7 +151,7 @@ def run_env_session(
                                 )
                         else:
                             obs_buffer.append(obs)
-                        render = env.render(mode="rgb_array")
+                        render = env.render()
 
                     # Save the render as an image
                     first_step_render = render

@@ -23,15 +23,15 @@ class DoneOnSuccessWrapper(gym.Wrapper):
         return self.env.reset()
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        observation, reward, terminated, truncated, info = self.env.step(action)
         if info.get("is_success", False):
             self.current_successes += 1
         else:
             self.current_successes = 0
         # number of successes in a row
-        done = done or self.current_successes >= self.n_successes
+        done = terminated or truncated or self.current_successes >= self.n_successes
         reward += self.reward_offset
-        return obs, reward, done, info
+        return observation, reward, done, info
 
     def compute_reward(self, achieved_goal, desired_goal, info):
         reward = self.env.compute_reward(achieved_goal, desired_goal, info)
@@ -180,7 +180,8 @@ class DelayedRewardWrapper(gym.Wrapper):
         return self.env.reset()
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        observation, reward, terminated, truncated, info = self.env.step(action)
+        done = terminated or truncated
 
         self.accumulated_reward += reward
         self.current_step += 1
@@ -190,7 +191,7 @@ class DelayedRewardWrapper(gym.Wrapper):
             self.accumulated_reward = 0.0
         else:
             reward = 0.0
-        return obs, reward, done, info
+        return observation, reward, done, info
 
 
 class HistoryWrapper(gym.Wrapper):
@@ -243,7 +244,8 @@ class HistoryWrapper(gym.Wrapper):
         return self._create_obs_from_history()
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, truncated, info= self.env.step(action)
+        done = terminated or truncated
         last_ax_size = obs.shape[-1]
 
         self.obs_history = np.roll(self.obs_history, shift=-last_ax_size, axis=-1)
@@ -310,7 +312,8 @@ class HistoryWrapperObsDict(gym.Wrapper):
         return obs_dict
 
     def step(self, action):
-        obs_dict, reward, done, info = self.env.step(action)
+        obs_dict, reward, terminated, truncated, info = self.env.step(action)
+        done = terminated or truncated
         obs = obs_dict["observation"]
         last_ax_size = obs.shape[-1]
 

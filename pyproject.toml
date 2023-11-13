@@ -5,6 +5,19 @@ description = "A package to work with various sources of human feedback for rein
 authors = ["Yannick Metz <yannick.metz@uni-konstanz.de>"]
 license = "MIT"
 readme = "README.md"
+keywords = ["Reinforcement Learning", "game", "RL", "AI", "gymnasium"]
+requires-python = ">= 3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",  # change to `5 - Production/Stable` when ready
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    'Intended Audience :: Science/Research',
+    'Topic :: Scientific/Engineering :: Artificial Intelligence',
+]
 
 [tool.poetry.dependencies]
 python = ">=3.9.12,<3.13"
@@ -12,8 +25,7 @@ fastapi = "^0.103.2"
 uvicorn = "^0.15.0"
 databases = {version = "^0.8.0", extras = ["sqlite"]}
 numpy = "^1.26.1"
-autorom = {extras = ["accept-rom-license"], version = "^0.6.1"}
-gymnasium = "^0.29.1"
+gymnasium = {extras = ["atari,accept-rom-license,mujoco"], version = "^0.29.1"}
 stable-baselines3 = "^2.1.0"
 sb3-contrib = "^2.1.0"
 ale-py = "^0.8.1"
@@ -27,3 +39,9 @@ opencv-python-headless = "^4.8.1.78"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.project.urls]
+Homepage = "https://rlhfblender.info"
+Repository = "https://github.com/ymetz/rlhfblender"
+Documentation = "https://rlhfblender.readthedocs.io/en/latest/"
+"Bug Report" = "https://github.com/ymetz/rlhfblender/issues"

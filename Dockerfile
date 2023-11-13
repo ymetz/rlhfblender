@@ -14,9 +14,8 @@ COPY requirements.txt /tmp/
 RUN pip3 install --upgrade pip
 
 # Copy the application code
-COPY rlhfblender /app
-COPY configs /app/configs
-COPY experiments /app/experiments
+COPY rlhfblender/ /app/
+COPY configs/ /app/configs
 
 # Only install packages after copying the code (because we do want to install local third-party packages)
 RUN pip3 install -r /tmp/requirements.txt

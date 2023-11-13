@@ -113,7 +113,7 @@ async def initial_registration(database: Database, env_name: str = "CartPole-v0"
     :param env_name:
     :return:
     """
-    env = gym.make(env_name)
+    env = gym.make(env_name, render_mode="rgb_array")
 
     # Replace inf/-inf values inside of the spaces with the max/min values of the spaces with min/max float values
     if hasattr(env.observation_space, "low"):
