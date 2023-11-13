@@ -306,11 +306,7 @@ if __name__ == "__main__":
             "benchmark_id": str(8),
             "checkpoint_step": 10000000,
             "n_episodes": 20,
-<<<<<<< HEAD
-            "path": os.path.join(f"experiments/BabyAI"),
-=======
             "path": os.path.join(f"rlhfblender_demo_models/BabyAI"),
->>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
         }
     ]
 
@@ -327,11 +323,7 @@ if __name__ == "__main__":
             "benchmark_id": str(7),
             "checkpoint_step": (i + 1) * 4000,
             "n_episodes": 10,
-<<<<<<< HEAD
-            "path": os.path.join(f"experiments/Highway_env"),
-=======
             "path": os.path.join(f"rlhfblender_demo_models/Highway_env"),
->>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
         }
         for i in range(3)
     ]

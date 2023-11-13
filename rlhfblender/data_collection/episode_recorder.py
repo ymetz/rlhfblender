@@ -160,12 +160,7 @@ class EpisodeRecorder(object):
                 # If not dummy vec env, we need to reset ourselves
                 if dones:
                     seed = random.randint(0, 1000000)
-<<<<<<< HEAD
-                    env.seed(seed)
-                    observation = env.reset()
-=======
                     observation = env.reset(seed=seed)
->>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
                     if (
                         isinstance(env.observation_space, gym.spaces.Dict)
                         and "mission" in observation.keys()

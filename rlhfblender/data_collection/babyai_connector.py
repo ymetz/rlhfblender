@@ -8,13 +8,10 @@ import torch as th
 from config import DB_HOST
 from databases import Database
 from scipy.stats import entropy
-<<<<<<< HEAD
 
 from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.data_models.agent import TrainedAgent
 from rlhfblender.data_models.global_models import Environment, Experiment
-=======
->>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
 
 from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.data_models.agent import TrainedAgent
