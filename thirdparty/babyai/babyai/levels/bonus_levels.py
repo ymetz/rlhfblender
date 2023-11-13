@@ -266,7 +266,7 @@ class Level_UnlockPickup(RoomGridLevel):
             num_rows=1,
             num_cols=2,
             room_size=room_size,
-            max_steps=8 * room_size ** 2,
+            max_steps=8 * room_size**2,
             seed=seed,
         )
 
@@ -307,7 +307,7 @@ class Level_BlockedUnlockPickup(RoomGridLevel):
             num_rows=1,
             num_cols=2,
             room_size=room_size,
-            max_steps=16 * room_size ** 2,
+            max_steps=16 * room_size**2,
             seed=seed,
         )
 
@@ -338,7 +338,7 @@ class Level_UnlockToUnlock(RoomGridLevel):
             num_rows=1,
             num_cols=3,
             room_size=room_size,
-            max_steps=30 * room_size ** 2,
+            max_steps=30 * room_size**2,
             seed=seed,
         )
 
@@ -410,7 +410,7 @@ class Level_PickupAbove(RoomGridLevel):
 
     def __init__(self, seed=None):
         room_size = 6
-        super().__init__(room_size=room_size, max_steps=8 * room_size ** 2, seed=seed)
+        super().__init__(room_size=room_size, max_steps=8 * room_size**2, seed=seed)
 
     def gen_mission(self):
         # Add a random object to the top-middle room
@@ -437,7 +437,7 @@ class Level_OpenTwoDoors(RoomGridLevel):
         self.strict = strict
 
         room_size = 6
-        super().__init__(room_size=room_size, max_steps=20 * room_size ** 2, seed=seed)
+        super().__init__(room_size=room_size, max_steps=20 * room_size**2, seed=seed)
 
     def gen_mission(self):
         colors = self._rand_subset(COLOR_NAMES, 2)
@@ -498,7 +498,7 @@ class Level_FindObjS5(RoomGridLevel):
     """
 
     def __init__(self, room_size=5, seed=None):
-        super().__init__(room_size=room_size, max_steps=20 * room_size ** 2, seed=seed)
+        super().__init__(room_size=room_size, max_steps=20 * room_size**2, seed=seed)
 
     def gen_mission(self):
         # Add a random object to a random room
@@ -541,7 +541,7 @@ class KeyCorridor(RoomGridLevel):
         super().__init__(
             room_size=room_size,
             num_rows=num_rows,
-            max_steps=30 * room_size ** 2,
+            max_steps=30 * room_size**2,
             seed=seed,
         )
 
@@ -660,7 +660,7 @@ class PutNext(RoomGridLevel):
             num_rows=1,
             num_cols=2,
             room_size=room_size,
-            max_steps=8 * room_size ** 2,
+            max_steps=8 * room_size**2,
             seed=seed,
         )
 
@@ -755,7 +755,7 @@ class MoveTwoAcross(RoomGridLevel):
             num_rows=1,
             num_cols=2,
             room_size=room_size,
-            max_steps=16 * room_size ** 2,
+            max_steps=16 * room_size**2,
             seed=seed,
         )
 
@@ -805,7 +805,7 @@ class OpenDoorsOrder(RoomGridLevel):
         self.debug = debug
 
         room_size = 6
-        super().__init__(room_size=room_size, max_steps=20 * room_size ** 2, seed=seed)
+        super().__init__(room_size=room_size, max_steps=20 * room_size**2, seed=seed)
 
     def gen_mission(self):
         colors = self._rand_subset(COLOR_NAMES, self.num_doors)

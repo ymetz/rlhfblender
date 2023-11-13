@@ -3,8 +3,11 @@ from typing import TYPE_CHECKING, Callable, List, Optional
 
 import numpy as np
 import pygame
-from highway_env.envs.common.action import (ActionType, ContinuousAction,
-                                            DiscreteMetaAction)
+from highway_env.envs.common.action import (
+    ActionType,
+    ContinuousAction,
+    DiscreteMetaAction,
+)
 from highway_env.road.graphics import RoadGraphics, WorldSurface
 from highway_env.vehicle.graphics import VehicleGraphics
 

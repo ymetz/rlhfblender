@@ -370,8 +370,8 @@ def estimate_sample_efficiency(df, visualize=False, figure_path=None):
     subgrid = grid[first_prob : len(probs)]
     subprobs = probs[first_prob:]
     mean_n_min = (subprobs * subgrid).sum()
-    mean_n_min_squared = (subprobs * subgrid ** 2).sum()
-    std_n_min = (mean_n_min_squared - mean_n_min ** 2) ** 0.5
+    mean_n_min_squared = (subprobs * subgrid**2).sum()
+    std_n_min = (mean_n_min_squared - mean_n_min**2) ** 0.5
     if visualize:
         # visualize the N_min posterior density
         # visualize the non-Gaussianity of N_min posterior density
@@ -383,7 +383,7 @@ def estimate_sample_efficiency(df, visualize=False, figure_path=None):
     cdf = np.cumsum(probs)
     left = grid[(cdf > 0.01).nonzero()[0][0]]
     right = grid[(cdf > 0.99).nonzero()[0][0]]
-    print("99% credible interval for N_min:", 2 ** left, 2 ** right)
+    print("99% credible interval for N_min:", 2**left, 2**right)
 
     if visualize:
         axis = axes[1]
@@ -400,8 +400,8 @@ def estimate_sample_efficiency(df, visualize=False, figure_path=None):
     if figure_path:
         pyplot.savefig(figure_path)
     return {
-        "min": 2 ** left,
-        "max": 2 ** right,
+        "min": 2**left,
+        "max": 2**right,
         "mean_log2": mean_n_min,
         "std_log2": std_n_min,
     }

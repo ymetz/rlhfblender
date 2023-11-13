@@ -193,7 +193,7 @@ class DiscreteAction(ContinuousAction):
         self.actions_per_axis = actions_per_axis
 
     def space(self) -> spaces.Discrete:
-        return spaces.Discrete(self.actions_per_axis ** self.size)
+        return spaces.Discrete(self.actions_per_axis**self.size)
 
     def act(self, action: int) -> None:
         cont_space = super().space()

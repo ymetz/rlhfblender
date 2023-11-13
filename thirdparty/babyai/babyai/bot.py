@@ -1,7 +1,15 @@
 from babyai.levels.verifier import *
-from babyai.levels.verifier import (AfterInstr, AndInstr, BeforeInstr,
-                                    GoToInstr, ObjDesc, OpenInstr, PickupInstr,
-                                    PutNextInstr, pos_next_to)
+from babyai.levels.verifier import (
+    AfterInstr,
+    AndInstr,
+    BeforeInstr,
+    GoToInstr,
+    ObjDesc,
+    OpenInstr,
+    PickupInstr,
+    PutNextInstr,
+    pos_next_to,
+)
 from gym_minigrid.minigrid import *
 
 
@@ -389,7 +397,9 @@ class GoNextToSubgoal(Subgoal):
 
         # We are still far from the target
         # -> try to find a non-blocker path
-        path, _, _ = self.bot._shortest_path(lambda pos, cell: pos == target_pos,)
+        path, _, _ = self.bot._shortest_path(
+            lambda pos, cell: pos == target_pos,
+        )
 
         # No non-blocker path found and
         # reexploration within the room is not allowed or there is nothing to explore

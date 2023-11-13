@@ -10,15 +10,20 @@ import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
 import torch as th
+from stable_baselines3.common.base_class import BaseAlgorithm
+from stable_baselines3.common.utils import set_random_seed
+from torch import Tensor
+
 # Register custom envs
 import rlhfblender.utils.import_envs  # noqa: F401 pytype: disable=import-error
 from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.data_models.agent import BaseAgent, TrainedAgent
-from rlhfblender.data_models.global_models import (Environment, EvaluationConfig,
-                                       Experiment, Project)
-from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.utils import set_random_seed
-from torch import Tensor
+from rlhfblender.data_models.global_models import (
+    Environment,
+    EvaluationConfig,
+    Experiment,
+    Project,
+)
 from rlhfblender.utils.exp_manager import ExperimentManager
 from rlhfblender.utils.utils import ALGOS
 
@@ -187,7 +192,7 @@ class StableBaselines3ZooConnector(connector.Connector):
         f"_{uuid.uuid4()}" if experiment.pid else ""
         if experiment.seed < 0:
             # Seed but with a random one
-            experiment.seed = np.random.randint(2 ** 32 - 1, dtype="int64").item()
+            experiment.seed = np.random.randint(2**32 - 1, dtype="int64").item()
 
         set_random_seed(experiment.seed)
 

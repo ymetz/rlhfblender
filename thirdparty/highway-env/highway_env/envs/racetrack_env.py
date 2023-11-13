@@ -4,8 +4,7 @@ import numpy as np
 from gym.envs.registration import register
 from highway_env import utils
 from highway_env.envs.common.abstract import AbstractEnv
-from highway_env.road.lane import (CircularLane, LineType, SineLane,
-                                   StraightLane)
+from highway_env.road.lane import CircularLane, LineType, SineLane, StraightLane
 from highway_env.road.road import Road, RoadNetwork
 from highway_env.vehicle.behavior import IDMVehicle
 
@@ -59,7 +58,7 @@ class RacetrackEnv(AbstractEnv):
     def _reward(self, action: np.ndarray) -> float:
         _, lateral = self.vehicle.lane.local_coordinates(self.vehicle.position)
         lane_centering_reward = 1 / (
-            1 + self.config["lane_centering_cost"] * lateral ** 2
+            1 + self.config["lane_centering_cost"] * lateral**2
         )
         action_reward = self.config["action_reward"] * np.linalg.norm(action)
         reward = (
@@ -403,5 +402,6 @@ class RacetrackEnv(AbstractEnv):
 
 
 register(
-    id="racetrack-v0", entry_point="highway_env.envs:RacetrackEnv",
+    id="racetrack-v0",
+    entry_point="highway_env.envs:RacetrackEnv",
 )

@@ -4,24 +4,30 @@ import os
 import time
 import uuid
 from typing import List, Optional
-import rl_baselines3_zoo.utils.import_envs  # noqa: F401 pytype: disable=import-error
-import stable_baselines3.common.policies
-import torch as th
+
 import gymnasium as gym
 import imitation
 import numpy as np
-# Register custom envs
-
-from rlhfblender.data_handling.database_handler import get_single_entry
-from rlhfblender.data_models.agent import BaseAgent, TrainedAgent
-from rlhfblender.data_models.global_models import (Environment, EvaluationConfig,
-                                       Experiment, Project)
-import rlhfblender.data_models.connector as connector
+import rl_baselines3_zoo.utils.import_envs  # noqa: F401 pytype: disable=import-error
+import stable_baselines3.common.policies
+import torch as th
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.utils import set_random_seed
 from torch import Tensor
 
+import rlhfblender.data_models.connector as connector
+from rlhfblender.data_handling.database_handler import get_single_entry
+from rlhfblender.data_models.agent import BaseAgent, TrainedAgent
+from rlhfblender.data_models.global_models import (
+    Environment,
+    EvaluationConfig,
+    Experiment,
+    Project,
+)
+
 from .sb_zoo_connector import StableBaselines3Agent
+
+# Register custom envs
 
 
 class ImitationConnector(connector.Connector):
@@ -78,7 +84,7 @@ class ImitationConnector(connector.Connector):
         f"_{uuid.uuid4()}" if experiment.pid else ""
         if experiment.seed < 0:
             # Seed but with a random one
-            experiment.seed = np.random.randint(2 ** 32 - 1, dtype="int64").item()
+            experiment.seed = np.random.randint(2**32 - 1, dtype="int64").item()
 
         set_random_seed(experiment.seed)
 
@@ -212,8 +218,13 @@ class ImitationConnector(connector.Connector):
         :param algorithm_name:
         :return:
         """
-        from imitation.algorithms import (bc, dagger, density, mce_irl,
-                                          preference_comparison)
+        from imitation.algorithms import (
+            bc,
+            dagger,
+            density,
+            mce_irl,
+            preference_comparison,
+        )
         from imitation.algorithms.adversarial import airl, gail
 
         selected_algorithm = None

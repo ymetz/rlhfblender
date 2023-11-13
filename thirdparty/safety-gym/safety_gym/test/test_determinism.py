@@ -9,7 +9,7 @@ import safety_gym  # noqa
 
 class TestDeterminism(unittest.TestCase):
     def check_qpos(self, env_name):
-        """ Check that a single environment is seed-stable at init """
+        """Check that a single environment is seed-stable at init"""
         for seed in [0, 1, 123456789]:
             print("running", env_name, seed)
             env1 = gym.make(env_name)
@@ -25,13 +25,13 @@ class TestDeterminism(unittest.TestCase):
             )
 
     def test_qpos(self):
-        """ Run all the bench envs """
+        """Run all the bench envs"""
         for env_spec in gym.envs.registry.all():
             if "Safexp" in env_spec.id:
                 self.check_qpos(env_spec.id)
 
     def check_names(self, env_name):
-        """ Check that all the names in the mujoco model are the same for different envs """
+        """Check that all the names in the mujoco model are the same for different envs"""
         print("check names", env_name)
         env1 = gym.make(env_name)
         env1.seed(0)
@@ -58,7 +58,7 @@ class TestDeterminism(unittest.TestCase):
             self.assertEqual(getattr(model1, n), getattr(model2, n))
 
     def test_names(self):
-        """ Run all the bench envs """
+        """Run all the bench envs"""
         for env_spec in gym.envs.registry.all():
             if "Safexp" in env_spec.id:
                 self.check_names(env_spec.id)

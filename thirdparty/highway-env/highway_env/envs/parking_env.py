@@ -4,8 +4,10 @@ import numpy as np
 from gym import Env
 from gym.envs.registration import register
 from highway_env.envs.common.abstract import AbstractEnv
-from highway_env.envs.common.observation import (MultiAgentObservation,
-                                                 observation_factory)
+from highway_env.envs.common.observation import (
+    MultiAgentObservation,
+    observation_factory,
+)
 from highway_env.road.lane import LineType, StraightLane
 from highway_env.road.road import Road, RoadNetwork
 from highway_env.vehicle.objects import Landmark
@@ -242,7 +244,8 @@ class ParkingEnvActionRepeat(ParkingEnv):
 
 
 register(
-    id="parking-v0", entry_point="highway_env.envs:ParkingEnv",
+    id="parking-v0",
+    entry_point="highway_env.envs:ParkingEnv",
 )
 
 register(

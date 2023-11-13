@@ -1,5 +1,12 @@
-from gym_minigrid.minigrid import (Door, Floor, Goal, Grid, MiniGridEnv,
-                                   Switch, UnspecifiedDoor2)
+from gym_minigrid.minigrid import (
+    Door,
+    Floor,
+    Goal,
+    Grid,
+    MiniGridEnv,
+    Switch,
+    UnspecifiedDoor2,
+)
 from gym_minigrid.register import register
 
 

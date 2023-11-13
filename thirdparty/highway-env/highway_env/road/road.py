@@ -2,8 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
-from highway_env.road.lane import (AbstractLane, LineType, StraightLane,
-                                   lane_from_config)
+from highway_env.road.lane import AbstractLane, LineType, StraightLane, lane_from_config
 from highway_env.vehicle.objects import Landmark
 
 if TYPE_CHECKING:
@@ -192,9 +191,9 @@ class RoadNetwork(object):
 
     def side_lanes(self, lane_index: LaneIndex) -> List[LaneIndex]:
         """
-                :param lane_index: the index of a lane.
-                :return: indexes of lanes next to a an input lane, to its right or left.
-                """
+        :param lane_index: the index of a lane.
+        :return: indexes of lanes next to a an input lane, to its right or left.
+        """
         _from, _to, _id = lane_index
         lanes = []
         if _id > 0:

@@ -55,6 +55,7 @@ def limit_search_span(location, agent_pos, agent_dir):
 
     return search_span
 
+
 def loc_spec_mission(mission, agent_pos, agent_dir):
     """
     The method filters a mission that contains a location specifier. It invokes limit_search_span() method.
@@ -66,12 +67,30 @@ def loc_spec_mission(mission, agent_pos, agent_dir):
              list [(xmin, xmax), (ymin, ymax)] that contains four coordinates
              that define the rectangular search space.
     """
-    location = list(filter(lambda x: x in ["left", "right", "front", "behind"], mission))[0]
-    mission = list \
-        (filter(lambda x: x not in ["on", "your", "left", "right", "in", "front", "of", "you", "behind"], mission))
+    location = list(
+        filter(lambda x: x in ["left", "right", "front", "behind"], mission)
+    )[0]
+    mission = list(
+        filter(
+            lambda x: x
+            not in [
+                "on",
+                "your",
+                "left",
+                "right",
+                "in",
+                "front",
+                "of",
+                "you",
+                "behind",
+            ],
+            mission,
+        )
+    )
     search_span = limit_search_span(location, agent_pos, agent_dir)
 
     return mission, search_span
+
 
 def find_target(mission, agent_pos, agent_dir):
     """
@@ -91,22 +110,37 @@ def find_target(mission, agent_pos, agent_dir):
     if "and" in mission:
         mission = mission.split("and")[-1]
 
-    mission = list(filter(lambda x: x not in ["a", "the", "go", "to", "pick", "up", "open"], mission.split(" ")))
+    mission = list(
+        filter(
+            lambda x: x not in ["a", "the", "go", "to", "pick", "up", "open"],
+            mission.split(" "),
+        )
+    )
 
     if "put" in mission:
-        mission = mission[mission.index("next") + 1:]
+        mission = mission[mission.index("next") + 1 :]
 
-    if "left" in mission or "right" in mission or "front" in mission or "behind" in mission:
+    if (
+        "left" in mission
+        or "right" in mission
+        or "front" in mission
+        or "behind" in mission
+    ):
         print(mission)
         (mission, search_span) = loc_spec_mission(mission, agent_pos, agent_dir)
         print(mission)
 
-    color = list(filter(lambda x: x in ["red", "green", "blue", "purple", "yellow", "grey"], mission))
+    color = list(
+        filter(
+            lambda x: x in ["red", "green", "blue", "purple", "yellow", "grey"], mission
+        )
+    )
     color = color[0] if len(color) > 0 else None
 
     obj_type = list(filter(lambda x: x in ["door", "ball", "box", "key"], mission))[0]
     # print(mission, "target: ", color , obj_type)
     return (color, obj_type, search_span)
+
 
 def find_object_pos(env, color, target_type, search_span):
     """
@@ -136,15 +170,17 @@ def find_object_pos(env, color, target_type, search_span):
     # print("pos: ", positions)
     return positions
 
+
 def manhattan_distance(p1, p2):
     """
-     Method calculates manhattan distance between two points.
+    Method calculates manhattan distance between two points.
 
-     :param p1: first point.
-     :param p2: second point.
-     :return: zhe manhattan distance between the p1 and p2.
+    :param p1: first point.
+    :param p2: second point.
+    :return: zhe manhattan distance between the p1 and p2.
     """
     return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+
 
 def find_nearest_target(agent_pos, possible_targets):
     """
@@ -167,6 +203,7 @@ def find_nearest_target(agent_pos, possible_targets):
             target = coord
     # print("target coordinates: ", target)
     return target
+
 
 def determine_target_position(env, seed):
     """

@@ -51,7 +51,7 @@ def normalize(env, ret, cost, costrate, cost_limit=25, round=False):
 
         cost:     the average episodic sum of costs of the final policy
 
-        costrate: the sum of all costs over training divided by number of 
+        costrate: the sum of all costs over training divided by number of
                   environment steps from all of training
     """
     env = env.split("-")[1].lower()

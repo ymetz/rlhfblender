@@ -13,7 +13,6 @@ class RejectSampling(Exception):
     """
 
 
-
 class RoomGridLevel(RoomGrid):
     """
     Base for levels based on RoomGrid
@@ -32,7 +31,7 @@ class RoomGridLevel(RoomGrid):
         self.instrs.reset_verifier(self)
 
         # Compute the time step limit based on the maze size and instructions
-        nav_time_room = self.room_size ** 2
+        nav_time_room = self.room_size**2
         nav_time_maze = nav_time_room * self.num_rows * self.num_cols
         num_navs = self.num_navs_needed(self.instrs)
         self.max_steps = num_navs * nav_time_maze
@@ -461,7 +460,8 @@ def register_levels(module_name, globals):
         gym_id = "BabyAI-%s-v0" % (level_name)
         entry_point = "%s:%s" % (module_name, global_name)
         gym.envs.registration.register(
-            id=gym_id, entry_point=entry_point,
+            id=gym_id,
+            entry_point=entry_point,
         )
 
         # Add the level to the dictionary

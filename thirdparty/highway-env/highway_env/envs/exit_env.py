@@ -10,8 +10,7 @@ from highway_env.vehicle.controller import ControlledVehicle
 
 
 class ExitEnv(HighwayEnv):
-    """
-    """
+    """ """
 
     @classmethod
     def default_config(cls) -> dict:
@@ -190,5 +189,6 @@ class ExitEnv(HighwayEnv):
 
 
 register(
-    id="exit-v0", entry_point="highway_env.envs:ExitEnv",
+    id="exit-v0",
+    entry_point="highway_env.envs:ExitEnv",
 )

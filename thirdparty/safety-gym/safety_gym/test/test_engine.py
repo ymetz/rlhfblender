@@ -2,14 +2,14 @@
 
 import unittest
 
-import gymnasium as gym.spaces
+import gymnasium.spaces
 import numpy as np
 from safety_gym.envs.engine import Engine
 
 
 class TestEngine(unittest.TestCase):
     def test_timeout(self):
-        """ Test that episode is over after num_steps """
+        """Test that episode is over after num_steps"""
         p = Engine({"num_steps": 10})
         p.reset()
         for _ in range(10):
@@ -20,7 +20,7 @@ class TestEngine(unittest.TestCase):
             p.step(np.zeros(p.action_space.shape))
 
     def test_flatten(self):
-        """ Test that physics can flatten observations """
+        """Test that physics can flatten observations"""
         p = Engine({"observation_flatten": True})
         obs = p.reset()
         self.assertIsInstance(p.observation_space, gym.spaces.Box)
@@ -33,7 +33,7 @@ class TestEngine(unittest.TestCase):
         self.assertTrue(p.observation_space.contains(obs))
 
     def test_angle_components(self):
-        """ Test that the angle components are about correct """
+        """Test that the angle components are about correct"""
         p = Engine(
             {
                 "robot_base": "xmls/doggo.xml",

@@ -127,7 +127,7 @@ class CurvePose:
     """
 
     def __init__(self, x: float, y: float, dx: float, dy: float):
-        self.length = np.sqrt(dx ** 2 + dy ** 2)
+        self.length = np.sqrt(dx**2 + dy**2)
         self.position = np.array([x, y]).flatten()
         self.normal = np.array([dx, dy]).flatten() / self.length
         self.orthonormal = np.array([-self.normal[1], self.normal[0]]).flatten()

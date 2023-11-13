@@ -1,26 +1,16 @@
 import os
+import random
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
-from copy import deepcopy
-import random
-
 from pydantic import BaseModel
-from stable_baselines3.common.vec_env import (
-    VecEnv,
-    VecMonitor,
-    is_vecenv_wrapped,
-)
-from rlhfblender.data_models.agent import BaseAgent
-from rlhfblender.data_collection.metrics_processor import process_metrics
+from stable_baselines3.common.vec_env import VecEnv, VecMonitor, is_vecenv_wrapped
+
 from rlhfblender.data_collection import RecordedEpisodesContainer
 from rlhfblender.data_collection.metrics_processor import process_metrics
 from rlhfblender.data_models.agent import BaseAgent
-from pydantic import BaseModel
-from stable_baselines3.common.vec_env import (VecEnv, VecMonitor,
-                                              is_vecenv_wrapped)
 
 
 class BenchmarkSummary(BaseModel):
@@ -120,14 +110,20 @@ class EpisodeRecorder(object):
             dones = False
             infos = {}
             # A bit of a special case for babyai, but in the future, we might use gymnasium with reset infos anyways
-            if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations.keys():
+            if (
+                isinstance(env.observation_space, gym.spaces.Dict)
+                and "mission" in observations.keys()
+            ):
                 infos["mission"] = observations["mission"]
                 infos["seed"] = seed
         else:
             rewards = np.zeros(n_envs)
             dones = np.zeros(n_envs, dtype=bool)
             infos = [{} for _ in range(n_envs)]
-            if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations[0].keys():
+            if (
+                isinstance(env.observation_space, gym.spaces.Dict)
+                and "mission" in observations[0].keys()
+            ):
                 for i in range(n_envs):
                     infos[i]["mission"] = observations[i]["mission"]
                     infos[i]["seed"] = seed
@@ -167,7 +163,10 @@ class EpisodeRecorder(object):
                     seed = random.randint(0, 1000000)
                     env.seed(seed)
                     observation = env.reset()
-                    if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observation.keys():
+                    if (
+                        isinstance(env.observation_space, gym.spaces.Dict)
+                        and "mission" in observation.keys()
+                    ):
                         infos[0]["mission"] = observation["mission"]
                         infos[0]["seed"] = seed
             obs_buffer.append(np.squeeze(observations))

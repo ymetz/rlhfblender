@@ -4,12 +4,9 @@ import random
 import numpy
 import torch
 from babyai.utils.agent import BotAgent, DemoAgent, ModelAgent, load_agent
-from babyai.utils.demos import (get_demos_path, load_demos, save_demos,
-                                synthesize_demos)
-from babyai.utils.format import (IntObssPreprocessor, ObssPreprocessor,
-                                 get_vocab_path)
-from babyai.utils.log import (configure_logging, get_log_dir, get_log_path,
-                              synthesize)
+from babyai.utils.demos import get_demos_path, load_demos, save_demos, synthesize_demos
+from babyai.utils.format import IntObssPreprocessor, ObssPreprocessor, get_vocab_path
+from babyai.utils.log import configure_logging, get_log_dir, get_log_path, synthesize
 from babyai.utils.model import get_model_dir, load_model, save_model
 
 

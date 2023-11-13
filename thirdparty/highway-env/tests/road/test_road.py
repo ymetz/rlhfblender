@@ -46,7 +46,12 @@ def test_network_to_from_config(net):
 
 
 def test_polylane():
-    lane = CircularLane(center=[0, 0], radius=10, start_phase=0, end_phase=3.14,)
+    lane = CircularLane(
+        center=[0, 0],
+        radius=10,
+        start_phase=0,
+        end_phase=3.14,
+    )
 
     num_samples = int(lane.length / 5)
     sampled_centreline = [

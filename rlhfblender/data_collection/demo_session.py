@@ -7,20 +7,20 @@ Implements the methods: create_demo_session, demo_step, close_demo_session
 
 """
 
-import os
-import sys
-
-import cv2
-import gymnasium as gym
-import socket
-import numpy as np
 import asyncio
-
+import os
+import socket
+import sys
 from multiprocessing import Process
 from typing import List, Union
 
+import cv2
+import gymnasium as gym
+import numpy as np
+
 HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
+
 
 async def create_new_session(session_id: str, gym_env: str, seed: Union[str, int]):
     """
@@ -38,7 +38,11 @@ async def create_new_session(session_id: str, gym_env: str, seed: Union[str, int
 
     # Check if demos with this session id already exist, find out the demo number (TODO: this is not very efficient)
     demo_number = 0
-    while os.path.exists(os.path.join("data", "generated_demos", session_id + "_" + str(demo_number) + ".npz")):
+    while os.path.exists(
+        os.path.join(
+            "data", "generated_demos", session_id + "_" + str(demo_number) + ".npz"
+        )
+    ):
         demo_number += 1
 
     # Create a new process
@@ -52,7 +56,9 @@ async def create_new_session(session_id: str, gym_env: str, seed: Union[str, int
     return p.pid, demo_number
 
 
-def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union[str, int]):
+def run_env_session(
+    session_id: str, demo_number: int, gym_env: str, seed: Union[str, int]
+):
     """
     Blocking loop that initializes a gym environment and waits for commands via a socket.
     :param session_id: The unique id of the session
@@ -75,7 +81,9 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
 
     # Create the socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of the socket
+        s.setsockopt(
+            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1
+        )  # Allow reuse of the socket
         s.bind((HOST, PORT))
         s.listen()
         # Timeout after 10 minutes
@@ -125,7 +133,14 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
                             action_buffer = np.array(action_buffer)
                             info_buffer = np.array(info_buffer)
                             # Get filename of existing generated demos
-                            with open(os.path.join("data", "generated_demos", session_id + "_" + str(demo_number) + ".npz"), "wb") as f:
+                            with open(
+                                os.path.join(
+                                    "data",
+                                    "generated_demos",
+                                    session_id + "_" + str(demo_number) + ".npz",
+                                ),
+                                "wb",
+                            ) as f:
                                 np.savez(
                                     f,
                                     obs=obs_buffer,
@@ -141,8 +156,13 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
                     # Save the render as an image
                     first_step_render = render
                     first_step_render = cv2.convertScaleAbs(first_step_render)
-                    first_step_render = cv2.cvtColor(first_step_render, cv2.COLOR_RGB2BGR)
-                    cv2.imwrite(os.path.join("data", "current_demos", f"{session_id}.jpg"), first_step_render)
+                    first_step_render = cv2.cvtColor(
+                        first_step_render, cv2.COLOR_RGB2BGR
+                    )
+                    cv2.imwrite(
+                        os.path.join("data", "current_demos", f"{session_id}.jpg"),
+                        first_step_render,
+                    )
 
                     return_data = {"reward": reward, "done": done, "infos": info}
                     conn.sendall(str(return_data).encode("utf-8"))

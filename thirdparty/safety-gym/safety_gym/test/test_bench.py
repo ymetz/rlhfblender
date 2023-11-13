@@ -9,7 +9,7 @@ from safety_gym.envs.engine import Engine
 
 class TestBench(unittest.TestCase):
     def test_goal(self):
-        """ Point should run into and get a goal """
+        """Point should run into and get a goal"""
         config = {
             "robot_base": "xmls/point.xml",
             "goal_size": 0.5,
@@ -41,7 +41,7 @@ class TestBench(unittest.TestCase):
         self.assertTrue(goal_met)
 
     def test_hazards(self):
-        """ Point should run into and get a hazard """
+        """Point should run into and get a hazard"""
         config = {
             "robot_base": "xmls/point.xml",
             "goal_size": 0.5,
@@ -78,7 +78,7 @@ class TestBench(unittest.TestCase):
         self.assertTrue(goal_met)
 
     def test_vases(self):
-        """ Point should run into and past a vase, pushing it out of the way """
+        """Point should run into and past a vase, pushing it out of the way"""
         config = {
             "robot_base": "xmls/point.xml",
             "goal_size": 0.5,
@@ -127,7 +127,7 @@ class TestBench(unittest.TestCase):
         self.assertTrue(goal_met)
 
     def check_correct_lidar(self, env_name):
-        """ Check that a benchmark env has the right lidar obs for the objects in scene """
+        """Check that a benchmark env has the right lidar obs for the objects in scene"""
         env = gym.make(env_name)
         env.reset()
         physics = env.unwrapped
@@ -167,7 +167,7 @@ class TestBench(unittest.TestCase):
             self.assertGreater(physics.gremlins_num, 0)
 
     def test_correct_lidar(self):
-        """ We should have lidar for every object in the env """
+        """We should have lidar for every object in the env"""
         matched = []
         for env_spec in gym.envs.registry.all():
             # if re.match(r'Safexp-.*-v0', env_spec.id) is not None:

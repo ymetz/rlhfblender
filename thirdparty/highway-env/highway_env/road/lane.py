@@ -4,8 +4,7 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 from highway_env import utils
 from highway_env.road.spline import LinearSpline2D
-from highway_env.utils import (Vector, class_from_path, get_class_path,
-                               wrap_to_pi)
+from highway_env.utils import Vector, class_from_path, get_class_path, wrap_to_pi
 
 
 class AbstractLane(object):
@@ -299,7 +298,9 @@ class SineLane(StraightLane):
     def to_config(self) -> dict:
         config = super().to_config()
         config.update(
-            {"class_path": get_class_path(self.__class__),}
+            {
+                "class_path": get_class_path(self.__class__),
+            }
         )
         config["config"].update(
             {
@@ -510,7 +511,9 @@ class PolyLane(PolyLaneFixedWidth):
         Using numpys linspace ensures that min and max s-values are contained in the samples.
         """
         s_samples = np.linspace(
-            0, self.curve.length, num=int(np.ceil(self.curve.length)) + 1,
+            0,
+            self.curve.length,
+            num=int(np.ceil(self.curve.length)) + 1,
         )
         self.width_samples = [self._width_at_s(s) for s in s_samples]
 

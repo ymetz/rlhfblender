@@ -13,7 +13,7 @@ from safety_gym.envs.engine import Engine
 
 class TestObs(unittest.TestCase):
     def test_rotate(self):
-        """ Point should observe compass/lidar differently for different rotations """
+        """Point should observe compass/lidar differently for different rotations"""
         config = {
             "robot_base": "xmls/point.xml",
             "observation_flatten": False,
@@ -42,7 +42,7 @@ class TestObs(unittest.TestCase):
             self.assertTrue((obs0["goal_compass"] != obs1["goal_compass"]).any())
 
     def test_spaces(self):
-        """ Observation spaces should not unintentionally change from known good reference """
+        """Observation spaces should not unintentionally change from known good reference"""
         BASE_DIR = os.path.dirname(safety_gym.__file__)
         fpath = osp.join(BASE_DIR, "test", "obs_space_refs.pkl")
         obs_space_refs = joblib.load(fpath)

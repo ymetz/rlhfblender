@@ -3,12 +3,17 @@ from typing import TYPE_CHECKING, Callable, List, Tuple
 
 import numpy as np
 from highway_env import utils
-from highway_env.interval import (LPV, integrator_interval,
-                                  interval_absolute_to_local,
-                                  interval_local_to_absolute,
-                                  interval_negative_part, intervals_diff,
-                                  intervals_product, polytope,
-                                  vector_interval_section)
+from highway_env.interval import (
+    LPV,
+    integrator_interval,
+    interval_absolute_to_local,
+    interval_local_to_absolute,
+    interval_negative_part,
+    intervals_diff,
+    intervals_product,
+    polytope,
+    vector_interval_section,
+)
 from highway_env.road.road import LaneIndex, Road, Route
 from highway_env.utils import Vector
 from highway_env.vehicle.behavior import LinearVehicle

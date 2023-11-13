@@ -8,8 +8,14 @@ from typing import Optional
 import numpy as np
 import safety_gym
 import xmltodict
-from mujoco_py import (MjRenderContextOffscreen, MjSim, MjViewer, const,
-                       load_model_from_path, load_model_from_xml)
+from mujoco_py import (
+    MjRenderContextOffscreen,
+    MjSim,
+    MjViewer,
+    const,
+    load_model_from_path,
+    load_model_from_xml,
+)
 
 """
 Tools that allow the Safety Gym Engine to interface to MuJoCo.
@@ -36,7 +42,7 @@ BASE_DIR = os.path.dirname(safety_gym.__file__)
 
 
 def convert(v):
-    """ Convert a value into a string for mujoco XML """
+    """Convert a value into a string for mujoco XML"""
     if isinstance(v, (int, float, str)):
         return str(v)
     # Numpy arrays and lists
@@ -44,7 +50,7 @@ def convert(v):
 
 
 def rot2quat(theta):
-    """ Get a quaternion rotated only about the Z axis """
+    """Get a quaternion rotated only about the Z axis"""
     return np.array([np.cos(theta / 2), 0, 0, np.sin(theta / 2)], dtype="float64")
 
 
@@ -69,7 +75,7 @@ class World:
     def __init__(
         self, config={}, render_mode: Optional[str] = None, render_context=None
     ):
-        """ config - JSON string or dict of configuration.  See self.parse() """
+        """config - JSON string or dict of configuration.  See self.parse()"""
         self.parse(config)  # Parse configuration
         self.first_reset = True
         self.viewer = None
@@ -79,7 +85,7 @@ class World:
         self.robot = Robot(self.robot_base)
 
     def parse(self, config):
-        """ Parse a config dict - see self.DEFAULT for description """
+        """Parse a config dict - see self.DEFAULT for description"""
         self.config = deepcopy(self.DEFAULT)
         self.config.update(deepcopy(config))
         for key, value in self.config.items():
@@ -88,7 +94,7 @@ class World:
 
     @property
     def data(self):
-        """ Helper to get the simulation data instance """
+        """Helper to get the simulation data instance"""
         return self.sim.data
 
     # TODO: remove this when mujoco-py fix is merged and a new version is pushed
@@ -101,7 +107,7 @@ class World:
         return self.data.sensordata[adr : adr + dim].copy()
 
     def build(self):
-        """ Build a world, including generating XML and moving objects """
+        """Build a world, including generating XML and moving objects"""
         # Read in the base XML (contains robot, camera, floor, etc)
         self.robot_base_path = os.path.join(BASE_DIR, self.robot_base)
         with open(self.robot_base_path) as f:
@@ -337,7 +343,7 @@ class World:
         self.sim.forward()
 
     def rebuild(self, config={}, state=True):
-        """ Build a new sim from a model if the model changed """
+        """Build a new sim from a model if the model changed"""
         if state:
             old_state = self.sim.get_state()
         # self.config.update(deepcopy(config))
@@ -349,14 +355,14 @@ class World:
         self.sim.forward()
 
     def reset(self, build=True):
-        """ Reset the world (sim is accessed through self.sim) """
+        """Reset the world (sim is accessed through self.sim)"""
         if build:
             self.build()
         # set flag so that renderer knows to update sim
         self.update_viewer_sim = True
 
     def render(self):
-        """ Render the environment to the screen """
+        """Render the environment to the screen"""
         mode = self.render_mode
         if self.viewer is None:
             self.viewer = MjViewer(self.sim)
@@ -375,40 +381,40 @@ class World:
         self.viewer.render()
 
     def robot_com(self):
-        """ Get the position of the robot center of mass in the simulator world reference frame """
+        """Get the position of the robot center of mass in the simulator world reference frame"""
         return self.body_com("robot")
 
     def robot_pos(self):
-        """ Get the position of the robot in the simulator world reference frame """
+        """Get the position of the robot in the simulator world reference frame"""
         return self.body_pos("robot")
 
     def robot_mat(self):
-        """ Get the rotation matrix of the robot in the simulator world reference frame """
+        """Get the rotation matrix of the robot in the simulator world reference frame"""
         return self.body_mat("robot")
 
     def robot_vel(self):
-        """ Get the velocity of the robot in the simulator world reference frame """
+        """Get the velocity of the robot in the simulator world reference frame"""
         return self.body_vel("robot")
 
     def body_com(self, name):
-        """ Get the center of mass of a named body in the simulator world reference frame """
+        """Get the center of mass of a named body in the simulator world reference frame"""
         return self.data.subtree_com[self.model.body_name2id(name)].copy()
 
     def body_pos(self, name):
-        """ Get the position of a named body in the simulator world reference frame """
+        """Get the position of a named body in the simulator world reference frame"""
         return self.data.get_body_xpos(name).copy()
 
     def body_mat(self, name):
-        """ Get the rotation matrix of a named body in the simulator world reference frame """
+        """Get the rotation matrix of a named body in the simulator world reference frame"""
         return self.data.get_body_xmat(name).copy()
 
     def body_vel(self, name):
-        """ Get the velocity of a named body in the simulator world reference frame """
+        """Get the velocity of a named body in the simulator world reference frame"""
         return self.data.get_body_xvelp(name).copy()
 
 
 class Robot:
-    """ Simple utility class for getting mujoco-specific info about a robot """
+    """Simple utility class for getting mujoco-specific info about a robot"""
 
     def __init__(self, path):
         base_path = os.path.join(BASE_DIR, path)

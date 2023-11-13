@@ -6,11 +6,12 @@ import gymnasium as gym
 import numpy as np
 import torch as th
 from config import DB_HOST
+from databases import Database
+from scipy.stats import entropy
+
 from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.data_models.agent import TrainedAgent
 from rlhfblender.data_models.global_models import Environment, Experiment
-from databases import Database
-from scipy.stats import entropy
 
 DATABASE = Database(DB_HOST)
 

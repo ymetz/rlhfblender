@@ -5,10 +5,11 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from rlhfblender.data_models.feedback_models import StandardizedFeedback
-from rlhfblender.data_models.global_models import Experiment
 from imitation.rewards.reward_nets import RewardNet
 from torch.utils.data import DataLoader, Dataset
+
+from rlhfblender.data_models.feedback_models import StandardizedFeedback
+from rlhfblender.data_models.global_models import Experiment
 
 
 class FeedbackDataset(Dataset):

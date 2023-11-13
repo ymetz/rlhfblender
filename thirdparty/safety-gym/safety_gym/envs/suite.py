@@ -37,7 +37,7 @@ MAKE_VISION_ENVIRONMENTS = False
 
 
 class SafexpEnvBase:
-    """ Base used to allow for convenient hierarchies of environments """
+    """Base used to allow for convenient hierarchies of environments"""
 
     def __init__(self, name="", config={}, prefix="Safexp"):
         self.name = name
@@ -301,10 +301,20 @@ grid_base = SafexpEnvBase(
     },
     prefix="Testing",
 )
-grid_base.register("0", {"goal_locations": [(0, 2)], "hazards_num": 0,})
+grid_base.register(
+    "0",
+    {
+        "goal_locations": [(0, 2)],
+        "hazards_num": 0,
+    },
+)
 grid_base.register(
     "1",
-    {"goal_locations": [(0, 4)], "hazards_num": 1, "hazards_locations": [(-0.5, 2)],},
+    {
+        "goal_locations": [(0, 4)],
+        "hazards_num": 1,
+        "hazards_locations": [(-0.5, 2)],
+    },
 )
 grid_base.register(
     "2",

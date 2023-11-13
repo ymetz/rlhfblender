@@ -4,8 +4,7 @@ import numpy as np
 from gym.envs.registration import register
 from highway_env import utils
 from highway_env.envs.common.abstract import AbstractEnv, MultiAgentWrapper
-from highway_env.road.lane import (AbstractLane, CircularLane, LineType,
-                                   StraightLane)
+from highway_env.road.lane import AbstractLane, CircularLane, LineType, StraightLane
 from highway_env.road.regulation import RegulatedRoad
 from highway_env.road.road import RoadNetwork
 from highway_env.vehicle.controller import ControlledVehicle
@@ -414,11 +413,13 @@ TupleMultiAgentIntersectionEnv = MultiAgentWrapper(MultiAgentIntersectionEnv)
 
 
 register(
-    id="intersection-v0", entry_point="highway_env.envs:IntersectionEnv",
+    id="intersection-v0",
+    entry_point="highway_env.envs:IntersectionEnv",
 )
 
 register(
-    id="intersection-v1", entry_point="highway_env.envs:ContinuousIntersectionEnv",
+    id="intersection-v1",
+    entry_point="highway_env.envs:ContinuousIntersectionEnv",
 )
 
 register(

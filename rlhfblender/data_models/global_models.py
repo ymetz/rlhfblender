@@ -182,6 +182,7 @@ class EpisodeID(BaseModel):
     Right now we generate a few rollouts with a specific configuration and save
     the associated data in data/<data_name>/<configuration>/<episode_num>.
     """
+
     env_name: str = ""  # e.g.: BreakoutNoFrameskip-v4
     benchmark_type: str = ""  # e.g.: trained
     benchmark_id: int = -1  # e.g.: 1

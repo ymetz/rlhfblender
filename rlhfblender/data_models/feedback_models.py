@@ -2,8 +2,9 @@ import enum
 from typing import List, Union
 
 import gymnasium as gym
-from rlhfblender.data_models.global_models import EpisodeID
 from pydantic import BaseModel
+
+from rlhfblender.data_models.global_models import EpisodeID
 
 
 class FeedbackType(enum.Enum):
@@ -41,6 +42,7 @@ class UnprocessedFeedback(BaseModel):
     It's a superset of the feedback types we support, potentially containing different feedback content.
     Needs to be translated into a standardized format.
     """
+
     session_id: str = ""
     feedback_type: FeedbackType = FeedbackType.rating
 
@@ -51,7 +53,9 @@ class UnprocessedFeedback(BaseModel):
 
     # Evaluative feedback content
     score: Union[float, None] = 0.0  # e.g.: 0.5
-    preferences: Union[List[int], None] = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
+    preferences: Union[
+        List[int], None
+    ] = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
 
     # Instructional feedback content
     action: Union[int, List[float], None] = None
@@ -158,7 +162,15 @@ class StandardizedFeedbackType(BaseModel):
 
     # hash function
     def __hash__(self):
-        return hash((self.intention, self.actuality, self.relation, self.content, self.granularity))
+        return hash(
+            (
+                self.intention,
+                self.actuality,
+                self.relation,
+                self.content,
+                self.granularity,
+            )
+        )
 
 
 class Evaluation(BaseModel):
@@ -214,14 +226,36 @@ class RelativeFeedback(StandardizedFeedback):
 def get_target(target: dict, granularity: str) -> Target:
 
     if granularity == "episode":
-        return Episode(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"])
+        return Episode(
+            target_id=target["target_id"],
+            reference=target["reference"],
+            origin=get_origin(target["origin"]),
+            timestamp=target["timestamp"],
+        )
     elif granularity == "state":
-        return State(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"], step=target["step"])
+        return State(
+            target_id=target["target_id"],
+            reference=target["reference"],
+            origin=get_origin(target["origin"]),
+            timestamp=target["timestamp"],
+            step=target["step"],
+        )
     elif granularity == "segment":
-        return Segment(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"],
-                       start=target["start"], end=target["end"])
+        return Segment(
+            target_id=target["target_id"],
+            reference=target["reference"],
+            origin=get_origin(target["origin"]),
+            timestamp=target["timestamp"],
+            start=target["start"],
+            end=target["end"],
+        )
     elif granularity == "entire":
-        return Entire(target_id=target["target_id"], reference=target["reference"], origin=get_origin(target["origin"]), timestamp=target["timestamp"])
+        return Entire(
+            target_id=target["target_id"],
+            reference=target["reference"],
+            origin=get_origin(target["origin"]),
+            timestamp=target["timestamp"],
+        )
 
 
 def get_granularity(granularity: str) -> Granularity:

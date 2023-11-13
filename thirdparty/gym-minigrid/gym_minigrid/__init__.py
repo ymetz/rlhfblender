@@ -1,7 +1,7 @@
 # Import the envs module so that envs register themselves
-import gymnasium as gym_minigrid.envs
 # Import wrappers so it's accessible when installing with pip
-import gymnasium as gym_minigrid.wrappers
+import gym_minigrid.envs
+import gym_minigrid.wrappers
 from gym.envs.registration import register
 
 # register(

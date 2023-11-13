@@ -12,5 +12,8 @@ assert sys.version_info.major == 3 and sys.version_info.minor >= 6, (
 setup(
     name="safety_gym",
     packages=["safety_gym"],
-    install_requires=["joblib~=0.14.0", "xmltodict~=0.13.0",],
+    install_requires=[
+        "joblib~=0.14.0",
+        "xmltodict~=0.13.0",
+    ],
 )

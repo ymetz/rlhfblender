@@ -37,7 +37,10 @@ class LavaGapEnv(MiniGridEnv):
 
         # Generate and store random gap position
         self.gap_pos = np.array(
-            (self._rand_int(2, width - 2), self._rand_int(1, height - 1),)
+            (
+                self._rand_int(2, width - 2),
+                self._rand_int(1, height - 1),
+            )
         )
 
         # Place the obstacle wall

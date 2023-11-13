@@ -14,7 +14,7 @@ class Unlock(RoomGrid):
             num_rows=1,
             num_cols=2,
             room_size=room_size,
-            max_steps=8 * room_size ** 2,
+            max_steps=8 * room_size**2,
             seed=seed,
         )
 

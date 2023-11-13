@@ -23,7 +23,7 @@ class TestButton(unittest.TestCase):
         return info
 
     def test_timer(self):
-        """ Buttons should wait a period before becoming active again """
+        """Buttons should wait a period before becoming active again"""
         config = {
             "robot_base": "xmls/point.xml",
             "num_steps": 100,

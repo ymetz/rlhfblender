@@ -14,7 +14,7 @@ class KeyCorridor(RoomGrid):
         super().__init__(
             room_size=room_size,
             num_rows=num_rows,
-            max_steps=30 * room_size ** 2,
+            max_steps=30 * room_size**2,
             seed=seed,
         )
 

@@ -75,7 +75,8 @@ class EpochIndexSampler:
 
 class ImitationLearning(object):
     def __init__(
-        self, args,
+        self,
+        args,
     ):
         self.args = args
 

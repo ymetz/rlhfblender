@@ -1,9 +1,10 @@
 from abc import abstractmethod
 from typing import List
 
+from databases import Database
+
 from rlhfblender.data_models.agent import BaseAgent
 from rlhfblender.data_models.global_models import EvaluationConfig, Experiment, Project
-from databases import Database
 
 
 class Connector(object):
@@ -74,7 +75,7 @@ class Connector(object):
         :param experiments:
         :param project:
         :param evaluation_configs:
-        :return: 
+        :return:
         """
 
     @abstractmethod

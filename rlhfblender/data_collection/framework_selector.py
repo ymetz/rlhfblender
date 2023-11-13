@@ -1,8 +1,10 @@
 from typing import Type
 
 from rlhfblender.data_collection.babyai_connector import BabyAIAgent
-from rlhfblender.data_collection.sb_zoo_connector import (StableBaselines3Agent,
-                                              StableBaselines3ZooConnector)
+from rlhfblender.data_collection.sb_zoo_connector import (
+    StableBaselines3Agent,
+    StableBaselines3ZooConnector,
+)
 from rlhfblender.data_models.agent import TrainedAgent
 from rlhfblender.data_models.connector import Connector
 

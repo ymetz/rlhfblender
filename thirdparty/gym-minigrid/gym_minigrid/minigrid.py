@@ -702,7 +702,11 @@ class Grid:
 
         # Overlay the agent on top
         if agent_dir is not None:
-            tri_fn = point_in_triangle((0.12, 0.19), (0.87, 0.50), (0.12, 0.81),)
+            tri_fn = point_in_triangle(
+                (0.12, 0.19),
+                (0.87, 0.50),
+                (0.12, 0.81),
+            )
 
             # Rotate the agent based on its direction
             tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * agent_dir)
@@ -1484,7 +1488,7 @@ class MiniGridEnv(gym.Env):
             return
 
         if mode == "human" and not self.window:
-            import gymnasium as gym_minigrid.window
+            import gym_minigrid.window
 
             self.window = gym_minigrid.window.Window("gym_minigrid")
             self.window.show(block=False)

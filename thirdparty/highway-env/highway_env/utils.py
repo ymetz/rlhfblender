@@ -261,7 +261,7 @@ def confidence_ellipsoid(
     theta_n_lambda = np.linalg.inv(g_n_lambda) @ np.transpose(phi) @ y / sigma
     d = theta_n_lambda.shape[0]
     beta_n = (
-        np.sqrt(2 * np.log(np.sqrt(np.linalg.det(g_n_lambda) / lambda_ ** d) / delta))
+        np.sqrt(2 * np.log(np.sqrt(np.linalg.det(g_n_lambda) / lambda_**d) / delta))
         + np.sqrt(lambda_ * d) * param_bound
     )
     return theta_n_lambda, g_n_lambda, beta_n
@@ -411,7 +411,7 @@ def distance_to_rect(line: Tuple[np.ndarray, np.ndarray], rect: List[np.ndarray]
 
 
 def solve_trinom(a, b, c):
-    delta = b ** 2 - 4 * a * c
+    delta = b**2 - 4 * a * c
     if delta >= 0:
         return (-b - np.sqrt(delta)) / (2 * a), (-b + np.sqrt(delta)) / (2 * a)
     else:

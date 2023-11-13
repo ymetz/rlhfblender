@@ -13,7 +13,7 @@ class GoToObjectEnv(MiniGridEnv):
 
         super().__init__(
             grid_size=size,
-            max_steps=5 * size ** 2,
+            max_steps=5 * size**2,
             # Set this to True for maximum speed
             see_through_walls=True,
         )

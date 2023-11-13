@@ -13,13 +13,16 @@ class MemoryEnv(MiniGridEnv):
     """
 
     def __init__(
-        self, seed, size=8, random_length=False,
+        self,
+        seed,
+        size=8,
+        random_length=False,
     ):
         self.random_length = random_length
         super().__init__(
             seed=seed,
             grid_size=size,
-            max_steps=5 * size ** 2,
+            max_steps=5 * size**2,
             # Set this to True for maximum speed
             see_through_walls=False,
         )
@@ -104,7 +107,8 @@ class MemoryS17Random(MemoryEnv):
 
 
 register(
-    id="MiniGrid-MemoryS17Random-v0", entry_point="gym_minigrid.envs:MemoryS17Random",
+    id="MiniGrid-MemoryS17Random-v0",
+    entry_point="gym_minigrid.envs:MemoryS17Random",
 )
 
 
@@ -114,7 +118,8 @@ class MemoryS13Random(MemoryEnv):
 
 
 register(
-    id="MiniGrid-MemoryS13Random-v0", entry_point="gym_minigrid.envs:MemoryS13Random",
+    id="MiniGrid-MemoryS13Random-v0",
+    entry_point="gym_minigrid.envs:MemoryS13Random",
 )
 
 
@@ -124,7 +129,8 @@ class MemoryS13(MemoryEnv):
 
 
 register(
-    id="MiniGrid-MemoryS13-v0", entry_point="gym_minigrid.envs:MemoryS13",
+    id="MiniGrid-MemoryS13-v0",
+    entry_point="gym_minigrid.envs:MemoryS13",
 )
 
 
@@ -134,7 +140,8 @@ class MemoryS11(MemoryEnv):
 
 
 register(
-    id="MiniGrid-MemoryS11-v0", entry_point="gym_minigrid.envs:MemoryS11",
+    id="MiniGrid-MemoryS11-v0",
+    entry_point="gym_minigrid.envs:MemoryS11",
 )
 
 
@@ -144,7 +151,8 @@ class MemoryS9(MemoryEnv):
 
 
 register(
-    id="MiniGrid-MemoryS9-v0", entry_point="gym_minigrid.envs:MemoryS9",
+    id="MiniGrid-MemoryS9-v0",
+    entry_point="gym_minigrid.envs:MemoryS9",
 )
 
 
@@ -154,5 +162,6 @@ class MemoryS7(MemoryEnv):
 
 
 register(
-    id="MiniGrid-MemoryS7-v0", entry_point="gym_minigrid.envs:MemoryS7",
+    id="MiniGrid-MemoryS7-v0",
+    entry_point="gym_minigrid.envs:MemoryS7",
 )

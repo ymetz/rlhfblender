@@ -2,8 +2,10 @@ from typing import Any, Dict
 
 import numpy as np
 import optuna
-from stable_baselines3.common.noise import (NormalActionNoise,
-                                            OrnsteinUhlenbeckActionNoise)
+from stable_baselines3.common.noise import (
+    NormalActionNoise,
+    OrnsteinUhlenbeckActionNoise,
+)
 from torch import nn as nn
 from utils import linear_schedule
 
@@ -341,7 +343,11 @@ def sample_ddpg_params(trial: optuna.Trial) -> Dict[str, Any]:
     net_arch = trial.suggest_categorical("net_arch", ["small", "medium", "big"])
     # activation_fn = trial.suggest_categorical('activation_fn', [nn.Tanh, nn.ReLU, nn.ELU, nn.LeakyReLU])
 
-    net_arch = {"small": [64, 64], "medium": [256, 256], "big": [400, 300],}[net_arch]
+    net_arch = {
+        "small": [64, 64],
+        "medium": [256, 256],
+        "big": [400, 300],
+    }[net_arch]
 
     hyperparams = {
         "gamma": gamma,

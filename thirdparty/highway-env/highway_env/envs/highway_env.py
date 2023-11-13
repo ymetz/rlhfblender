@@ -25,7 +25,9 @@ class HighwayEnv(AbstractEnv):
         config.update(
             {
                 "observation": {"type": "Kinematics"},
-                "action": {"type": "DiscreteMetaAction",},
+                "action": {
+                    "type": "DiscreteMetaAction",
+                },
                 "lanes_count": 4,
                 "vehicles_count": 50,
                 "controlled_vehicles": 1,
@@ -201,7 +203,7 @@ class MOHighwayEnv(HighwayEnv):
     def _reward(self, action: Action) -> float:
         """
         This scalarized reward is defined to foster driving at high speed, on the rightmost lanes, and to avoid collisions.
-        
+
         :param action: the last action performed
         :return: the reward
         """
@@ -234,13 +236,16 @@ class MOHighwayEnv(HighwayEnv):
 
 
 register(
-    id="highway-v0", entry_point="highway_env.envs:HighwayEnv",
+    id="highway-v0",
+    entry_point="highway_env.envs:HighwayEnv",
 )
 
 register(
-    id="highway-fast-v0", entry_point="highway_env.envs:HighwayEnvFast",
+    id="highway-fast-v0",
+    entry_point="highway_env.envs:HighwayEnvFast",
 )
 
 register(
-    id="mo-highway-v0", entry_point="highway_env.envs:MOHighwayEnv",
+    id="mo-highway-v0",
+    entry_point="highway_env.envs:MOHighwayEnv",
 )

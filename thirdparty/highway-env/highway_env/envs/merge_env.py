@@ -190,5 +190,6 @@ class MergeEnv(AbstractEnv):
 
 
 register(
-    id="merge-v0", entry_point="highway_env.envs:MergeEnv",
+    id="merge-v0",
+    entry_point="highway_env.envs:MergeEnv",
 )

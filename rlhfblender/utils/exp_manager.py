@@ -10,41 +10,60 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import gymnasium as gym
 import numpy as np
 import optuna
+
 # Register custom envs
 import utils.import_envs  # noqa: F401 pytype: disable=import-error
 import yaml
 from optuna.integration.skopt import SkoptSampler
 from optuna.pruners import BasePruner, MedianPruner, SuccessiveHalvingPruner
 from optuna.samplers import BaseSampler, RandomSampler, TPESampler
-from optuna.visualization import (plot_optimization_history,
-                                  plot_param_importances)
+from optuna.visualization import plot_optimization_history, plot_param_importances
+
 # For using HER with GoalEnv
 from stable_baselines3 import HerReplayBuffer  # noqa: F401
 from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.callbacks import (BaseCallback,
-                                                CheckpointCallback,
-                                                EvalCallback, EveryNTimesteps)
+from stable_baselines3.common.callbacks import (
+    BaseCallback,
+    CheckpointCallback,
+    EvalCallback,
+    EveryNTimesteps,
+)
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.noise import (NormalActionNoise,
-                                            OrnsteinUhlenbeckActionNoise)
+from stable_baselines3.common.noise import (
+    NormalActionNoise,
+    OrnsteinUhlenbeckActionNoise,
+)
 from stable_baselines3.common.preprocessing import (
-    is_image_space, is_image_space_channels_first)
-from stable_baselines3.common.sb2_compat.rmsprop_tf_like import \
-    RMSpropTFLike  # noqa: F401
+    is_image_space,
+    is_image_space_channels_first,
+)
+from stable_baselines3.common.sb2_compat.rmsprop_tf_like import (
+    RMSpropTFLike,
+)  # noqa: F401
 from stable_baselines3.common.utils import constant_fn
-from stable_baselines3.common.vec_env import (DummyVecEnv, SubprocVecEnv,
-                                              VecEnv, VecFrameStack,
-                                              VecNormalize, VecTransposeImage,
-                                              is_vecenv_wrapped)
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    SubprocVecEnv,
+    VecEnv,
+    VecFrameStack,
+    VecNormalize,
+    VecTransposeImage,
+    is_vecenv_wrapped,
+)
+
 # For custom activation fn
 from torch import nn as nn  # noqa: F401
 from utils.bam_layer import BAM
-from utils.callbacks import (LogNormCallback, SaveVecNormalizeCallback,
-                             TrialEvalCallback)
+from utils.callbacks import LogNormCallback, SaveVecNormalizeCallback, TrialEvalCallback
 from utils.hyperparams_opt import HYPERPARAMS_SAMPLER
 from utils.reward_wrapper import RewardVecEnvWrapper
-from utils.utils import (ALGOS, get_callback_list, get_latest_run_id,
-                         get_wrapper_class, linear_schedule)
+from utils.utils import (
+    ALGOS,
+    get_callback_list,
+    get_latest_run_id,
+    get_wrapper_class,
+    linear_schedule,
+)
 from utils.video_callback import VideoRecorderCallback
 
 

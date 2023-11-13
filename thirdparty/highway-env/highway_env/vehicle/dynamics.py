@@ -10,15 +10,15 @@ from highway_env.vehicle.kinematics import Vehicle
 class BicycleVehicle(Vehicle):
     """
     A dynamical bicycle model, with tire friction and slipping.
-    
+
     See Chapter 2 of Lateral Vehicle Dynamics. Vehicle Dynamics and Control. Rajamani, R. (2011)
     """
 
     MASS: float = 1  # [kg]
     LENGTH_A: float = Vehicle.LENGTH / 2  # [m]
     LENGTH_B: float = Vehicle.LENGTH / 2  # [m]
-    INERTIA_Z: float = 1 / 12 * MASS * (
-        Vehicle.LENGTH ** 2 + Vehicle.WIDTH ** 2
+    INERTIA_Z: float = (
+        1 / 12 * MASS * (Vehicle.LENGTH**2 + Vehicle.WIDTH**2)
     )  # [kg.m2]
     FRICTION_FRONT: float = 15.0 * MASS  # [N]
     FRICTION_REAR: float = 15.0 * MASS  # [N]
@@ -100,11 +100,11 @@ class BicycleVehicle(Vehicle):
     def derivative_linear(self) -> np.ndarray:
         """
         Linearized lateral dynamics.
-            
+
         This model is based on the following assumptions:
         - the vehicle is moving with a constant longitudinal speed
         - the steering input to front tires and the corresponding slip angles are small
-        
+
         See https://pdfs.semanticscholar.org/bb9c/d2892e9327ec1ee647c30c320f2089b290c1.pdf, Chapter 3.
         """
         x = np.array([[self.lateral_speed], [self.yaw_rate]])
@@ -174,7 +174,7 @@ class BicycleVehicle(Vehicle):
                     ],
                     [
                         -2 * self.LENGTH_A / (self.INERTIA_Z * speed_body_x),
-                        -2 * self.LENGTH_A ** 2 / (self.INERTIA_Z * speed_body_x),
+                        -2 * self.LENGTH_A**2 / (self.INERTIA_Z * speed_body_x),
                     ],
                 ],
                 [
@@ -184,7 +184,7 @@ class BicycleVehicle(Vehicle):
                     ],
                     [
                         2 * self.LENGTH_B / (self.INERTIA_Z * speed_body_x),
-                        -2 * self.LENGTH_B ** 2 / (self.INERTIA_Z * speed_body_x),
+                        -2 * self.LENGTH_B**2 / (self.INERTIA_Z * speed_body_x),
                     ],
                 ],
             ]

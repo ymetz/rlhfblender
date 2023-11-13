@@ -4,6 +4,7 @@ A sampler for episodes for HITL experiments
 import os
 from enum import Enum
 from typing import List, Optional
+
 import numpy as np
 
 from rlhfblender.data_collection.feedback_model import FeedbackModel
@@ -125,7 +126,7 @@ class Sampler:
         """
         if self.sampler_type == SamplerType.sequential:
             sampled_batch = self.episode_buffer[
-                self.episode_pointer: self.episode_pointer + batch_size
+                self.episode_pointer : self.episode_pointer + batch_size
             ]
             self.episode_pointer += batch_size
         elif self.sampler_type == SamplerType.random:

@@ -5,12 +5,12 @@ from copy import deepcopy
 from typing import Optional
 
 import gymnasium as gym
-import gymnasium as gym.spaces
+import gymnasium.spaces
 import mujoco_py
 import numpy as np
-from mujoco_py import (MjRenderContextOffscreen, MjViewer, MujocoException,
-                       const)
+from mujoco_py import MjRenderContextOffscreen, MjViewer, MujocoException, const
 from PIL import Image
+
 # from gym.utils.step_api_compatibility import convert_to_terminated_truncated_step_api
 from safety_gym.envs.world import Robot, World
 
@@ -53,17 +53,16 @@ DEFAULT_HEIGHT = 1024
 
 
 class ResamplingError(AssertionError):
-    """ Raised when we fail to sample a valid distribution of objects or goals """
-
+    """Raised when we fail to sample a valid distribution of objects or goals"""
 
 
 def theta2vec(theta):
-    """ Convert an angle (in radians) to a unit vector in that angle around Z """
+    """Convert an angle (in radians) to a unit vector in that angle around Z"""
     return np.array([np.cos(theta), np.sin(theta), 0.0])
 
 
 def quat2mat(quat):
-    """ Convert Quaternion to a 3x3 Rotation Matrix using mujoco """
+    """Convert Quaternion to a 3x3 Rotation Matrix using mujoco"""
     q = np.array(quat, dtype="float64")
     m = np.zeros(9, dtype="float64")
     mujoco_py.functions.mju_quat2Mat(m, q)
@@ -71,7 +70,7 @@ def quat2mat(quat):
 
 
 def quat2zalign(quat):
-    """ From quaternion, extract z_{ground} dot z_{body} """
+    """From quaternion, extract z_{ground} dot z_{body}"""
     # z_{body} from quaternion [a,b,c,d] in ground frame is:
     # [ 2bd + 2ac,
     #   2cd - 2ab,
@@ -80,7 +79,7 @@ def quat2zalign(quat):
     # so inner product with z_{ground} = [0,0,1] is
     # z_{body} dot z_{ground} = a**2 - b**2 - c**2 + d**2
     a, b, c, d = quat
-    return a ** 2 - b ** 2 - c ** 2 + d ** 2
+    return a**2 - b**2 - c**2 + d**2
 
 
 class Engine(gym.Env, gym.utils.EzPickle):
@@ -88,7 +87,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
     """
     Engine: an environment-building tool for safe exploration research.
 
-    The Engine() class entails everything to do with the tasks and safety 
+    The Engine() class entails everything to do with the tasks and safety
     requirements of Safety Gym environments. An Engine() uses a World() object
     to interface to MuJoCo. World() configurations are inferred from Engine()
     configurations, so an environment in Safety Gym can be completely specified
@@ -311,7 +310,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.done = True
 
     def parse(self, config):
-        """ Parse a config dict - see self.DEFAULT for description """
+        """Parse a config dict - see self.DEFAULT for description"""
         self.config = deepcopy(self.DEFAULT)
         self.config.update(deepcopy(config))
         for key, value in self.config.items():
@@ -320,27 +319,27 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
     @property
     def sim(self):
-        """ Helper to get the world's simulation instance """
+        """Helper to get the world's simulation instance"""
         return self.world.sim
 
     @property
     def model(self):
-        """ Helper to get the world's model instance """
+        """Helper to get the world's model instance"""
         return self.sim.model
 
     @property
     def data(self):
-        """ Helper to get the world's simulation data instance """
+        """Helper to get the world's simulation data instance"""
         return self.sim.data
 
     @property
     def robot_pos(self):
-        """ Helper to get current robot position """
+        """Helper to get current robot position"""
         return self.data.get_body_xpos("robot").copy()
 
     @property
     def goal_pos(self):
-        """ Helper to get goal position from layout """
+        """Helper to get goal position from layout"""
         if self.task in ["goal", "push"]:
             return self.data.get_body_xpos("goal").copy()
         elif self.task == "button":
@@ -354,12 +353,12 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
     @property
     def box_pos(self):
-        """ Helper to get the box position """
+        """Helper to get the box position"""
         return self.data.get_body_xpos("box").copy()
 
     @property
     def buttons_pos(self):
-        """ Helper to get the list of button positions """
+        """Helper to get the list of button positions"""
         return [
             self.data.get_body_xpos(f"button{i}").copy()
             for i in range(self.buttons_num)
@@ -367,14 +366,14 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
     @property
     def vases_pos(self):
-        """ Helper to get the list of vase positions """
+        """Helper to get the list of vase positions"""
         return [
             self.data.get_body_xpos(f"vase{p}").copy() for p in range(self.vases_num)
         ]
 
     @property
     def gremlins_obj_pos(self):
-        """ Helper to get the current gremlin position """
+        """Helper to get the current gremlin position"""
         return [
             self.data.get_body_xpos(f"gremlin{i}obj").copy()
             for i in range(self.gremlins_num)
@@ -382,7 +381,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
     @property
     def pillars_pos(self):
-        """ Helper to get list of pillar positions """
+        """Helper to get list of pillar positions"""
         return [
             self.data.get_body_xpos(f"pillar{i}").copy()
             for i in range(self.pillars_num)
@@ -390,7 +389,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
     @property
     def hazards_pos(self):
-        """ Helper to get the hazards positions from layout """
+        """Helper to get the hazards positions from layout"""
         return [
             self.data.get_body_xpos(f"hazard{i}").copy()
             for i in range(self.hazards_num)
@@ -398,13 +397,13 @@ class Engine(gym.Env, gym.utils.EzPickle):
 
     @property
     def walls_pos(self):
-        """ Helper to get the hazards positions from layout """
+        """Helper to get the hazards positions from layout"""
         return [
             self.data.get_body_xpos(f"wall{i}").copy() for i in range(self.walls_num)
         ]
 
     def build_observation_space(self):
-        """ Construct observation space.  Happens only once at during __init__ """
+        """Construct observation space.  Happens only once at during __init__"""
         obs_space_dict = OrderedDict()  # See self.obs()
 
         if self.observe_freejoint:
@@ -557,12 +556,12 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.build_observation_space()
 
     def placements_from_location(self, location, keepout):
-        """ Helper to get a placements list from a given location and keepout """
+        """Helper to get a placements list from a given location and keepout"""
         x, y = location
         return [(x - keepout, y - keepout, x + keepout, y + keepout)]
 
     def placements_dict_from_object(self, object_name):
-        """ Get the placements dict subset just for a given object name """
+        """Get the placements dict subset just for a given object name"""
         placements_dict = {}
         if hasattr(self, object_name + "s_num"):  # Objects with multiplicity
             plural_name = object_name + "s"
@@ -588,7 +587,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return placements_dict
 
     def build_placements_dict(self):
-        """ Build a dict of placements.  Happens once during __init__. """
+        """Build a dict of placements.  Happens once during __init__."""
         # Dictionary is map from object name -> tuple of (placements list, keepout)
         placements = {}
 
@@ -613,11 +612,11 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.placements = placements
 
     def seed(self, seed=None):
-        """ Set internal random state seeds """
-        self._seed = np.random.randint(2 ** 32) if seed is None else seed
+        """Set internal random state seeds"""
+        self._seed = np.random.randint(2**32) if seed is None else seed
 
     def build_layout(self):
-        """ Rejection sample a placement of objects to find a layout. """
+        """Rejection sample a placement of objects to find a layout."""
         if not self.randomize_layout:
             self.rs = np.random.RandomState(0)
 
@@ -628,7 +627,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
             raise ResamplingError("Failed to sample layout of objects")
 
     def sample_layout(self):
-        """ Sample a single layout, returning True if successful, else False. """
+        """Sample a single layout, returning True if successful, else False."""
 
         def placement_is_valid(xy, layout):
             for other_name, other_xy in layout.items():
@@ -653,28 +652,28 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return True
 
     def constrain_placement(self, placement, keepout):
-        """ Helper function to constrain a single placement by the keepout radius """
+        """Helper function to constrain a single placement by the keepout radius"""
         xmin, ymin, xmax, ymax = placement
         return (xmin + keepout, ymin + keepout, xmax - keepout, ymax - keepout)
 
     def draw_placement(self, placements, keepout):
-        """ 
+        """
         Sample an (x,y) location, based on potential placement areas.
 
-        Summary of behavior: 
+        Summary of behavior:
 
-        'placements' is a list of (xmin, xmax, ymin, ymax) tuples that specify 
-        rectangles in the XY-plane where an object could be placed. 
+        'placements' is a list of (xmin, xmax, ymin, ymax) tuples that specify
+        rectangles in the XY-plane where an object could be placed.
 
         'keepout' describes how much space an object is required to have
         around it, where that keepout space overlaps with the placement rectangle.
 
         To sample an (x,y) pair, first randomly select which placement rectangle
         to sample from, where the probability of a rectangle is weighted by its
-        area. If the rectangles are disjoint, there's an equal chance the (x,y) 
+        area. If the rectangles are disjoint, there's an equal chance the (x,y)
         location will wind up anywhere in the placement space. If they overlap, then
         overlap areas are double-counted and will have higher density. This allows
-        the user some flexibility in building placement distributions. Finally, 
+        the user some flexibility in building placement distributions. Finally,
         randomly draw a uniform point within the selected rectangle.
 
         """
@@ -701,11 +700,11 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return np.array([self.rs.uniform(xmin, xmax), self.rs.uniform(ymin, ymax)])
 
     def random_rot(self):
-        """ Use internal random state to get a random rotation in radians """
+        """Use internal random state to get a random rotation in radians"""
         return self.rs.uniform(0, 2 * np.pi)
 
     def build_world_config(self):
-        """ Create a world_config from our own config """
+        """Create a world_config from our own config"""
         # TODO: parse into only the pieces we want/need
         world_config = {}
 
@@ -878,11 +877,11 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return world_config
 
     def clear(self):
-        """ Reset internal state for building """
+        """Reset internal state for building"""
         self.layout = None
 
     def build_goal(self):
-        """ Build a new goal position, maybe with resampling due to hazards """
+        """Build a new goal position, maybe with resampling due to hazards"""
         if self.task == "goal":
             self.build_goal_position()
             self.last_dist_goal = self.dist_goal()
@@ -903,7 +902,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
             raise ValueError(f"Invalid task {self.task}")
 
     def sample_goal_position(self):
-        """ Sample a new goal position and return True, else False if sample rejected """
+        """Sample a new goal position and return True, else False if sample rejected"""
         placements, keepout = self.placements["goal"]
         goal_xy = self.draw_placement(placements, keepout)
         for other_name, other_xy in self.layout.items():
@@ -915,7 +914,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return True
 
     def build_goal_position(self):
-        """ Build a new goal position, maybe with resampling due to hazards """
+        """Build a new goal position, maybe with resampling due to hazards"""
         # Resample until goal is compatible with layout
         if "goal" in self.layout:
             del self.layout["goal"]
@@ -933,11 +932,11 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.sim.forward()
 
     def build_goal_button(self):
-        """ Pick a new goal button, maybe with resampling due to hazards """
+        """Pick a new goal button, maybe with resampling due to hazards"""
         self.goal_button = self.rs.choice(self.buttons_num)
 
     def build(self):
-        """ Build a new physics simulation environment """
+        """Build a new physics simulation environment"""
         # Sample object positions
         self.build_layout()
 
@@ -961,10 +960,10 @@ class Engine(gym.Env, gym.utils.EzPickle):
         self.last_subtreecom = self.world.get_sensor("subtreecom")
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        """ Reset the physics simulation and return observation """
+        """Reset the physics simulation and return observation"""
 
         # Manual or Random Seeding
-        self._seed = seed if seed is not None else np.random.randint(0, 2 ** 32)
+        self._seed = seed if seed is not None else np.random.randint(0, 2**32)
         self.rs = np.random.RandomState(self._seed)
 
         self.done = False
@@ -993,21 +992,21 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return obs
 
     def dist_goal(self):
-        """ Return the distance from the robot to the goal XY position """
+        """Return the distance from the robot to the goal XY position"""
         return self.dist_xy(self.goal_pos)
 
     def dist_box(self):
-        """ Return the distance from the robot to the box (in XY plane only) """
+        """Return the distance from the robot to the box (in XY plane only)"""
         assert self.task == "push", f"invalid task {self.task}"
         return np.sqrt(np.sum(np.square(self.box_pos - self.world.robot_pos())))
 
     def dist_box_goal(self):
-        """ Return the distance from the box to the goal XY position """
+        """Return the distance from the box to the goal XY position"""
         assert self.task == "push", f"invalid task {self.task}"
         return np.sqrt(np.sum(np.square(self.box_pos - self.goal_pos)))
 
     def dist_xy(self, pos):
-        """ Return the distance from the robot to an XY position """
+        """Return the distance from the robot to an XY position"""
         pos = np.asarray(pos)
         if pos.shape == (3,):
             pos = pos[:2]
@@ -1015,12 +1014,12 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return np.sqrt(np.sum(np.square(pos - robot_pos[:2])))
 
     def world_xy(self, pos):
-        """ Return the world XY vector to a position from the robot """
+        """Return the world XY vector to a position from the robot"""
         assert pos.shape == (2,)
         return pos - self.world.robot_pos()[:2]
 
     def ego_xy(self, pos):
-        """ Return the egocentric XY vector to a position from the robot """
+        """Return the egocentric XY vector to a position from the robot"""
         assert pos.shape == (2,), f"Bad pos {pos}"
         robot_3vec = self.world.robot_pos()
         robot_mat = self.world.robot_mat()
@@ -1054,7 +1053,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return vec
 
     def obs_vision(self):
-        """ Return pixels from the robot camera """
+        """Return pixels from the robot camera"""
         # Get a render context so we can
         rows, cols = self.vision_size
         width, height = cols, rows
@@ -1142,7 +1141,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return obs
 
     def obs(self):
-        """ Return the observation of our agent """
+        """Return the observation of our agent"""
         self.sim.forward()  # Needed to get sensor data correct
         obs = {}
 
@@ -1245,7 +1244,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return obs
 
     def cost(self):
-        """ Calculate the current costs and return a dict """
+        """Calculate the current costs and return a dict"""
         self.sim.forward()  # Ensure positions and contacts are correct
         cost = {}
         # Contacts processing
@@ -1331,7 +1330,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return cost
 
     def goal_met(self):
-        """ Return true if the current goal is met this step """
+        """Return true if the current goal is met this step"""
         if self.task == "goal":
             return self.dist_goal() <= self.goal_size
         if self.task == "push":
@@ -1349,7 +1348,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         raise ValueError(f"Invalid task {self.task}")
 
     def set_mockups(self):
-        """ Set mockup object positions before a physics step is executed """
+        """Set mockup object positions before a physics step is executed"""
         if self.gremlins_num:  # self.constrain_gremlins:
             phase = float(self.data.time)
             for i in range(self.gremlins_num):
@@ -1359,7 +1358,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
                 self.data.set_mocap_pos(name + "mockup", pos)
 
     def update_layout(self):
-        """ Update layout dictionary with new places of objects """
+        """Update layout dictionary with new places of objects"""
         self.sim.forward()
         for k in list(self.layout.keys()):
             # Mockup objects have to be handled separately
@@ -1368,11 +1367,11 @@ class Engine(gym.Env, gym.utils.EzPickle):
             self.layout[k] = self.data.get_body_xpos(k)[:2].copy()
 
     def buttons_timer_tick(self):
-        """ Tick the buttons resampling timer """
+        """Tick the buttons resampling timer"""
         self.buttons_timer = max(0, self.buttons_timer - 1)
 
     def step(self, action):
-        """ Take a step and return observation, reward, done, and info """
+        """Take a step and return observation, reward, done, and info"""
         action = np.array(action, copy=False)  # Cast to ndarray
         assert not self.done, "Environment must be reset before stepping"
 
@@ -1456,7 +1455,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return self.obs(), reward, self.done, info
 
     def reward(self):
-        """ Calculate the dense component of reward.  Call exactly once per step """
+        """Calculate the dense component of reward.  Call exactly once per step"""
         reward = 0.0
         # Distance from robot to goal
         if self.task in ["goal", "button"]:
@@ -1496,7 +1495,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
             robot_vel = self.world.robot_vel()
             x, y, _ = robot_com
             u, v, _ = robot_vel
-            radius = np.sqrt(x ** 2 + y ** 2)
+            radius = np.sqrt(x**2 + y**2)
             reward += (
                 ((-u * y + v * x) / radius) / (1 + np.abs(radius - self.circle_radius))
             ) * self.reward_circle
@@ -1513,7 +1512,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         return reward
 
     def render_lidar(self, poses, color, offset, group):
-        """ Render the lidar observation """
+        """Render the lidar observation"""
         robot_pos = self.world.robot_pos()
         robot_mat = self.world.robot_mat()
         lidar = self.obs_lidar(poses, group)
@@ -1538,7 +1537,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
             )
 
     def render_compass(self, pose, color, offset):
-        """ Render a compass observation """
+        """Render a compass observation"""
         robot_pos = self.world.robot_pos()
         robot_mat = self.world.robot_mat()
         # Truncate the compass to only visualize XY component
@@ -1553,7 +1552,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         )
 
     def render_area(self, pos, size, color, label="", alpha=0.1):
-        """ Render a radial area in the environment """
+        """Render a radial area in the environment"""
         z_size = min(size, 0.3)
         pos = np.asarray(pos)
         if pos.shape == (2,):
@@ -1567,7 +1566,7 @@ class Engine(gym.Env, gym.utils.EzPickle):
         )
 
     def render_sphere(self, pos, size, color, label="", alpha=0.1):
-        """ Render a radial area in the environment """
+        """Render a radial area in the environment"""
         pos = np.asarray(pos)
         if pos.shape == (2,):
             pos = np.r_[pos, 0]  # Z coordinate 0
@@ -1580,12 +1579,12 @@ class Engine(gym.Env, gym.utils.EzPickle):
         )
 
     def render_swap_callback(self):
-        """ Callback between mujoco render and swapping GL buffers """
+        """Callback between mujoco render and swapping GL buffers"""
         if self.observe_vision and self.vision_render:
             self.viewer.draw_pixels(self.save_obs_vision, 0, 0)
 
     def render(self, camera_id=None, width=DEFAULT_WIDTH, height=DEFAULT_HEIGHT):
-        """ Render the environment to the screen """
+        """Render the environment to the screen"""
 
         if self.render_mode is None:
             gym.logger.warn(

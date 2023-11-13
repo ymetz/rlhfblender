@@ -24,7 +24,9 @@ class TwoWayEnv(AbstractEnv):
         config.update(
             {
                 "observation": {"type": "TimeToCollision", "horizon": 5},
-                "action": {"type": "DiscreteMetaAction",},
+                "action": {
+                    "type": "DiscreteMetaAction",
+                },
                 "collision_reward": 0,
                 "left_lane_constraint": 1,
                 "left_lane_reward": 0.2,

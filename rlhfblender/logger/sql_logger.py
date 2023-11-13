@@ -2,7 +2,7 @@ import asyncio
 from typing import List
 
 from rlhfblender.data_handling import database_handler
-from rlhfblender.data_models import UnprocessedFeedback, StandardizedFeedback
+from rlhfblender.data_models import StandardizedFeedback, UnprocessedFeedback
 from rlhfblender.logger.logger import Logger
 
 
