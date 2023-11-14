@@ -1,4 +1,4 @@
-.. Stable Baselines3 documentation master file
+.. RLHF-Blender documentation master file
 
 RLHF-Blender Docs - A Configurable Interactive Interface for Learning from Diverse Human Feedback
 ========================================================================
@@ -27,6 +27,13 @@ Main Features
 - Wrappers for reward model training
 - Comprenhensive logging of feedback and user interactions
 
+RLHF-BLender is designed to be fully compatible with `gymnasium <https://github.com/Farama-Foundation/Gymnasium>` and `Stable Baselines3 <https://github.com/DLR-RM/stable-baselines3>`.
+A list of currently supported environments:
+
+  - Atari
+  - Minigrid/BabyAI
+  - SafetyGym
+
 .. toctree::
    :maxdepth: 2
    :caption: User Guide
@@ -34,12 +41,15 @@ Main Features
    guide/install
    guide/quickstart
    guide/setup_experiment
+   guide/run_experiment
+   guide/add_new_experiment
 
 .. toctree::
   :maxdepth: 1
   :caption: Misc
 
   misc/changelog
+  misc/projects
 
 
 Citing RLHF-Blender
