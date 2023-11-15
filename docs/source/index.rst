@@ -27,7 +27,7 @@ Main Features
 - Wrappers for reward model training
 - Comprenhensive logging of feedback and user interactions
 
-RLHF-BLender is designed to be fully compatible with `gymnasium <https://github.com/Farama-Foundation/Gymnasium>` and `Stable Baselines3 <https://github.com/DLR-RM/stable-baselines3>`.
+RLHF-BLender is designed to be fully compatible with `gymnasium <https://github.com/Farama-Foundation/Gymnasium>`_ and `Stable Baselines3 <https://github.com/DLR-RM/stable-baselines3>`_.
 A list of currently supported environments:
 
   - Atari
@@ -35,7 +35,7 @@ A list of currently supported environments:
   - SafetyGym
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: User Guide
 
    guide/install

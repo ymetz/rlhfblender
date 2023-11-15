@@ -1,5 +1,5 @@
 SHELL=/bin/bash
-LINT_PATHS=stable_baselines3/ tests/ docs/conf.py setup.py
+LINT_PATHS=rlhfblender/ tests/ docs/source/conf.py setup.py
 
 pytest:
 	./scripts/run_tests.sh
@@ -8,10 +8,10 @@ mypy:
 	mypy ${LINT_PATHS}
 
 missing-annotations:
-	mypy --disallow-untyped-calls --disallow-untyped-defs --ignore-missing-imports stable_baselines3
+	mypy --disallow-untyped-calls --disallow-untyped-defs --ignore-missing-imports rlhfblender
 
 # missing docstrings
-# pylint -d R,C,W,E -e C0116 stable_baselines3 -j 4
+# pylint -d R,C,W,E -e C0116 rlhfblender -j 4
 
 type: mypy
 

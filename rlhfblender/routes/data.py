@@ -16,7 +16,7 @@ from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-import rlhfblender.data_handling.database_handler as db_handler
+from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection import framework_selector
 from rlhfblender.data_collection.environment_handler import (

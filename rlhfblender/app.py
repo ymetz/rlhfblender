@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import rlhfblender.data_handling.database_handler as db_handler
+from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.sampler import Sampler

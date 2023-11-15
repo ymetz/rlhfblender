@@ -17,37 +17,38 @@ You have the option to install rlhfblender either locally or via Docker. The Doc
 Clone the repository
 --------------------
 
-```bash
-git clone https://github.com/ymetz/rlhfblender.git
-cd rlhfblender
-git submodule update --init rlhfblender-ui
-```
-to get both the main repository,user interface. If you want to download both the repository and demo models, you can also run ```git clone --recurse-submodules https://github.com/ymetz/rlhfblender.git```.
+.. code-block:: bash
+
+    git clone https://github.com/ymetz/rlhfblender.git
+    cd rlhfblender
+    git submodule update --init rlhfblender-ui
+
+to get both the main repository,user interface. If you want to download both the repository and demo models, you can also run ``git clone --recurse-submodules https://github.com/ymetz/rlhfblender.git``.
 
 
 Local Installation
 ------------------
 
-```bash
-cd rlhfblender
-pip install -r requirements.txt
-python app.py
-```
+.. code-block:: bash
+
+    cd rlhfblender
+    pip install -r requirements.txt
+    python app.py
 
 and
 
-```bash
-cd rlhfblender-ui
-npm install
-npm run start
-```
+.. code-block:: bash
+
+    cd rlhfblender-ui
+    npm install
+    npm run start
 
 Docker Installation
 -------------------
 
-```bash
-docker-compose up
-```
+.. code-block:: bash
+
+    docker-compose up
 
 Usage
 -----

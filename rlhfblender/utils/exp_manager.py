@@ -26,7 +26,6 @@ from stable_baselines3.common.callbacks import (
     BaseCallback,
     CheckpointCallback,
     EvalCallback,
-    EveryNTimesteps,
 )
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.noise import (
@@ -37,12 +36,6 @@ from stable_baselines3.common.preprocessing import (
     is_image_space,
     is_image_space_channels_first,
 )
-<<<<<<< HEAD
-from stable_baselines3.common.sb2_compat.rmsprop_tf_like import (
-    RMSpropTFLike,
-)  # noqa: F401
-=======
->>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
 from stable_baselines3.common.utils import constant_fn
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -55,14 +48,8 @@ from stable_baselines3.common.vec_env import (
 )
 
 # For custom activation fn
-<<<<<<< HEAD
-from torch import nn as nn  # noqa: F401
-from utils.bam_layer import BAM
-from utils.callbacks import LogNormCallback, SaveVecNormalizeCallback, TrialEvalCallback
-=======
 from torch import nn as nn 
 from utils.callbacks import SaveVecNormalizeCallback, TrialEvalCallback
->>>>>>> 67b5a133e6851b8de05ae34524d49f1862020fbf
 from utils.hyperparams_opt import HYPERPARAMS_SAMPLER
 from utils.reward_wrapper import RewardVecEnvWrapper
 from utils.utils import (

@@ -16,7 +16,7 @@ jobs:
       FORCE_COLOR: 1
 
     # Skip CI if [ci skip] in the commit message
-    if: '!contains(toJSON(github.event.commits.*.message), "[ci skip]")'
+    if: "! contains(toJSON(github.event.commits.*.message), '[ci skip]')"
     runs-on: ubuntu-latest
     strategy:
       matrix:
