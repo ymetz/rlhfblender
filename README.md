@@ -55,6 +55,8 @@ npm install
 npm run start
 ```
 
+The user interface is then available at http://localhost:3000
+
 ## 📦 Features
 
 RLHF-Blender allows to configure experimental setups for RLHF-experiments based on several modular components:
@@ -67,6 +69,7 @@ RLHF-Blender allows to configure experimental setups for RLHF-experiments based 
 
 RLHF-Blender allows to quickly setup experiments for experimenting with different types of feedback and reward models across different environments. 
 The following example shows how to setup an experiment for the CartPole environment with a reward model ensemble and a textual feedback interface.
+
 
 
 ## 🎯 What's next

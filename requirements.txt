@@ -14,7 +14,6 @@ matplotlib
 scikit-image
 scikit-learn
 seaborn
-UltraDict
 torchvision
 tensorboard
 opencv-python-headless
