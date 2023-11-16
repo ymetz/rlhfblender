@@ -42,9 +42,8 @@ docker-compose up
 (3. Optional: Local/Dev. Install):
 
 ```bash
-cd rlhfblender
-pip install -r requirements.txt
-python app.py
+pip install -e .
+python rlhfblender/app.py
 ```
 
 and

@@ -283,7 +283,7 @@ if __name__ == "__main__":
     # Run benchmarks for Atari-Breakout
     benchmark_dicts = [
         {
-            "env_id": "BreakoutNoFrameskip-v4",
+            "env_id": "ALE/Breakout-v5",
             "benchmark_type": "trained",
             "benchmark_id": str(1),
             "checkpoint_step": (i + 1) * 1000000,
@@ -336,7 +336,7 @@ if __name__ == "__main__":
     # Run benchmarks for Safety-Gym
     """
     benchmark_dicts = [
-        {"env_id": "Safexp-PointButton2-v0",
+        {"env_id": "SafetyPointButton0-v0",
          "benchmark_type": "trained",
          "benchmark_id": str(i),
          "checkpoint_step": (i + 1) * 1000000,

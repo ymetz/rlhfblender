@@ -33,7 +33,7 @@ Local Installation
 
     cd rlhfblender
     pip install -r requirements.txt
-    python app.py
+    python rlhfblender/app.py
 
 and
 

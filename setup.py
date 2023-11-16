@@ -31,6 +31,8 @@ setup(
     install_requires=[
         "gymnasium[atari,accept-rom-license,mujoco]>=0.28.1,<0.30",
         "minigrid",
+        "highway-env",
+        "safety-gymnasium",
         "stable-baselines3>=2.0.0",
         "sb3-contrib>=2.0.0",
         "imitation>=1.0.0",
@@ -70,9 +72,8 @@ setup(
     description="Implementation for RLHF-Blender: A Configurable Interactive Interface for Learning from Diverse Human Feedback",
     author="Yannick Metz",
     url="https://github.com/ymetz/rlhfblender",
-    author_email="antonin.raffin@dlr.de",
-    keywords="reinforcement-learning-algorithms reinforcement-learning machine-learning "
-    "gymnasium gym openai stable baselines toolbox python data-science",
+    author_email="yannick.metz@uni-konstanz.de",
+    keywords="react reinforcement-learning experimentation human-ai-interaction reinforcement-learning-from-human-feedback python",
     license="MIT",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -92,5 +93,6 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
 )

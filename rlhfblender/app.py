@@ -68,7 +68,7 @@ async def startup():
     app.state.feedback_translator = FeedbackTranslator(None, None)
 
     # Run the startup script as a separate process
-    startup_script_path = os.path.join("app", "startup_script.py")
+    startup_script_path = os.path.join("rlhfblender", "startup_script.py")
     if os.path.isfile(startup_script_path):
         print("Running startup script...")
         os.system(f"python3 {startup_script_path}")

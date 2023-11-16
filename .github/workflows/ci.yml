@@ -34,7 +34,7 @@ jobs:
         # cpu version of pytorch
         pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
 
-        pip install .[extra_no_roms,tests,docs]
+        pip install .[tests,docs]
         # Use headless version
         pip install opencv-python-headless
     - name: Lint with ruff
