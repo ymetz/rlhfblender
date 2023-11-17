@@ -1,48 +1,59 @@
-[tool.poetry]
-name = "rlhfblender"
-version = "0.1.0"
-description = "A package to work with various sources of human feedback for reinforcement learning"
-authors = ["Yannick Metz <yannick.metz@uni-konstanz.de>"]
-license = "MIT"
-readme = "README.md"
-keywords = ["Reinforcement Learning", "game", "RL", "AI", "gymnasium"]
-requires-python = ">= 3.8"
-classifiers = [
-    "Development Status :: 4 - Beta",  # change to `5 - Production/Stable` when ready
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    'Intended Audience :: Science/Research',
-    'Topic :: Scientific/Engineering :: Artificial Intelligence',
+[tool.ruff]
+# Same as Black.
+line-length = 127
+# Assume Python 3.8
+target-version = "py38"
+# See https://beta.ruff.rs/docs/rules/
+select = ["E", "F", "B", "UP", "C90", "RUF"]
+# Ignore explicit stacklevel`
+ignore = ["B028"]
+
+[tool.ruff.per-file-ignores]
+"./rl_zoo3/import_envs.py"= ["F401"]
+# "./rl_zoo3/plots/plot_train.py"= ["E501"]
+
+
+[tool.ruff.mccabe]
+# Unlike Flake8, default to a complexity level of 10.
+max-complexity = 15
+
+[tool.black]
+line-length = 127
+
+[tool.mypy]
+ignore_missing_imports = true
+follow_imports = "silent"
+show_error_codes = true
+exclude = """(?x)(
+    tests/dummy_env/*$
+  )"""
+
+[tool.pytest.ini_options]
+# Deterministic ordering for tests; useful for pytest-xdist.
+env = [
+	"PYTHONHASHSEED=0"
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.9.12,<3.13"
-fastapi = "^0.103.2"
-uvicorn = "^0.15.0"
-python-multipart = "^0.0.5"
-databases = {version = "^0.8.0", extras = ["sqlite"]}
-numpy = "^1.26.1"
-gymnasium = {extras = ["atari,accept-rom-license,mujoco"], version = "^0.29.1"}
-stable-baselines3 = "^2.1.0"
-sb3-contrib = "^2.1.0"
-ale-py = "^0.8.1"
-matplotlib = "^3.8.0"
-imitation = { git="https://github.com/HumanCompatibleAI/imitation.git" }
-torchvision = "^0.16.0"
-torch = "^2.1.0"
-poetry = "^1.6.1"
-opencv-python-headless = "^4.8.1.78"
+filterwarnings = [
+    # Tensorboard warnings
+    "ignore::DeprecationWarning:tensorboard",
+    # Gym warnings
+    "ignore::UserWarning:gym",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+]
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.coverage.run]
+disable_warnings = ["couldnt-parse"]
+branch = false
+omit = [
+	"tests/*",
+	"setup.py",
+	"rl_zoo3/plots/*",
+	"rl_zoo3/push_to_hub.py",
+	"scripts/*",
+]
 
-[tool.poetry.project.urls]
-Homepage = "https://rlhfblender.info"
-Repository = "https://github.com/ymetz/rlhfblender"
-Documentation = "https://rlhfblender.readthedocs.io/en/latest/"
-"Bug Report" = "https://github.com/ymetz/rlhfblender/issues"
+[tool.coverage.report]
+exclude_lines = [ "pragma: no cover", "raise NotImplementedError()", "if typing.TYPE_CHECKING:"]
