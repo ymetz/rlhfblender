@@ -28,10 +28,13 @@ database = Database(DB_HOST)
 
 
 def get_custom_thumbnail_creator(env_id: str):
-    if "BabyAI" in env_id:
-        import babyai.utils.trajectory_plotter as tp
+    try:
+        if "BabyAI" in env_id:
+            from rlhfblender.utils.babyai_utils import trajectory_plotter as tp
 
-        return tp.generate_thumbnail
+            return tp.generate_thumbnail
+    except Exception:
+        return None
 
     return None
 
@@ -82,7 +85,6 @@ async def run_benchmark(request: List[BenchmarkRequestModel]):
             if "BabyAI" not in benchmark_run.env_id
             else gym.make(benchmark_run.env_id, render_mode="rgb_array")
         )
-
         agent = framework_selector.get_agent(framework=exp.framework)(
             observation_space=benchmark_env.observation_space,
             action_space=benchmark_env.action_space,
@@ -129,13 +131,13 @@ def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
 
 def encode_video(renders: np.ndarray, path: str) -> None:
     """
-    Encodes renders of shape [n_frames, height, width, 3] into a .webm video and
+    Encodes renders of shape [n_frames, height, width, 3] into a .mp4 video and
     saves it at path.
     """
     # Create video in H264 format
     out = cv2.VideoWriter(
-        f"{path}.webm",
-        cv2.VideoWriter_fourcc(*"vp09"),
+        f"{path}.mp4",
+        cv2.VideoWriter_fourcc(*"mpv4"),
         24,
         (renders.shape[2], renders.shape[1]),
     )
@@ -269,7 +271,7 @@ async def main(benchmark_dicts: List[Dict]):
                 f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{len(episode_data['dones']) - 1}.npy"
             )
         os.remove(
-            f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.webm"
+            f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.mp4"
         )
         os.remove(
             f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.jpg"
@@ -286,11 +288,11 @@ if __name__ == "__main__":
             "env_id": "ALE/Breakout-v5",
             "benchmark_type": "trained",
             "benchmark_id": str(1),
-            "checkpoint_step": (i + 1) * 1000000,
+            "checkpoint_step": i * 1000000,
             "n_episodes": 1,
             "path": os.path.join(f"rlhfblender_demo_models/Atari Breakout"),
         }
-        for i in range(10)
+        for i in range(2,12,2)
     ]
 
     try:

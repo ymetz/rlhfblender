@@ -15,7 +15,6 @@ from stable_baselines3.common.utils import set_random_seed
 from torch import Tensor
 
 # Register custom envs
-import rlhfblender.utils.import_envs  # noqa: F401 pytype: disable=import-error
 from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.data_models.agent import BaseAgent, TrainedAgent
 from rlhfblender.data_models.global_models import (
@@ -166,10 +165,6 @@ class StableBaselines3ZooConnector(connector.Connector):
         except Exception as e:
             print(e)
             return
-
-        # Going through custom gym packages to let them register in the global registory
-        for env_module in env.additional_gym_packages:
-            importlib.import_module(env_module)
 
         registration_env_id = env.registration_id
         registered_envs = set(

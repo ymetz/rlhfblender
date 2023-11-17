@@ -281,9 +281,9 @@ async def get_video(
             "data",
             "renders",
             f"{env_name}_{benchmark_type}_{benchmark_id}_{checkpoint_step}",
-            f"{episode_num}.webm",
+            f"{episode_num}.mp4",
         ),
-        media_type="video/webm",
+        media_type="video/mp4",
     )
 
 
@@ -708,8 +708,8 @@ def _load_data(
         for i, episode in enumerate(recorded_episodes):
             renders = np.array(episode.renders)
             out = cv2.VideoWriter(
-                os.path.join("data", "saved_renders", f"{load_file_name}_{i}.webm"),
-                cv2.VideoWriter_fourcc(*"vp09"),
+                os.path.join("data", "saved_renders", f"{load_file_name}_{i}.mp4"),
+                cv2.VideoWriter_fourcc(*"mp4v"),
                 24,
                 (renders.shape[2], renders.shape[1]),
             )

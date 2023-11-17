@@ -1,7 +1,7 @@
 import os
 from typing import Dict, Optional
 
-import gymnasium as gym
+import gymnasium
 import numpy as np
 import torch as th
 from config import DB_HOST
@@ -18,10 +18,10 @@ DATABASE = Database(DB_HOST)
 class BabyAIAgent(TrainedAgent):
     def __init__(
         self,
-        observation_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
+        observation_space: gymnasium.spaces.Space,
+        action_space: gymnasium.spaces.Space,
         exp: Experiment,
-        env: gym.Env,
+        env: gymnasium.Env,
         device="auto",
         **kwargs,
     ):
