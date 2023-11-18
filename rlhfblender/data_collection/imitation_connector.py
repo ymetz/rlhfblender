@@ -19,6 +19,7 @@ from rlhfblender.data_models.global_models import (
     Experiment,
     Project,
 )
+from rlhfblender.utils.experiment_manager import ExperimentManager as exp_manager
 
 from .sb_zoo_connector import StableBaselines3Agent
 
@@ -84,10 +85,8 @@ class ImitationConnector(connector.Connector):
         set_random_seed(experiment.seed)
 
         # Setting num threads to 1 makes things run faster on cpu
-        if args.num_threads > 0:
-            if args.verbose > 1:
-                print(f"Setting torch.num_threads to {args.num_threads}")
-            th.set_num_threads(args.num_threads)
+        if experiment.num_threads > 0:
+            th.set_num_threads(experiment.num_threads)
 
         if continue_training and experiment.trained_agent_path != "":
             assert experiment.trained_agent_path.endswith(".zip") and os.path.isfile(
