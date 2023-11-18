@@ -32,7 +32,7 @@ setup(
         "gymnasium[atari,accept-rom-license,mujoco]>=0.29.1,<0.30",
         "minigrid>=2.0.0",
         "highway-env>=1.8.2",
-        "safety-gymnasium>=1.0.0",
+        #"safety-gymnasium>=1.0.0",
         "stable-baselines3>=2.0.0",
         "sb3-contrib>=2.0.0",
         "imitation>=1.0.0",
