@@ -29,7 +29,7 @@ setup(
     packages=[package for package in find_packages() if package.startswith("rlhfblender")],
     package_data={"rlhfblender": ["py.typed", "version.txt"]},
     install_requires=[
-        "gymnasium[atari,accept-rom-license,mujoco]>=0.28.1,<0.30",
+        "gymnasium[atari,accept-rom-license,mujoco]>=0.29.1,<0.30",
         "minigrid>=2.0.0",
         "highway-env>=1.8.2",
         "safety-gymnasium>=1.0.0",
