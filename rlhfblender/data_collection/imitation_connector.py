@@ -19,7 +19,7 @@ from rlhfblender.data_models.global_models import (
     Experiment,
     Project,
 )
-from rlhfblender.utils.experiment_manager import ExperimentManager as exp_manager
+from rlhfblender.utils.exp_manager import ExperimentManager as exp_manager
 
 from .sb_zoo_connector import StableBaselines3Agent
 
