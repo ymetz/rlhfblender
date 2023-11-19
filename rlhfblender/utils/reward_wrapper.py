@@ -99,9 +99,7 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
 
         # reward_fn == reward network
         rews, discriminator_saliency_maps = self.reward_fn(
-            *self.reward_fn.preprocess(
-                self._old_obs, self._actions, obs_fixed, np.array(dones)
-            )
+            *self.reward_fn.preprocess(self._old_obs, self._actions, obs_fixed, np.array(dones))
         )
         rews = rews.detach().cpu().numpy()
         assert len(rews) == len(obs), "must return one rew for each env"

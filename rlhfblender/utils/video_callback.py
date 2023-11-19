@@ -67,9 +67,7 @@ class VideoRecorderCallback(BaseCallback):
                 os.path.join(self.logger.dir, "video_episode_" + str(self.n_calls)),
             )
             torchvision.io.video.write_video(
-                os.path.join(
-                    self.logger.dir, "video_episode_" + str(self.n_calls) + ".mp4"
-                ),
+                os.path.join(self.logger.dir, "video_episode_" + str(self.n_calls) + ".mp4"),
                 screens,
                 fps=25,
             )

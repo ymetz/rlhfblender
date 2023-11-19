@@ -11,14 +11,15 @@ import rl_baselines3_zoo.utils.import_envs  # noqa: F401 pytype: disable=import-
 import torch as th
 from stable_baselines3.common.utils import set_random_seed
 
-from rlhfblender.data_models import connector
 from rlhfblender.data_handling.database_handler import get_single_entry
+from rlhfblender.data_models import connector
 from rlhfblender.data_models.global_models import (
     Environment,
     EvaluationConfig,
     Experiment,
     Project,
 )
+from rlhfblender.utils.exp_manager import ExperimentManager as exp_manager
 
 from .sb_zoo_connector import StableBaselines3Agent
 
@@ -59,21 +60,15 @@ class ImitationConnector(connector.Connector):
             importlib.import_module(env_module)
 
         registration_env_id = env.registration_id
-        registered_envs = set(
-            gym.envs.registry.env_specs.keys()
-        )  # pytype: disable=module-attr
+        registered_envs = set(gym.envs.registry.env_specs.keys())  # pytype: disable=module-attr
 
         # If the environment is not found, suggest the closest match
         if registration_env_id not in registered_envs:
             try:
-                closest_match = difflib.get_close_matches(
-                    registration_env_id, registered_envs, n=1
-                )[0]
+                closest_match = difflib.get_close_matches(registration_env_id, registered_envs, n=1)[0]
             except IndexError:
                 closest_match = "'no close match found...'"
-            raise ValueError(
-                f"{registration_env_id} not found in gym registry, you maybe meant {closest_match}?"
-            )
+            raise ValueError(f"{registration_env_id} not found in gym registry, you maybe meant {closest_match}?")
 
         # Unique id to ensure there is no race condition for the folder creation
         f"_{uuid.uuid4()}" if experiment.pid else ""
@@ -84,10 +79,8 @@ class ImitationConnector(connector.Connector):
         set_random_seed(experiment.seed)
 
         # Setting num threads to 1 makes things run faster on cpu
-        if args.num_threads > 0:
-            if args.verbose > 1:
-                print(f"Setting torch.num_threads to {args.num_threads}")
-            th.set_num_threads(args.num_threads)
+        if experiment.num_threads > 0:
+            th.set_num_threads(experiment.num_threads)
 
         if continue_training and experiment.trained_agent_path != "":
             assert experiment.trained_agent_path.endswith(".zip") and os.path.isfile(
@@ -100,9 +93,7 @@ class ImitationConnector(connector.Connector):
         # Set random seed
         set_random_seed(experiment.seed)
         # Create the experiment directory
-        experiment_dir = os.path.join(
-            self.experiment_dir, experiment.exp_name + str(experiment.id)
-        )
+        experiment_dir = os.path.join(self.experiment_dir, experiment.exp_name + str(experiment.id))
 
         if experiment.wandb_tracking:
             try:

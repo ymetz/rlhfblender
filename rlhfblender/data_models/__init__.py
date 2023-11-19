@@ -1,7 +1,7 @@
 from typing import Type
 
-from data_models.feedback_models import StandardizedFeedback, UnprocessedFeedback
-from data_models.global_models import (
+from .feedback_models import StandardizedFeedback, UnprocessedFeedback
+from .global_models import (
     Dataset,
     Environment,
     EvaluationConfig,
@@ -13,7 +13,7 @@ from data_models.global_models import (
 from pydantic import BaseModel
 
 
-def get_model_by_name(name) -> Type[BaseModel]:
+def get_model_by_name(name) -> Type[BaseModel] | None:
     if name == "project":
         return Project
     elif name == "experiment":

@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from rlhfblender.logger.logger import Logger
+from .logger import Logger
 
 
 class JSONLogger(Logger):

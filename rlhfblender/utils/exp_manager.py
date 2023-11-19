@@ -1,26 +1,15 @@
 import argparse
 import os
-import pickle as pkl
-import time
-import warnings
 from collections import OrderedDict
 from pprint import pprint
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
-import optuna
 
 # Register custom envs
-import utils.import_envs  # noqa: F401 pytype: disable=import-error
 import yaml
-from optuna.integration.skopt import SkoptSampler
-from optuna.pruners import BasePruner, MedianPruner, SuccessiveHalvingPruner
-from optuna.samplers import BaseSampler, RandomSampler, TPESampler
-from optuna.visualization import plot_optimization_history, plot_param_importances
 
-# For using HER with GoalEnv
-from stable_baselines3 import HerReplayBuffer  # noqa: F401
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import (
     BaseCallback,
@@ -48,18 +37,17 @@ from stable_baselines3.common.vec_env import (
 )
 
 # For custom activation fn
-from torch import nn as nn 
-from utils.callbacks import SaveVecNormalizeCallback, TrialEvalCallback
-from utils.hyperparams_opt import HYPERPARAMS_SAMPLER
-from utils.reward_wrapper import RewardVecEnvWrapper
-from utils.utils import (
+from torch import nn as nn
+from rlhfblender.utils.callbacks import SaveVecNormalizeCallback
+from rlhfblender.utils.reward_wrapper import RewardVecEnvWrapper
+from rlhfblender.utils.utils import (
     ALGOS,
     get_callback_list,
     get_latest_run_id,
     get_wrapper_class,
     linear_schedule,
 )
-from utils.video_callback import VideoRecorderCallback
+from rlhfblender.utils.video_callback import VideoRecorderCallback
 
 
 class ExperimentManager(object):
@@ -123,9 +111,7 @@ class ExperimentManager(object):
         self.seed = seed
         self.optimization_log_path = optimization_log_path
 
-        self.vec_env_class = {"dummy": DummyVecEnv, "subproc": SubprocVecEnv}[
-            vec_env_type
-        ]
+        self.vec_env_class = {"dummy": DummyVecEnv, "subproc": SubprocVecEnv}[vec_env_type]
 
         self.vec_env_kwargs = {}
         # self.vec_env_kwargs = {} if vec_env_type == "dummy" else {"start_method": "fork"}
@@ -151,9 +137,7 @@ class ExperimentManager(object):
         self._hyperparams = {}
 
         self.trained_agent = trained_agent
-        self.continue_training = trained_agent.endswith(".zip") and os.path.isfile(
-            trained_agent
-        )
+        self.continue_training = trained_agent.endswith(".zip") and os.path.isfile(trained_agent)
         self.truncate_last_trajectory = truncate_last_trajectory
 
         self._is_atari = self.is_atari(env_id)
@@ -174,9 +158,7 @@ class ExperimentManager(object):
 
         # Logging
         self.log_folder = log_folder
-        self.tensorboard_log = (
-            None if tensorboard_log == "" else os.path.join(tensorboard_log, env_id)
-        )
+        self.tensorboard_log = None if tensorboard_log == "" else os.path.join(tensorboard_log, env_id)
         self.verbose = verbose
         self.args = args
         self.log_interval = log_interval
@@ -197,9 +179,7 @@ class ExperimentManager(object):
         :return: the initialized RL model
         """
         hyperparams, saved_hyperparams = self.read_hyperparameters()
-        hyperparams, self.env_wrapper, self.callbacks = self._preprocess_hyperparams(
-            hyperparams
-        )
+        hyperparams, self.env_wrapper, self.callbacks = self._preprocess_hyperparams(hyperparams)
 
         self.create_log_folder()
         self.create_callbacks()
@@ -207,9 +187,7 @@ class ExperimentManager(object):
         # Create env to have access to action space for action noise
         env = self.create_envs(self.n_envs, no_log=False)
 
-        self._hyperparams = self._preprocess_action_noise(
-            hyperparams, saved_hyperparams, env
-        )
+        self._hyperparams = self._preprocess_action_noise(hyperparams, saved_hyperparams, env)
 
         if self.continue_training:
             model = self._load_pretrained_agent(self._hyperparams, env)
@@ -266,9 +244,7 @@ class ExperimentManager(object):
 
         if self.normalize:
             # Important: save the running average, for testing the agent we need that normalization
-            model.get_vec_normalize_env().save(
-                os.path.join(self.params_path, "vecnormalize.pkl")
-            )
+            model.get_vec_normalize_env().save(os.path.join(self.params_path, "vecnormalize.pkl"))
 
     def _save_config(self, saved_hyperparams: Dict[str, Any]) -> None:
         """
@@ -283,9 +259,7 @@ class ExperimentManager(object):
 
         # save command line arguments
         with open(os.path.join(self.params_path, "args.yml"), "w") as f:
-            ordered_args = OrderedDict(
-                [(key, vars(self.args)[key]) for key in sorted(vars(self.args).keys())]
-            )
+            ordered_args = OrderedDict([(key, vars(self.args)[key]) for key in sorted(vars(self.args).keys())])
             yaml.dump(ordered_args, f)
 
         print(f"Log path: {self.save_path}")
@@ -299,22 +273,16 @@ class ExperimentManager(object):
             elif self._is_atari:
                 hyperparams = hyperparams_dict["atari"]
             else:
-                raise ValueError(
-                    f"Hyperparameters not found for {self.algo}-{self.env_id}"
-                )
+                raise ValueError(f"Hyperparameters not found for {self.algo}-{self.env_id}")
 
         if self.custom_hyperparams is not None:
             # Overwrite hyperparams if needed
             hyperparams.update(self.custom_hyperparams)
         # Sort hyperparams that will be saved
-        saved_hyperparams = OrderedDict(
-            [(key, hyperparams[key]) for key in sorted(hyperparams.keys())]
-        )
+        saved_hyperparams = OrderedDict([(key, hyperparams[key]) for key in sorted(hyperparams.keys())])
 
         if self.verbose > 0:
-            print(
-                "Default hyperparameters for environment (ones being tuned will be overridden):"
-            )
+            print("Default hyperparameters for environment (ones being tuned will be overridden):")
             pprint(saved_hyperparams)
 
         return hyperparams, saved_hyperparams
@@ -395,9 +363,7 @@ class ExperimentManager(object):
             "replay_buffer_class",
             "replay_buffer_kwargs",
         }:
-            if kwargs_key in hyperparams.keys() and isinstance(
-                hyperparams[kwargs_key], str
-            ):
+            if kwargs_key in hyperparams.keys() and isinstance(hyperparams[kwargs_key], str):
                 hyperparams[kwargs_key] = eval(hyperparams[kwargs_key])
 
         # Delete keys so the dict can be pass to the model constructor
@@ -482,9 +448,7 @@ class ExperimentManager(object):
             if self.verbose > 0:
                 print("Creating test environment")
 
-            save_vec_normalize = SaveVecNormalizeCallback(
-                save_freq=1, save_path=self.params_path
-            )
+            save_vec_normalize = SaveVecNormalizeCallback(save_freq=1, save_path=self.params_path)
             eval_callback = EvalCallback(
                 self.create_envs(self.n_eval_envs, eval_env=True),
                 callback_on_new_best=save_vec_normalize,
@@ -501,9 +465,7 @@ class ExperimentManager(object):
 
             video_save_freq = max(self.video_save_freq // self.n_envs, 1)
 
-            video_recorder_callback = VideoRecorderCallback(
-                self.create_envs(1, eval_env=True), render_freq=video_save_freq
-            )
+            video_recorder_callback = VideoRecorderCallback(self.create_envs(1, eval_env=True), render_freq=video_save_freq)
 
             self.callbacks.append(video_recorder_callback)
 
@@ -520,9 +482,7 @@ class ExperimentManager(object):
     @staticmethod
     def is_robotics_env(env_id: str) -> bool:
         entry_point = gym.envs.registry.env_specs[env_id].entry_point
-        return "gym.envs.robotics" in str(entry_point) or "panda_gym.envs" in str(
-            entry_point
-        )
+        return "gym.envs.robotics" in str(entry_point) or "panda_gym.envs" in str(entry_point)
 
     def _maybe_normalize(self, env: VecEnv, eval_env: bool) -> VecEnv:
         """
@@ -563,9 +523,7 @@ class ExperimentManager(object):
             env = VecNormalize(env, **local_normalize_kwargs)
         return env
 
-    def create_envs(
-        self, n_envs: int, eval_env: bool = False, no_log: bool = False
-    ) -> VecEnv:
+    def create_envs(self, n_envs: int, eval_env: bool = False, no_log: bool = False) -> VecEnv:
         """
         Create the environment and wrap it if necessary.
 
@@ -580,11 +538,7 @@ class ExperimentManager(object):
 
         monitor_kwargs = {}
         # Special case for GoalEnvs: log success rate too
-        if (
-            "Neck" in self.env_id
-            or self.is_robotics_env(self.env_id)
-            or "parking-v0" in self.env_id
-        ):
+        if "Neck" in self.env_id or self.is_robotics_env(self.env_id) or "parking-v0" in self.env_id:
             monitor_kwargs = dict(info_keywords=("is_success",))
 
         # On most env, SubprocVecEnv does not help and is quite memory hungry
@@ -620,13 +574,12 @@ class ExperimentManager(object):
                 # the other channel last), VecTransposeImage will throw an error
                 for space in env.observation_space.spaces.values():
                     wrap_with_vectranspose = wrap_with_vectranspose or (
-                        is_image_space(space)
-                        and not is_image_space_channels_first(space)
+                        is_image_space(space) and not is_image_space_channels_first(space)
                     )
             else:
-                wrap_with_vectranspose = is_image_space(
+                wrap_with_vectranspose = is_image_space(env.observation_space) and not is_image_space_channels_first(
                     env.observation_space
-                ) and not is_image_space_channels_first(env.observation_space)
+                )
 
             if wrap_with_vectranspose:
                 if self.verbose >= 1:
@@ -640,9 +593,7 @@ class ExperimentManager(object):
 
         return env
 
-    def _load_pretrained_agent(
-        self, hyperparams: Dict[str, Any], env: VecEnv
-    ) -> BaseAlgorithm:
+    def _load_pretrained_agent(self, hyperparams: Dict[str, Any], env: VecEnv) -> BaseAlgorithm:
         # Continue training
         print("Loading pretrained agent")
         # Policy should not be changed
@@ -660,211 +611,10 @@ class ExperimentManager(object):
             **hyperparams,
         )
 
-        replay_buffer_path = os.path.join(
-            os.path.dirname(self.trained_agent), "replay_buffer.pkl"
-        )
+        replay_buffer_path = os.path.join(os.path.dirname(self.trained_agent), "replay_buffer.pkl")
 
         if os.path.exists(replay_buffer_path):
             print("Loading replay buffer")
             # `truncate_last_traj` will be taken into account only if we use HER replay buffer
-            model.load_replay_buffer(
-                replay_buffer_path, truncate_last_traj=self.truncate_last_trajectory
-            )
+            model.load_replay_buffer(replay_buffer_path, truncate_last_traj=self.truncate_last_trajectory)
         return model
-
-    def _create_sampler(self, sampler_method: str) -> BaseSampler:
-        # n_warmup_steps: Disable pruner until the trial reaches the given number of step.
-        if sampler_method == "random":
-            sampler = RandomSampler(seed=self.seed)
-        elif sampler_method == "tpe":
-            # TODO: try with multivariate=True
-            sampler = TPESampler(n_startup_trials=self.n_startup_trials, seed=self.seed)
-        elif sampler_method == "skopt":
-            # cf https://scikit-optimize.github.io/#skopt.Optimizer
-            # GP: gaussian process
-            # Gradient boosted regression: GBRT
-            sampler = SkoptSampler(
-                skopt_kwargs={"base_estimator": "GP", "acq_func": "gp_hedge"}
-            )
-        else:
-            raise ValueError(f"Unknown sampler: {sampler_method}")
-        return sampler
-
-    def _create_pruner(self, pruner_method: str) -> BasePruner:
-        if pruner_method == "halving":
-            pruner = SuccessiveHalvingPruner(
-                min_resource=1, reduction_factor=4, min_early_stopping_rate=0
-            )
-        elif pruner_method == "median":
-            pruner = MedianPruner(
-                n_startup_trials=self.n_startup_trials,
-                n_warmup_steps=self.n_evaluations // 3,
-            )
-        elif pruner_method == "none":
-            # Do not prune
-            pruner = MedianPruner(
-                n_startup_trials=self.n_trials, n_warmup_steps=self.n_evaluations
-            )
-        else:
-            raise ValueError(f"Unknown pruner: {pruner_method}")
-        return pruner
-
-    def objective(self, trial: optuna.Trial) -> float:
-
-        kwargs = self._hyperparams.copy()
-
-        # Hack to use DDPG/TD3 noise sampler
-        trial.n_actions = self.n_actions
-        # Hack when using HerReplayBuffer
-        trial.using_her_replay_buffer = (
-            kwargs.get("replay_buffer_class") == HerReplayBuffer
-        )
-        if trial.using_her_replay_buffer:
-            trial.her_kwargs = kwargs.get("replay_buffer_kwargs", {})
-        # Sample candidate hyperparameters
-        sampled_hyperparams = HYPERPARAMS_SAMPLER[self.algo](trial)
-        kwargs.update(sampled_hyperparams)
-
-        model = ALGOS[self.algo](
-            env=self.create_envs(self.n_envs, no_log=True),
-            tensorboard_log=None,
-            # We do not seed the trial
-            seed=None,
-            verbose=0,
-            policy_kwargs=None,
-            **kwargs,
-        )
-
-        model.trial = trial
-
-        eval_env = self.create_envs(n_envs=self.n_eval_envs, eval_env=True)
-
-        optuna_eval_freq = int(self.n_timesteps / self.n_evaluations)
-        # Account for parallel envs
-        optuna_eval_freq = max(optuna_eval_freq // model.get_env().num_envs, 1)
-        # Use non-deterministic eval for Atari
-        path = None
-        if self.optimization_log_path is not None:
-            path = os.path.join(
-                self.optimization_log_path, f"trial_{str(trial.number)}"
-            )
-        callbacks = get_callback_list({"callback": self.specified_callbacks})
-        eval_callback = TrialEvalCallback(
-            eval_env,
-            trial,
-            best_model_save_path=path,
-            log_path=path,
-            n_eval_episodes=self.n_eval_episodes,
-            eval_freq=optuna_eval_freq,
-            deterministic=self.deterministic_eval,
-        )
-        callbacks.append(eval_callback)
-
-        try:
-            model.learn(self.n_timesteps, callback=callbacks)
-            # Free memory
-            model.env.close()
-            eval_env.close()
-        except (AssertionError, ValueError) as e:
-            # Sometimes, random hyperparams can generate NaN
-            # Free memory
-            model.env.close()
-            eval_env.close()
-            # Prune hyperparams that generate NaNs
-            print(e)
-            print("============")
-            print("Sampled hyperparams:")
-            pprint(sampled_hyperparams)
-            raise optuna.exceptions.TrialPruned()
-        is_pruned = eval_callback.is_pruned
-        reward = eval_callback.last_mean_reward
-
-        del model.env, eval_env
-        del model
-
-        if is_pruned:
-            raise optuna.exceptions.TrialPruned()
-
-        return reward
-
-    def hyperparameters_optimization(self) -> None:
-
-        if self.verbose > 0:
-            print("Optimizing hyperparameters")
-
-        if self.storage is not None and self.study_name is None:
-            warnings.warn(
-                f"You passed a remote storage: {self.storage} but no `--study-name`."
-                "The study name will be generated by Optuna, make sure to re-use the same study name "
-                "when you want to do distributed hyperparameter optimization."
-            )
-
-        if self.tensorboard_log is not None:
-            warnings.warn(
-                "Tensorboard log is deactivated when running hyperparameter optimization"
-            )
-            self.tensorboard_log = None
-
-        # TODO: eval each hyperparams several times to account for noisy evaluation
-        sampler = self._create_sampler(self.sampler)
-        pruner = self._create_pruner(self.pruner)
-
-        if self.verbose > 0:
-            print(f"Sampler: {self.sampler} - Pruner: {self.pruner}")
-
-        study = optuna.create_study(
-            sampler=sampler,
-            pruner=pruner,
-            storage=self.storage,
-            study_name=self.study_name,
-            load_if_exists=True,
-            direction="maximize",
-        )
-
-        try:
-            study.optimize(self.objective, n_trials=self.n_trials, n_jobs=self.n_jobs)
-        except KeyboardInterrupt:
-            pass
-
-        print("Number of finished trials: ", len(study.trials))
-
-        print("Best trial:")
-        trial = study.best_trial
-
-        print("Value: ", trial.value)
-
-        print("Params: ")
-        for key, value in trial.params.items():
-            print(f"    {key}: {value}")
-
-        report_name = (
-            f"report_{self.env_id}_{self.n_trials}-trials-{self.n_timesteps}"
-            f"-{self.sampler}-{self.pruner}_{int(time.time())}"
-        )
-
-        log_path = os.path.join(self.log_folder, self.algo, report_name)
-
-        if self.verbose:
-            print(f"Writing report to {log_path}")
-
-        # Write report
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        study.trials_dataframe().to_csv(f"{log_path}.csv")
-
-        # Save python object to inspect/re-use it later
-        with open(f"{log_path}.pkl", "wb+") as f:
-            pkl.dump(study, f)
-
-        # Skip plots
-        if self.no_optim_plots:
-            return
-
-        # Plot optimization result
-        try:
-            fig1 = plot_optimization_history(study)
-            fig2 = plot_param_importances(study)
-
-            fig1.show()
-            fig2.show()
-        except (ValueError, ImportError, RuntimeError):
-            pass

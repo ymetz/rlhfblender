@@ -12,10 +12,10 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.sampler import Sampler
+from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models import get_model_by_name
 from rlhfblender.data_models.global_models import (
     Dataset,
@@ -45,10 +45,8 @@ app = FastAPI(
 )
 app.include_router(data.router)
 
-app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender","static_files")), name="files")
-app.mount(
-    "/action_labels", StaticFiles(directory=os.path.join("data","action_labels")), name="action_labels"
-)
+app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_files")), name="files")
+app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")
 app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", DB_HOST))
@@ -169,9 +167,7 @@ async def ui_configs():
 @app.post("/save_ui_config", tags=["UI"])
 async def save_ui_config(ui_config: dict):
     # Save UI config to configs/ui_configs directory
-    with open(
-        os.path.join("configs/ui_configs", ui_config["name"] + ".json"), "w"
-    ) as f:
+    with open(os.path.join("configs/ui_configs", ui_config["name"] + ".json"), "w") as f:
         json.dump(ui_config, f)
     return {"message": "OK"}
 

@@ -53,9 +53,7 @@ class UnprocessedFeedback(BaseModel):
 
     # Evaluative feedback content
     score: Union[float, None] = 0.0  # e.g.: 0.5
-    preferences: Union[
-        List[int], None
-    ] = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
+    preferences: Union[List[int], None] = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
 
     # Instructional feedback content
     action: Union[int, List[float], None] = None

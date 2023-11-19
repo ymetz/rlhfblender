@@ -8,9 +8,7 @@ from rlhfblender.data_models.global_models import EvaluationConfig, Experiment, 
 
 
 class Connector(object):
-    def __init__(
-        self, database: Database, experiment_dir: str, gym_compatible: bool = True
-    ):
+    def __init__(self, database: Database, experiment_dir: str, gym_compatible: bool = True):
         """
         Common Connector Super class for all data connectors.
         :param database: Database object<databases.Database>

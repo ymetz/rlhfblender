@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 import cv2
 import numpy as np
-from data_collection.demo_session import (
+from rlhfblender.data_collection.demo_session import (
     check_socket_connection,
     close_demo_session,
     create_new_session,
@@ -16,7 +16,6 @@ from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection import framework_selector
 from rlhfblender.data_collection.environment_handler import (
@@ -28,6 +27,7 @@ from rlhfblender.data_collection.episode_recorder import (
     EpisodeRecorder,
     convert_infos,
 )
+from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.agent import RandomAgent
 from rlhfblender.data_models.feedback_models import UnprocessedFeedback
 from rlhfblender.data_models.global_models import (
@@ -120,9 +120,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkRespon
     :return:
     """
     env_ids = []
-    for env_id, gym_registration_id in set(
-        [(r.env_id, r.gym_registration_id) for r in request]
-    ):
+    for env_id, gym_registration_id in set([(r.env_id, r.gym_registration_id) for r in request]):
         if gym_registration_id != "" and int(env_id) < 0:
             # We lazily register the environment if it is not registered yet, this is only done once
             env_id = await initial_registration(database, gym_registration_id)
@@ -135,25 +133,19 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkRespon
         if benchmark_run.benchmark_type == "dataset":
             # Dummy env id for datasets
             db_env = Environment(id=-1, name="dataset", gym_registration_id="dataset")
-            db_dataset = await db_handler.get_single_entry(
-                database, Dataset, id=benchmark_run.benchmark_id
-            )
-            benchmarked_models.append(
-                EpisodeRecorder.get_aggregated_data(
-                    os.path.join("datasets", db_dataset.dataset_path)
-                )
-            )
+            db_dataset = await db_handler.get_single_entry(database, Dataset, id=benchmark_run.benchmark_id)
+            benchmarked_models.append(EpisodeRecorder.get_aggregated_data(os.path.join("datasets", db_dataset.dataset_path)))
             continue
         db_env: Environment = await db_handler.get_single_entry(
             database,
             Environment,
-            id=int(benchmark_run.env_id)
-            if int(benchmark_run.env_id) >= 0
-            else env_ids[0],
+            id=int(benchmark_run.env_id) if int(benchmark_run.env_id) >= 0 else env_ids[0],
         )
         registration_id = db_env.registration_id
 
-        save_file_name = f"{registration_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
+        save_file_name = (
+            f"{registration_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
+        )
 
         # If there is a cached benchmark, use it instead. Force_overwrites leads to the existing saved data to be
         # rewritten
@@ -161,9 +153,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkRespon
             os.path.join("data", "saved_benchmarks", save_file_name + ".npz")
         ):
             if benchmark_run.benchmark_type == "trained":
-                exp: Experiment = await db_handler.get_single_entry(
-                    database, Experiment, id=benchmark_run.benchmark_id
-                )
+                exp: Experiment = await db_handler.get_single_entry(database, Experiment, id=benchmark_run.benchmark_id)
                 benchmark_env = get_environment(
                     registration_id,
                     environment_config=exp.environment_config,
@@ -185,9 +175,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkRespon
                     n_envs=1,
                     additional_packages=db_env.additional_gym_packages,
                 )
-                agent = RandomAgent(
-                    benchmark_env.observation_space, benchmark_env.action_space
-                )
+                agent = RandomAgent(benchmark_env.observation_space, benchmark_env.action_space)
 
             benchmarked_models.append(
                 EpisodeRecorder.record_episodes(
@@ -206,9 +194,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkRespon
 
         else:
             benchmarked_models.append(
-                EpisodeRecorder.get_aggregated_data(
-                    os.path.join("data", "saved_benchmarks", save_file_name)
-                )
+                EpisodeRecorder.get_aggregated_data(os.path.join("data", "saved_benchmarks", save_file_name))
             )
 
     # Only return the last checkpoint (is the only one e.g. for a single benchmark run)
@@ -403,11 +389,7 @@ async def save_feature_feedback(image: UploadFile = File(...)):
     # get current time formatted as string
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    img.save(
-        os.path.join(
-            "data", "feature_feedback", "feature_feedback_" + current_time + ".png"
-        )
-    )
+    img.save(os.path.join("data", "feature_feedback", "feature_feedback_" + current_time + ".png"))
 
     return {"message": "Image saved successfully"}
 
@@ -467,11 +449,7 @@ async def get_action_label_urls(request: ActionLabelRequest):
     action_label_dir = os.path.join("data", "action_labels", db_env_name)
     if not os.path.isdir(action_label_dir):
         return []
-    action_label_files = [
-        file
-        for file in os.listdir(action_label_dir)
-        if file.endswith(".png") or file.endswith(".svg")
-    ]
+    action_label_files = [file for file in os.listdir(action_label_dir) if file.endswith(".png") or file.endswith(".svg")]
 
     # Return the urls
     return [f"/action_labels/{db_env_name}/{file}" for file in action_label_files]
@@ -486,19 +464,13 @@ async def reset_sampler(request: Request):
     sampling_strategy = request.query_params.get("sampling_strategy", None)
     if experiment_id is None:
         return "No experiment id given"
-    experiment: Experiment = await db_handler.get_single_entry(
-        database, Experiment, id=experiment_id
-    )
-    environment = await db_handler.get_single_entry(
-        database, Environment, id=experiment.env_id
-    )
+    experiment: Experiment = await db_handler.get_single_entry(database, Experiment, id=experiment_id)
+    environment = await db_handler.get_single_entry(database, Environment, id=experiment.env_id)
 
     request.app.state.sampler.set_sampler(experiment, environment, sampling_strategy)
 
     return {
-        "session_id": request.app.state.feedback_translator.set_translator(
-            experiment, environment
-        ),
+        "session_id": request.app.state.feedback_translator.set_translator(experiment, environment),
         "environment_id": experiment.env_id,
     }
 
@@ -566,9 +538,7 @@ async def initialize_demo_session(request: Request):
         action_space = db_env.action_space_info
 
     try:
-        pid, demo_number = await create_new_session(
-            session_id, db_env.registration_id, int(seed)
-        )
+        pid, demo_number = await create_new_session(session_id, db_env.registration_id, int(seed))
 
         first_step = demo_perform_step(session_id, [])
         success = True
@@ -652,9 +622,7 @@ def _load_data(
     split_by_episode: bool = False,
     record_videos: bool = False,
 ) -> List[RecordedEpisodes]:
-    load_episodes = EpisodeRecorder.load_episodes(
-        os.path.join("data", "saved_benchmarks", load_file_name)
-    )
+    load_episodes = EpisodeRecorder.load_episodes(os.path.join("data", "saved_benchmarks", load_file_name))
 
     if load_episodes.obs.size == 0:
         return RecordedEpisodes()
@@ -666,31 +634,18 @@ def _load_data(
         # add 0 and the last index to the split indices
         split_indices = np.concatenate(([0], split_indices, [len(load_episodes.dones)]))
 
-    multi_dones_per_episode = (
-        len(split_indices) / load_episodes.episode_lengths.shape[0] > 1
-    )
+    multi_dones_per_episode = len(split_indices) / load_episodes.episode_lengths.shape[0] > 1
 
     recorded_episodes = [
         RecordedEpisodes(
             env_id=env_id,
             obs=load_episodes.obs[split_indices[i] : split_indices[i + 1]].tolist(),
-            actions=load_episodes.actions[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
-            rewards=load_episodes.rewards[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
+            actions=load_episodes.actions[split_indices[i] : split_indices[i + 1]].tolist(),
+            rewards=load_episodes.rewards[split_indices[i] : split_indices[i + 1]].tolist(),
             dones=load_episodes.dones[split_indices[i] : split_indices[i + 1]].tolist(),
-            infos=[
-                info
-                for info in load_episodes.infos[split_indices[i] : split_indices[i + 1]]
-            ],
-            renders=load_episodes.renders[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
-            features=load_episodes.features[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
+            infos=[info for info in load_episodes.infos[split_indices[i] : split_indices[i + 1]]],
+            renders=load_episodes.renders[split_indices[i] : split_indices[i + 1]].tolist(),
+            features=load_episodes.features[split_indices[i] : split_indices[i + 1]].tolist(),
             probs=load_episodes.probs[split_indices[i] : split_indices[i + 1]].tolist(),
             episode_rewards=load_episodes.episode_rewards[i].tolist()
             if len(load_episodes.episode_rewards) > 0 and not multi_dones_per_episode
@@ -732,14 +687,10 @@ def _load_data(
     return recorded_episodes
 
 
-def _load_dataset(
-    db_dataset: Dataset, return_raw=False, split_by_episode: bool = False
-) -> List[RecordedEpisodes]:
+def _load_dataset(db_dataset: Dataset, return_raw=False, split_by_episode: bool = False) -> List[RecordedEpisodes]:
     print("load_dataset:", db_dataset.dataset_name)
 
-    load_episodes = EpisodeRecorder.load_episodes(
-        os.path.join("datasets", db_dataset.dataset_path)
-    )
+    load_episodes = EpisodeRecorder.load_episodes(os.path.join("datasets", db_dataset.dataset_path))
 
     if load_episodes.obs.size == 0:
         return RecordedEpisodes()
@@ -761,30 +712,18 @@ def _load_dataset(
         # add 0 and the last index to the split indices
         split_indices = np.concatenate(([0], split_indices, [len(load_episodes.dones)]))
 
-    multi_dones_per_episode = (
-        len(split_indices) / load_episodes.episode_lengths.shape[0] > 1
-    )
+    multi_dones_per_episode = len(split_indices) / load_episodes.episode_lengths.shape[0] > 1
 
     return [
         RecordedEpisodes(
             env_id=-1,
             obs=load_episodes.obs[split_indices[i] : split_indices[i + 1]].tolist(),
-            actions=load_episodes.actions[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
-            rewards=load_episodes.rewards[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
+            actions=load_episodes.actions[split_indices[i] : split_indices[i + 1]].tolist(),
+            rewards=load_episodes.rewards[split_indices[i] : split_indices[i + 1]].tolist(),
             dones=load_episodes.dones[split_indices[i] : split_indices[i + 1]].tolist(),
-            infos=convert_infos(
-                load_episodes.infos[split_indices[i] : split_indices[i + 1]]
-            ),
-            renders=load_episodes.renders[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
-            features=load_episodes.features[
-                split_indices[i] : split_indices[i + 1]
-            ].tolist(),
+            infos=convert_infos(load_episodes.infos[split_indices[i] : split_indices[i + 1]]),
+            renders=load_episodes.renders[split_indices[i] : split_indices[i + 1]].tolist(),
+            features=load_episodes.features[split_indices[i] : split_indices[i + 1]].tolist(),
             probs=load_episodes.probs[split_indices[i] : split_indices[i + 1]].tolist(),
             episode_rewards=load_episodes.episode_rewards[i].tolist()
             if len(load_episodes.episode_rewards) > 0 and not multi_dones_per_episode

@@ -7,59 +7,12 @@ from threading import Thread
 from typing import Any, Dict, Optional
 
 import gymnasium as gym
-import optuna
 import torch as th
 from sb3_contrib import TQC
 from stable_baselines3 import SAC
-from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import Video
-from stable_baselines3.common.vec_env import VecEnv
-
-
-class TrialEvalCallback(EvalCallback):
-    """
-    Callback used for evaluating and reporting a trial.
-    """
-
-    def __init__(
-        self,
-        eval_env: VecEnv,
-        trial: optuna.Trial,
-        n_eval_episodes: int = 5,
-        eval_freq: int = 10000,
-        deterministic: bool = True,
-        verbose: int = 0,
-        best_model_save_path: Optional[str] = None,
-        log_path: Optional[str] = None,
-    ):
-
-        super(TrialEvalCallback, self).__init__(
-            eval_env=eval_env,
-            n_eval_episodes=n_eval_episodes,
-            eval_freq=eval_freq,
-            deterministic=deterministic,
-            verbose=verbose,
-            best_model_save_path=best_model_save_path,
-            log_path=log_path,
-        )
-        self.trial = trial
-        self.eval_idx = 0
-        self.is_pruned = False
-
-    def _on_step(self) -> bool:
-        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-            super(TrialEvalCallback, self)._on_step()
-            self.eval_idx += 1
-            # report best or report current ?
-            # report num_timesteps or elasped time ?
-            self.trial.report(self.last_mean_reward, self.eval_idx)
-            # Prune trial if need
-            if self.trial.should_prune():
-                self.is_pruned = True
-                return False
-        return True
-
 
 class SaveVecNormalizeCallback(BaseCallback):
     """
@@ -91,9 +44,7 @@ class SaveVecNormalizeCallback(BaseCallback):
     def _on_step(self) -> bool:
         if self.n_calls % self.save_freq == 0:
             if self.name_prefix is not None:
-                path = os.path.join(
-                    self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.pkl"
-                )
+                path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.pkl")
             else:
                 path = os.path.join(self.save_path, "vecnormalize.pkl")
             if self.model.get_vec_normalize_env() is not None:
@@ -121,9 +72,7 @@ class ParallelTrainCallback(BaseCallback):
     :param sleep_time: Limit the fps in the thread collecting experience.
     """
 
-    def __init__(
-        self, gradient_steps: int = 100, verbose: int = 0, sleep_time: float = 0.0
-    ):
+    def __init__(self, gradient_steps: int = 100, verbose: int = 0, sleep_time: float = 0.0):
         super(ParallelTrainCallback, self).__init__(verbose)
         self.batch_size = 0
         self._model_ready = True
@@ -149,9 +98,7 @@ class ParallelTrainCallback(BaseCallback):
                 self.model_class = model_class
                 break
 
-        assert (
-            self.model_class is not None
-        ), f"{self.model} is not supported for parallel training"
+        assert self.model_class is not None, f"{self.model} is not supported for parallel training"
         self._model = self.model_class.load(temp_file)
 
         self.batch_size = self._model.batch_size
@@ -185,9 +132,7 @@ class ParallelTrainCallback(BaseCallback):
         self.process.start()
 
     def _train_thread(self) -> None:
-        self._model.train(
-            gradient_steps=self.gradient_steps, batch_size=self.batch_size
-        )
+        self._model.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
         self._model_ready = True
 
     def _on_step(self) -> bool:

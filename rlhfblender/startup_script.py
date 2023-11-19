@@ -14,11 +14,11 @@ import numpy as np
 from databases import Database
 from pydantic import BaseModel
 
-from rlhfblender.data_collection import framework_selector as framework_selector
-from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.config import DB_HOST
+from rlhfblender.data_collection import framework_selector as framework_selector
 from rlhfblender.data_collection.environment_handler import get_environment
 from rlhfblender.data_collection.episode_recorder import EpisodeRecorder
+from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models import Experiment
 
 DATA_ROOT_DIR = "data"
@@ -69,9 +69,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]):
     for i, benchmark_run in enumerate(request):
         save_file_name = f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
 
-        exp: Experiment = await db_handler.get_single_entry(
-            database, Experiment, id=benchmark_run.benchmark_id
-        )
+        exp: Experiment = await db_handler.get_single_entry(database, Experiment, id=benchmark_run.benchmark_id)
 
         benchmark_env = (
             get_environment(
@@ -165,9 +163,7 @@ async def main(benchmark_dicts: List[Dict]):
         )
 
         # Skip processing
-        if os.path.isdir(
-            f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"
-        ):
+        if os.path.isdir(f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"):
             skipped += 1
             continue
 
@@ -188,9 +184,7 @@ async def main(benchmark_dicts: List[Dict]):
         save_file_name = os.path.join(
             f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}.npz"
         )
-        data = np.load(
-            f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True
-        )
+        data = np.load(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
         episode_data = split_data(data)
 
         for episode_idx, _ in enumerate(episode_data["dones"]):
@@ -219,9 +213,7 @@ async def main(benchmark_dicts: List[Dict]):
                 )
                 np.save(
                     f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{episode_idx}.npy",
-                    np.array(
-                        [info["entropy"] for info in episode_data["infos"][episode_idx]]
-                    ),
+                    np.array([info["entropy"] for info in episode_data["infos"][episode_idx]]),
                 )
 
         # Create video
@@ -231,16 +223,12 @@ async def main(benchmark_dicts: List[Dict]):
                 os.makedirs(dir_name)
             encode_video(renders, f"{dir_name}/{episode_idx}")
 
-            dir_name = (
-                f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}"
-            )
+            dir_name = f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}"
             if not os.path.isdir(dir_name):
                 os.makedirs(dir_name)
 
             # Check if custom thumbnail creator exists
-            custom_thumbnail_creator = get_custom_thumbnail_creator(
-                benchmark_run.env_id
-            )
+            custom_thumbnail_creator = get_custom_thumbnail_creator(benchmark_run.env_id)
             if custom_thumbnail_creator is not None:
                 # Create custom thumbnail with env id and seed (info the info dict)
                 save_image = custom_thumbnail_creator(
@@ -270,12 +258,8 @@ async def main(benchmark_dicts: List[Dict]):
             os.remove(
                 f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{len(episode_data['dones']) - 1}.npy"
             )
-        os.remove(
-            f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.mp4"
-        )
-        os.remove(
-            f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.jpg"
-        )
+        os.remove(f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.mp4")
+        os.remove(f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.jpg")
 
 
 if __name__ == "__main__":
@@ -292,7 +276,7 @@ if __name__ == "__main__":
             "n_episodes": 1,
             "path": os.path.join(f"rlhfblender_demo_models/Atari Breakout"),
         }
-        for i in range(2,12,2)
+        for i in range(2, 12, 2)
     ]
 
     try:

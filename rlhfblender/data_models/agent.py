@@ -16,9 +16,7 @@ class BaseAgent(object):
     def reset(self):
         raise NotImplementedError
 
-    def additional_outputs(
-        self, observation, action, output_list=None
-    ) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
         raise NotImplementedError
 
 
@@ -37,9 +35,7 @@ class TrainedAgent(BaseAgent, ABC):
     def extract_features(self, observation) -> np.ndarray:
         raise NotImplementedError
 
-    def additional_outputs(
-        self, observation, action, output_list=None
-    ) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
         raise NotImplementedError
 
 
@@ -53,7 +49,5 @@ class RandomAgent(BaseAgent):
     def reset(self):
         pass
 
-    def additional_outputs(
-        self, observation, action, output_list=None
-    ) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
         return {"log_probs": np.zeros_like(action), "value": np.array([1.0])}

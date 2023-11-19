@@ -75,9 +75,7 @@ class EpisodeRecorder(object):
         #    env = DummyVecEnv([lambda: env])
 
         is_monitor_wrapped = (
-            (is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0])
-            if isinstance(env, VecEnv)
-            else False
+            (is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]) if isinstance(env, VecEnv) else False
         )
 
         n_envs = env.num_envs if isinstance(env, VecEnv) else 1
@@ -86,9 +84,7 @@ class EpisodeRecorder(object):
 
         episode_counts = np.zeros(n_envs, dtype="int")
         # Divides episodes among different sub environments in the vector as evenly as possible
-        episode_count_targets = np.array(
-            [(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype="int"
-        )
+        episode_count_targets = np.array([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype="int")
 
         current_rewards = np.zeros(n_envs)
         current_lengths = np.zeros(n_envs, dtype="int")
@@ -109,20 +105,14 @@ class EpisodeRecorder(object):
             dones = False
             infos = {}
             # A bit of a special case for babyai, but in the future, we might use gymnasium with reset infos anyways
-            if (
-                isinstance(env.observation_space, gym.spaces.Dict)
-                and "mission" in observations.keys()
-            ):
+            if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations.keys():
                 infos["mission"] = observations["mission"]
                 infos["seed"] = seed
         else:
             rewards = np.zeros(n_envs)
             dones = np.zeros(n_envs, dtype=bool)
             infos = [{} for _ in range(n_envs)]
-            if (
-                isinstance(env.observation_space, gym.spaces.Dict)
-                and "mission" in observations[0].keys()
-            ):
+            if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations[0].keys():
                 for i in range(n_envs):
                     infos[i]["mission"] = observations[i]["mission"]
                     infos[i]["seed"] = seed
@@ -136,9 +126,7 @@ class EpisodeRecorder(object):
         values = None
         probs = None
         total_steps = 0
-        while (
-            episode_counts < episode_count_targets
-        ).any() and total_steps <= max_steps:
+        while (episode_counts < episode_count_targets).any() and total_steps <= max_steps:
             actions = agent.act(observations)
             # If policy is not part of the model, we have directly loaded a policy
             additional_out_attributes = agent.additional_outputs(
@@ -161,10 +149,7 @@ class EpisodeRecorder(object):
                 if dones:
                     seed = random.randint(0, 1000000)
                     observation = env.reset(seed=seed)
-                    if (
-                        isinstance(env.observation_space, gym.spaces.Dict)
-                        and "mission" in observation.keys()
-                    ):
+                    if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observation.keys():
                         infos[0]["mission"] = observation["mission"]
                         infos[0]["seed"] = seed
             obs_buffer.append(np.squeeze(observations))
@@ -182,11 +167,7 @@ class EpisodeRecorder(object):
                     done = dones[i]
 
                     if "feature_extractor_output" in additional_out_attributes:
-                        feature_extractor_buffer.append(
-                            np.squeeze(
-                                additional_out_attributes["feature_extractor_output"][i]
-                            )
-                        )
+                        feature_extractor_buffer.append(np.squeeze(additional_out_attributes["feature_extractor_output"][i]))
                     if "log_probs" in additional_out_attributes:
                         probs_buffer.append(additional_out_attributes["log_probs"][i])
 
@@ -250,11 +231,7 @@ class EpisodeRecorder(object):
 
                     tmp_info_buffer.append(info)
 
-            infos_buffer.append(
-                np.squeeze(tmp_info_buffer)
-                if len(tmp_info_buffer) > 0
-                else np.squeeze(infos)
-            )
+            infos_buffer.append(np.squeeze(tmp_info_buffer) if len(tmp_info_buffer) > 0 else np.squeeze(infos))
 
             if render:
                 render_frame = env.render()
@@ -282,12 +259,8 @@ class EpisodeRecorder(object):
                 infos_buffer[i]["episode step"] = current_step_in_episode
                 current_step_in_episode += 1
             if "value" in infos_buffer[0].keys():
-                infos_buffer[np.argmax([i["value"] for i in infos_buffer])][
-                    "label"
-                ] = "Max. Value"
-                infos_buffer[np.argmin([i["value"] for i in infos_buffer])][
-                    "label"
-                ] = "Min. Value"
+                infos_buffer[np.argmax([i["value"] for i in infos_buffer])]["label"] = "Max. Value"
+                infos_buffer[np.argmin([i["value"] for i in infos_buffer])]["label"] = "Min. Value"
                 infos_buffer[np.argmax(rew_buffer)]["label"] = "Max. Step Reward"
                 infos_buffer[np.argmin(rew_buffer)]["label"] = "Min. Step Reward"
 
@@ -322,25 +295,15 @@ class EpisodeRecorder(object):
         if not overwrite and os.path.isfile(save_path + ".npz"):
             previous_bm = np.load(save_path + ".npz", allow_pickle=True)
             obs_buffer = np.concatenate((previous_bm["obs"], obs_buffer), axis=0)
-            actions_buffer = np.concatenate(
-                (previous_bm["actions"], actions_buffer), axis=0
-            )
+            actions_buffer = np.concatenate((previous_bm["actions"], actions_buffer), axis=0)
             dones_buffer = np.concatenate((previous_bm["dones"], dones_buffer), axis=0)
             rew_buffer = np.concatenate((previous_bm["rewards"], rew_buffer), axis=0)
-            episode_rewards = np.concatenate(
-                (previous_bm["episode_rewards"], episode_rewards), axis=0
-            )
-            episode_lengths = np.concatenate(
-                (previous_bm["episode_lengths"], episode_lengths), axis=0
-            )
-            feature_extractor_buffer = np.concatenate(
-                (previous_bm["features"], feature_extractor_buffer), axis=0
-            )
+            episode_rewards = np.concatenate((previous_bm["episode_rewards"], episode_rewards), axis=0)
+            episode_lengths = np.concatenate((previous_bm["episode_lengths"], episode_lengths), axis=0)
+            feature_extractor_buffer = np.concatenate((previous_bm["features"], feature_extractor_buffer), axis=0)
             infos_buffer = np.concatenate((previous_bm["infos"], infos_buffer), axis=0)
             probs_buffer = np.concatenate((previous_bm["probs"], probs_buffer), axis=0)
-            render_buffer = np.concatenate(
-                (previous_bm["renders"], render_buffer), axis=0
-            )
+            render_buffer = np.concatenate((previous_bm["renders"], render_buffer), axis=0)
 
         # Recompute metrics (e.g. mean, std, etc), in case the buffers have changed
         additional_metrics = process_metrics(

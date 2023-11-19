@@ -33,7 +33,5 @@ class FeedbackModelHandler:
         self.feedback_model_cls = feedback_model_cls
         self.observation_space = observation_space
         self.action_space = action_space
-        self.feedback_dataset = feedback_model.FeedbackDataset(
-            observation_space, action_space
-        )
+        self.feedback_dataset = feedback_model.FeedbackDataset(observation_space, action_space)
         self.feedback_net = feedback_model_cls(observation_space, action_space)
