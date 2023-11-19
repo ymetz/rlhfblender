@@ -48,7 +48,7 @@ from stable_baselines3.common.vec_env import (
 )
 
 # For custom activation fn
-from torch import nn as nn 
+from torch import nn as nn
 from utils.callbacks import SaveVecNormalizeCallback, TrialEvalCallback
 from utils.hyperparams_opt import HYPERPARAMS_SAMPLER
 from utils.reward_wrapper import RewardVecEnvWrapper

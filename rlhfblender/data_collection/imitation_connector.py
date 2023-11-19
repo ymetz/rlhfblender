@@ -11,8 +11,8 @@ import rl_baselines3_zoo.utils.import_envs  # noqa: F401 pytype: disable=import-
 import torch as th
 from stable_baselines3.common.utils import set_random_seed
 
-from rlhfblender.data_models import connector
 from rlhfblender.data_handling.database_handler import get_single_entry
+from rlhfblender.data_models import connector
 from rlhfblender.data_models.global_models import (
     Environment,
     EvaluationConfig,

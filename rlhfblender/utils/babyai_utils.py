@@ -1,10 +1,11 @@
-from abc import ABC, abstractmethod
 import json
 import os
 import re
+from abc import ABC, abstractmethod
 
 import numpy
 import torch
+
 
 class DictList(dict):
     """A dictionnary of lists of same size. Dictionnary items can be
