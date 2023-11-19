@@ -43,9 +43,7 @@ class VariableRateCheckpointCallback(BaseCallback):
             or abs(self.num_timesteps - int(7e6)) < 8
             or abs(self.num_timesteps - int(7.1e6)) < 8
         ):
-            path = os.path.join(
-                self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps"
-            )
+            path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps")
             self.model.save(path)
             if self.verbose > 1:
                 print(f"Saving model checkpoint to {path}")

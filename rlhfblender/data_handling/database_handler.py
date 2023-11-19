@@ -20,9 +20,7 @@ def dict_factory(crs, row) -> Dict:
     return d
 
 
-async def create_table_from_model(
-    cursor: Database, model: Type[BaseModel], table_name: Optional[str] = None
-) -> None:
+async def create_table_from_model(cursor: Database, model: Type[BaseModel], table_name: Optional[str] = None) -> None:
     """
     Creates a new project table in the database dynamically based on the Project DataModel
     :param cursor: sqlite3.Cursor
@@ -45,9 +43,7 @@ async def create_table_from_model(
     return await cursor.execute(query)
 
 
-async def get_columns_names(
-    cursor: Database, model: Type[BaseModel], table_name: Optional[str] = None
-) -> List[str]:
+async def get_columns_names(cursor: Database, model: Type[BaseModel], table_name: Optional[str] = None) -> List[str]:
     """
     Returns all column nmaes from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -61,9 +57,7 @@ async def get_columns_names(
     return [row[1] for row in rows]
 
 
-async def get_all(
-    cursor: Database, model: Type[T], table_name: Optional[str] = None
-) -> List[T]:
+async def get_all(cursor: Database, model: Type[T], table_name: Optional[str] = None) -> List[T]:
     """
     Returns all rows from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -77,9 +71,7 @@ async def get_all(
     return [model(**{**row}) for row in rows]
 
 
-async def get_single_entry(
-    cursor: Database, model: Type[T], id: int, table_name: Optional[str] = None
-) -> T:
+async def get_single_entry(cursor: Database, model: Type[T], id: int, table_name: Optional[str] = None) -> T:
     """
     Returns a single entry from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -120,9 +112,7 @@ async def add_entry(
     for field in model.__annotations__:
         if field == "id":
             continue
-        data_field = (
-            data[field] if field in data else default_model.__getattribute__(field)
-        )
+        data_field = data[field] if field in data else default_model.__getattribute__(field)
 
         if model.__annotations__[field] == int:
             query += str(data_field) + ","
@@ -170,9 +160,7 @@ async def update_entry(
     await cursor.execute(query)
 
 
-async def delete_entry(
-    cursor: Database, model: Type[BaseModel], id: int, table_name: Optional[str] = None
-) -> None:
+async def delete_entry(cursor: Database, model: Type[BaseModel], id: int, table_name: Optional[str] = None) -> None:
     """
     Deletes a single entry from a table with a given model
     :param cursor: sqlite3.Cursor

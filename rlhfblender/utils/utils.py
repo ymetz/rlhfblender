@@ -51,9 +51,7 @@ def flatten_dict_observations(env: gym.Env) -> gym.Env:
         return gym.wrappers.FlattenDictWrapper(env, dict_keys=list(keys))
 
 
-def get_wrapper_class(
-    hyperparams: Dict[str, Any]
-) -> Optional[Callable[[gym.Env], gym.Env]]:
+def get_wrapper_class(hyperparams: Dict[str, Any]) -> Optional[Callable[[gym.Env], gym.Env]]:
     """
     Get one or more Gym environment wrapper class specified as a hyper parameter
     "env_wrapper".
@@ -205,7 +203,7 @@ def create_test_env(
     :return:
     """
     # Avoid circular import
-    from utils.exp_manager import ExperimentManager
+    from rlhfblender.utils.exp_manager import ExperimentManager
 
     # Create the environment and wrap it if necessary
     env_wrapper = get_wrapper_class(hyperparams)
@@ -277,9 +275,7 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
     return func
 
 
-def frankenstein_schedule_1(
-    initial_value: Union[float, str]
-) -> Callable[[float], float]:
+def frankenstein_schedule_1(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
     Frankenstein_Schedule
     """
@@ -302,9 +298,7 @@ def frankenstein_schedule_1(
     return func
 
 
-def frankenstein_schedule_2(
-    initial_value: Union[float, str]
-) -> Callable[[float], float]:
+def frankenstein_schedule_2(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
     Frankenstein_Schedule 2
     """
@@ -329,9 +323,7 @@ def frankenstein_schedule_2(
     return func
 
 
-def frankenstein_schedule_3(
-    initial_value: Union[float, str]
-) -> Callable[[float], float]:
+def frankenstein_schedule_3(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
     Frankenstein_Schedule 3
     """
@@ -356,9 +348,7 @@ def frankenstein_schedule_3(
     return func
 
 
-def frankenstein_schedule_clip_range_3(
-    initial_value: Union[float, str]
-) -> Callable[[float], float]:
+def frankenstein_schedule_clip_range_3(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
     Frankenstein_Schedule 3
     """
@@ -383,9 +373,7 @@ def frankenstein_schedule_clip_range_3(
     return func
 
 
-def frankenstein_schedule_4(
-    initial_value: Union[float, str]
-) -> Callable[[float], float]:
+def frankenstein_schedule_4(initial_value: Union[float, str]) -> Callable[[float], float]:
     """
     Frankenstein_Schedule 3
     """
@@ -440,9 +428,7 @@ def entropy_coeff_sinusoid_schedule(
     return func
 
 
-def conf_matrix_schedule(
-    base_value: Union[float, str] = 9, period_coef: float = 100
-) -> Callable[[float], float]:
+def conf_matrix_schedule(base_value: Union[float, str] = 9, period_coef: float = 100) -> Callable[[float], float]:
     """
     Sinusoid learning rate schedule.
     :param initial_value: (float or str)
@@ -494,9 +480,7 @@ def entropy_coeff_sinusoid_linear_tail(
         # D = clip_value
         x = 1 - progress_remaining
         if x <= 0.66:
-            return max(
-                min((base_value * math.sin(50 * x) / x + 0.2) / 2, clip_value), -0.0
-            )
+            return max(min((base_value * math.sin(50 * x) / x + 0.2) / 2, clip_value), -0.0)
         else:
             return 0.125 + 0.075 * x
 
@@ -566,10 +550,7 @@ def entropy_coeff_mid_rise_schedule(
             min_clip,
             min(
                 max_clip,
-                base_value
-                * math.sin(math.pi * x)
-                * math.sin(period_coef * x)
-                / (x + 1),
+                base_value * math.sin(math.pi * x) * math.sin(period_coef * x) / (x + 1),
             ),
         )
 
@@ -643,11 +624,7 @@ def get_latest_run_id(log_path: str, env_id: str) -> int:
     for path in glob.glob(os.path.join(log_path, env_id + "_[0-9]*")):
         file_name = os.path.basename(path)
         ext = file_name.split("_")[-1]
-        if (
-            env_id == "_".join(file_name.split("_")[:-1])
-            and ext.isdigit()
-            and int(ext) > max_run_id
-        ):
+        if env_id == "_".join(file_name.split("_")[:-1]) and ext.isdigit() and int(ext) > max_run_id:
             max_run_id = int(ext)
     return max_run_id
 
@@ -671,9 +648,7 @@ def get_saved_hyperparams(
         if os.path.isfile(config_file):
             # Load saved hyperparameters
             with open(os.path.join(stats_path, "config.yml"), "r") as f:
-                hyperparams = yaml.load(
-                    f, Loader=yaml.UnsafeLoader
-                )  # pytype: disable=module-attr
+                hyperparams = yaml.load(f, Loader=yaml.UnsafeLoader)  # pytype: disable=module-attr
             hyperparams["normalize"] = hyperparams.get("normalize", False)
         else:
             obs_rms_path = os.path.join(stats_path, "obs_rms.pkl")

@@ -48,14 +48,7 @@ class FeedbackNet(RewardNet):
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 1)
 
-    def forward(
-        self,
-        obs: th.Tensor,
-        action: th.Tensor,
-        next_obs: th.Tensor = None,
-        done: th.Tensor = None,
-        **kwargs
-    ):
+    def forward(self, obs: th.Tensor, action: th.Tensor, next_obs: th.Tensor = None, done: th.Tensor = None, **kwargs):
         x = th.cat([obs, action], dim=-1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -63,14 +56,7 @@ class FeedbackNet(RewardNet):
 
         return x
 
-    def predict(
-        self,
-        obs: th.Tensor,
-        action: th.Tensor,
-        next_obs: th.Tensor = None,
-        done: th.Tensor = None,
-        **kwargs
-    ):
+    def predict(self, obs: th.Tensor, action: th.Tensor, next_obs: th.Tensor = None, done: th.Tensor = None, **kwargs):
         return self.forward(obs, action, next_obs, done)
 
 
@@ -116,9 +102,7 @@ class FeedbackModel:
         reward_buffer = np.concatenate(reward_buffer, axis=0)
         user_feedback_buffer = np.concatenate(user_feedback_buffer, axis=0)
 
-        dataset = FeedbackDataset(
-            obs_buffer, action_buffer, reward_buffer, user_feedback_buffer
-        )
+        dataset = FeedbackDataset(obs_buffer, action_buffer, reward_buffer, user_feedback_buffer)
         dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 
         self.model = FeedbackNet(self.env.observation_space, self.env.action_space)

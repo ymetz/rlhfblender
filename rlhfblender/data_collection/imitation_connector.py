@@ -60,21 +60,15 @@ class ImitationConnector(connector.Connector):
             importlib.import_module(env_module)
 
         registration_env_id = env.registration_id
-        registered_envs = set(
-            gym.envs.registry.env_specs.keys()
-        )  # pytype: disable=module-attr
+        registered_envs = set(gym.envs.registry.env_specs.keys())  # pytype: disable=module-attr
 
         # If the environment is not found, suggest the closest match
         if registration_env_id not in registered_envs:
             try:
-                closest_match = difflib.get_close_matches(
-                    registration_env_id, registered_envs, n=1
-                )[0]
+                closest_match = difflib.get_close_matches(registration_env_id, registered_envs, n=1)[0]
             except IndexError:
                 closest_match = "'no close match found...'"
-            raise ValueError(
-                f"{registration_env_id} not found in gym registry, you maybe meant {closest_match}?"
-            )
+            raise ValueError(f"{registration_env_id} not found in gym registry, you maybe meant {closest_match}?")
 
         # Unique id to ensure there is no race condition for the folder creation
         f"_{uuid.uuid4()}" if experiment.pid else ""
@@ -99,9 +93,7 @@ class ImitationConnector(connector.Connector):
         # Set random seed
         set_random_seed(experiment.seed)
         # Create the experiment directory
-        experiment_dir = os.path.join(
-            self.experiment_dir, experiment.exp_name + str(experiment.id)
-        )
+        experiment_dir = os.path.join(self.experiment_dir, experiment.exp_name + str(experiment.id))
 
         if experiment.wandb_tracking:
             try:

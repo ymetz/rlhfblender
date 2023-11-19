@@ -4,7 +4,7 @@ import os
 
 from pydantic import BaseModel
 
-from rlhfblender.logger.logger import Logger
+from rlhfblender.logger import Logger
 
 
 class CSVLogger(Logger):

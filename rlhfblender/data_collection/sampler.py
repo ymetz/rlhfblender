@@ -53,18 +53,12 @@ class Sampler:
         self.experiment = experiment
         self.env = env
 
-        env_name = (
-            env.env_name if "ALE" not in env.env_name else env.env_name.split("/")[-1]
-        )  # Kinda special case but okay
+        env_name = env.env_name if "ALE" not in env.env_name else env.env_name.split("/")[-1]  # Kinda special case but okay
         self.episode_buffer = []
         for checkpoint in self.experiment.checkpoint_list:
             cp_path = os.path.join(
                 self.saved_episode_dir,
-                env_name
-                + "_trained_"
-                + str(self.experiment.id)
-                + "_"
-                + str(checkpoint),
+                env_name + "_trained_" + str(self.experiment.id) + "_" + str(checkpoint),
             )
             if not os.path.exists(cp_path):
                 continue
@@ -80,9 +74,7 @@ class Sampler:
 
                     self.episode_buffer.append(episode_info)
 
-        self.episode_buffer = sorted(
-            self.episode_buffer, key=lambda x: (x.checkpoint_step, x.episode_num)
-        )
+        self.episode_buffer = sorted(self.episode_buffer, key=lambda x: (x.checkpoint_step, x.episode_num))
 
         self.episode_count = len(self.episode_buffer)
         if self.episode_count > self.max_episode_count:
@@ -125,9 +117,7 @@ class Sampler:
         :return:
         """
         if self.sampler_type == SamplerType.sequential:
-            sampled_batch = self.episode_buffer[
-                self.episode_pointer : self.episode_pointer + batch_size
-            ]
+            sampled_batch = self.episode_buffer[self.episode_pointer : self.episode_pointer + batch_size]
             self.episode_pointer += batch_size
         elif self.sampler_type == SamplerType.random:
             sampled_batch = np.random.choice(self.episode_buffer, batch_size)

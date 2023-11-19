@@ -18,17 +18,9 @@ class Logger:
         self.env = env
         self.suffix = suffix
 
-        self.logger_id = (
-            datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            + "_"
-            + exp.exp_name
-            + "_"
-            + suffix
-        )
+        self.logger_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + exp.exp_name + "_" + suffix
         # Replace all spaces with underscores
-        self.logger_id = (
-            self.logger_id.replace(" ", "_").replace(":", "-").replace("/", "-")
-        )
+        self.logger_id = self.logger_id.replace(" ", "_").replace(":", "-").replace("/", "-")
 
     def reset(self):
         self.logger_id = (

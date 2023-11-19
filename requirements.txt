@@ -18,4 +18,3 @@ torchvision
 tensorboard
 opencv-python-headless
 torch
-optuna

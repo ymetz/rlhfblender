@@ -3,7 +3,7 @@ This module translates incoming feedback of different types into a common format
 """
 
 import numpy as np
-from logger import CSVLogger, JSONLogger, SQLLogger
+from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
 
 from rlhfblender.data_models.feedback_models import *
 from rlhfblender.data_models.global_models import Environment, Experiment
@@ -16,11 +16,7 @@ class FeedbackTranslator:
 
         self.feedback_id = 0
 
-        self.logger = (
-            JSONLogger(experiment, env, "feedback")
-            if experiment is not None and env is not None
-            else None
-        )
+        self.logger = JSONLogger(experiment, env, "feedback") if experiment is not None and env is not None else None
         self.feedback_buffer = []
 
     def set_translator(self, experiment: Experiment, env: Environment):
@@ -38,9 +34,7 @@ class FeedbackTranslator:
         self.logger.reset()
         self.feedback_buffer = []
 
-    def give_feedback(
-        self, session_id: str, feedback: UnprocessedFeedback
-    ) -> StandardizedFeedback:
+    def give_feedback(self, session_id: str, feedback: UnprocessedFeedback) -> StandardizedFeedback:
         """
         We get either a single number or a list of numbers as feedback. We need to translate this into a common format
         called StandardizedFeedback
@@ -74,10 +68,7 @@ class FeedbackTranslator:
                     content=Content.instance,
                     granularity=Granularity.episode,
                 ),
-                target=[
-                    get_target(target, feedback.granularity)
-                    for target in feedback.targets
-                ],  # is a list in this case
+                target=[get_target(target, feedback.granularity) for target in feedback.targets],  # is a list in this case
                 content=RelativeEvaluation(preferences=feedback.preferences),
             )
         elif feedback.feedback_type == FeedbackType.correction:
@@ -91,13 +82,8 @@ class FeedbackTranslator:
                     content=Content.instance,
                     granularity=Granularity.state,
                 ),
-                target=[
-                    get_target(target, feedback.granularity)
-                    for target in feedback.targets
-                ],  # is a list in this case
-                content=RelativeInstruction(
-                    action_preferences=feedback.action_preferences
-                ),
+                target=[get_target(target, feedback.granularity) for target in feedback.targets],  # is a list in this case
+                content=RelativeInstruction(action_preferences=feedback.action_preferences),
             )
         elif feedback.feedback_type == FeedbackType.demonstration:
             return_feedback = AbsoluteFeedback(
@@ -111,9 +97,7 @@ class FeedbackTranslator:
                     granularity=Granularity.state,
                 ),
                 target=get_target(feedback.targets[0], feedback.granularity),
-                content=Instruction(
-                    action=[]
-                ),  # Content is already in the target (i.e. states and actions)
+                content=Instruction(action=[]),  # Content is already in the target (i.e. states and actions)
             )
         elif feedback.feedback_type == FeedbackType.featureSelection:
             return_feedback = AbsoluteFeedback(
@@ -148,13 +132,9 @@ class FeedbackTranslator:
         feedback_dict = {}
         for feedback in self.feedback_buffer:
             if isinstance(feedback, AbsoluteFeedback):
-                feedback_dict[
-                    (feedback.target.target_id, feedback.feedback_type)
-                ] = feedback
+                feedback_dict[(feedback.target.target_id, feedback.feedback_type)] = feedback
             else:
-                feedback_dict[
-                    (feedback.target[0].target_id, feedback.feedback_type)
-                ] = feedback
+                feedback_dict[(feedback.target[0].target_id, feedback.feedback_type)] = feedback
 
         self.feedback_buffer = list(feedback_dict.values())
 

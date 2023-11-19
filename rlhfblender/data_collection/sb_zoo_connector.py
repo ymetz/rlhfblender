@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import Dict, List, Optional
 
-import data_models.connector as connector
+import rlhfblender.data_models.connector as connector
 import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
@@ -40,9 +40,7 @@ class StableBaselines3Agent(TrainedAgent):
 
         # If checkpoint step is provided, load the model from the checkpoint instead of the fully trained model
         if "checkpoint_step" in kwargs:
-            path = os.path.join(
-                exp.path, "rl_model_{}_steps.zip".format(kwargs["checkpoint_step"])
-            )
+            path = os.path.join(exp.path, "rl_model_{}_steps.zip".format(kwargs["checkpoint_step"]))
         else:
             path = os.path.join(exp.path, "{}.zip".format(exp.env_id))
 
@@ -54,9 +52,7 @@ class StableBaselines3Agent(TrainedAgent):
             self.deterministic = False
 
     def act(self, observation) -> np.ndarray:
-        act, state = self.model.predict(
-            observation, state=self.agent_state, deterministic=self.deterministic
-        )
+        act, state = self.model.predict(observation, state=self.agent_state, deterministic=self.deterministic)
         # Do the state handling internally if necessary
         if state is not None:
             self.agent_state = state
@@ -65,9 +61,7 @@ class StableBaselines3Agent(TrainedAgent):
     def reset(self):
         pass
 
-    def additional_outputs(
-        self, observation, action, output_list=None
-    ) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
         """
         If the model has additional outputs, they can be accessed here.
         :param observation:
@@ -81,28 +75,19 @@ class StableBaselines3Agent(TrainedAgent):
         out_dict = {}
         obs_to_tensor = self.model.policy.obs_to_tensor(observation)[0]
         if "log_probs" in output_list:
-            if isinstance(
-                self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy
-            ) and isinstance(
+            if isinstance(self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy) and isinstance(
                 self.model.policy.action_dist,
                 stable_baselines3.common.distributions.CategoricalDistribution,
             ):
                 out_dict["log_probs"] = (
-                    self.model.policy.get_distribution(obs_to_tensor)
-                    .distribution.probs.detach()
-                    .cpu()
-                    .numpy()
+                    self.model.policy.get_distribution(obs_to_tensor).distribution.probs.detach().cpu().numpy()
                 )
             else:
                 out_dict["log_prob"] = np.array([0.0])
         if "feature_extractor_output" in output_list:
-            out_dict["feature_extractor_output"] = (
-                self.model.policy.extract_features(obs_to_tensor).detach().cpu().numpy()
-            )
+            out_dict["feature_extractor_output"] = self.model.policy.extract_features(obs_to_tensor).detach().cpu().numpy()
         if any(v in ["value", "entropy"] for v in output_list):
-            if isinstance(
-                self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy
-            ):
+            if isinstance(self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy):
                 value, _, entropy = self.model.policy.evaluate_actions(
                     obs_to_tensor, th.from_numpy(action).to(self.model.policy.device)
                 )
@@ -115,17 +100,8 @@ class StableBaselines3Agent(TrainedAgent):
         return out_dict
 
     def extract_features(self, observation):
-        if isinstance(
-            self.model.policy, stable_baselines3.common.base_class.BasePolicy
-        ):
-            return (
-                self.model.policy.extract_features(
-                    self.model.policy.obs_to_tensor(observation)[0]
-                )
-                .detach()
-                .cpu()
-                .numpy()
-            )
+        if isinstance(self.model.policy, stable_baselines3.common.base_class.BasePolicy):
+            return self.model.policy.extract_features(self.model.policy.obs_to_tensor(observation)[0]).detach().cpu().numpy()
         else:
             return np.zeros(0)
 
@@ -167,21 +143,15 @@ class StableBaselines3ZooConnector(connector.Connector):
             return
 
         registration_env_id = env.registration_id
-        registered_envs = set(
-            gym.envs.registry.env_specs.keys()
-        )  # pytype: disable=module-attr
+        registered_envs = set(gym.envs.registry.env_specs.keys())  # pytype: disable=module-attr
 
         # If the environment is not found, suggest the closest match
         if registration_env_id not in registered_envs:
             try:
-                closest_match = difflib.get_close_matches(
-                    registration_env_id, registered_envs, n=1
-                )[0]
+                closest_match = difflib.get_close_matches(registration_env_id, registered_envs, n=1)[0]
             except IndexError:
                 closest_match = "'no close match found...'"
-            raise ValueError(
-                f"{registration_env_id} not found in gym registry, you maybe meant {closest_match}?"
-            )
+            raise ValueError(f"{registration_env_id} not found in gym registry, you maybe meant {closest_match}?")
 
         # Unique id to ensure there is no race condition for the folder creation
         f"_{uuid.uuid4()}" if experiment.pid else ""
@@ -206,9 +176,7 @@ class StableBaselines3ZooConnector(connector.Connector):
         # Set random seed
         set_random_seed(experiment.seed)
         # Create the experiment directory
-        experiment_dir = os.path.join(
-            self.experiment_dir, experiment.exp_name + str(experiment.id)
-        )
+        experiment_dir = os.path.join(self.experiment_dir, experiment.exp_name + str(experiment.id))
 
         if experiment.wandb_tracking:
             try:

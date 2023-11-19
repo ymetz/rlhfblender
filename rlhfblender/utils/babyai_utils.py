@@ -32,20 +32,25 @@ class DictList(dict):
         for key, value in d.items():
             dict.__getitem__(self, key)[index] = value
 
+
 def create_folders_if_necessary(path):
     dirname = os.path.dirname(path)
     if not (os.path.isdir(dirname)):
         os.makedirs(dirname)
 
+
 def storage_dir():
     # defines the storage directory to be in the root (Same level as babyai folder)
     return os.environ.get("BABYAI_STORAGE", ".")
 
+
 def get_model_dir(model_name):
     return os.path.join(storage_dir(), "models", model_name)
 
+
 def get_model_path(model_name):
     return os.path.join(get_model_dir(model_name), "model.pt")
+
 
 def load_model(model_name, raise_not_found=True):
     path = get_model_path(model_name)
@@ -59,6 +64,7 @@ def load_model(model_name, raise_not_found=True):
     except FileNotFoundError:
         if raise_not_found:
             raise FileNotFoundError("No model found at {}".format(path))
+
 
 def get_vocab_path(model_name):
     return os.path.join(get_model_dir(model_name), "vocab.json")
@@ -171,9 +177,7 @@ class ObssPreprocessor:
 class IntObssPreprocessor(object):
     def __init__(self, model_name, obs_space, load_vocab_from=None):
         image_obs_space = obs_space.spaces["image"]
-        self.image_preproc = IntImagePreprocessor(
-            image_obs_space.shape[-1], max_high=image_obs_space.high.max()
-        )
+        self.image_preproc = IntImagePreprocessor(image_obs_space.shape[-1], max_high=image_obs_space.high.max())
         self.instr_preproc = InstructionsPreprocessor(load_vocab_from or model_name)
         self.vocab = self.instr_preproc.vocab
         self.obs_space = {
@@ -191,6 +195,7 @@ class IntObssPreprocessor(object):
             obs_.instr = self.instr_preproc(obss, device=device)
 
         return obs_
+
 
 class Agent(ABC):
     """An abstraction of the behavior of an agent. The agent is able:
@@ -235,9 +240,7 @@ class ModelAgent(Agent):
 
     def act_batch(self, many_obs):
         if self.memory is None:
-            self.memory = torch.zeros(
-                len(many_obs), self.model.memory_size, device=self.device
-            )
+            self.memory = torch.zeros(len(many_obs), self.model.memory_size, device=self.device)
         elif self.memory.shape[0] != len(many_obs):
             raise ValueError("stick to one batch size for the lifetime of an agent")
         preprocessed_obs = self.obss_preprocessor(many_obs, device=self.device)

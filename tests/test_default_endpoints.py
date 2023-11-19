@@ -7,7 +7,7 @@
 import json
 import os
 
-from backend.app.data_models.global_models import (
+from rlhfblender.data_models.global_models import (
     Dataset,
     Environment,
     Experiment,
@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 # Set DB environment variable
 os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
-from backend.app.app import app
+from rlhfblender.app import app
 
 client = TestClient(app)
 
@@ -37,12 +37,8 @@ def test_get_all():
 
 
 def test_create_environment():
-    test_environment = Environment(
-        name="test_environment", description="test_description"
-    )
-    response = client.post(
-        "/create?model_name=Environment", json=test_environment.dict()
-    )
+    test_environment = Environment(name="test_environment", description="test_description")
+    response = client.post("/create?model_name=Environment", json=test_environment.dict())
     assert response.status_code == 200
 
 
@@ -65,23 +61,15 @@ def test_create_dataset():
 
 
 def test_create_tracking_item():
-    test_tracking_item = TrackingItem(
-        name="test_tracking_item", description="test_description"
-    )
-    response = client.post(
-        "/create?model_name=TrackingItem", json=test_tracking_item.dict()
-    )
+    test_tracking_item = TrackingItem(name="test_tracking_item", description="test_description")
+    response = client.post("/create?model_name=TrackingItem", json=test_tracking_item.dict())
     assert response.status_code == 200
 
 
-def test_get_all():
+def test_get_all_with_added_elements():
 
-    test_environment = Environment(
-        name="test_environment2", description="test_description2"
-    )
-    response = client.post(
-        "/create?model_name=Environment", json=test_environment.dict()
-    )
+    test_environment = Environment(name="test_environment2", description="test_description2")
+    response = client.post("/create?model_name=Environment", json=test_environment.dict())
     assert response.status_code == 200
 
     response = client.get("/get_all?model_name=Environment")
@@ -95,29 +83,17 @@ def test_get_all():
 def test_get_data_by_id():
     response = client.get("/get_data_by_id?model_name=Environment&item_id=0")
     assert response.status_code == 200
-    assert (
-        response.json()
-        == Environment(name="test_environment", description="test_description").dict()
-    )
+    assert response.json() == Environment(name="test_environment", description="test_description").dict()
 
 
 def test_update_data():
-    test_environment = Environment(
-        name="test_environment_updated", description="test_description_updated"
-    )
-    response = client.post(
-        "/update_data?model_name=Environment&item_id=0", json=test_environment.dict()
-    )
+    test_environment = Environment(name="test_environment_updated", description="test_description_updated")
+    response = client.post("/update_data?model_name=Environment&item_id=0", json=test_environment.dict())
     assert response.status_code == 200
 
     response = client.get("/get_data_by_id?model_name=Environment&item_id=0")
     assert response.status_code == 200
-    assert (
-        response.json()
-        == Environment(
-            name="test_environment_updated", description="test_description_updated"
-        ).dict()
-    )
+    assert response.json() == Environment(name="test_environment_updated", description="test_description_updated").dict()
 
 
 def test_delete_data():
@@ -126,9 +102,7 @@ def test_delete_data():
 
     response = client.get("/get_all?model_name=Environment")
     assert response.status_code == 200
-    assert response.json() == [
-        Environment(name="test_environment2", description="test_description2").dict()
-    ]
+    assert response.json() == [Environment(name="test_environment2", description="test_description2").dict()]
 
 
 def test_health():
@@ -145,9 +119,7 @@ def test_ui_configs():
 
 def test_save_ui_config():
     test_ui_config = {"test": "test"}
-    response = client.post(
-        "/save_ui_config?ui_config_name=test_ui_config", json=test_ui_config
-    )
+    response = client.post("/save_ui_config?ui_config_name=test_ui_config", json=test_ui_config)
     assert response.status_code == 200
 
     response = client.get("/ui_configs")
