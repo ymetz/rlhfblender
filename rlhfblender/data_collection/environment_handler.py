@@ -51,7 +51,6 @@ def get_environment(
     )
 
     if "vec_env_wrapper" in environment_config.keys():
-
         vec_env_wrapper = get_wrapper_class(environment_config, "vec_env_wrapper")
         env = vec_env_wrapper(env)
 

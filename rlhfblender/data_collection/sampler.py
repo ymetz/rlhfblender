@@ -28,7 +28,6 @@ class Sampler:
         sampler_type: SamplerType = SamplerType.sequential,
         sample_model: Optional[FeedbackModel] = None,
     ):
-
         self.experiment = experiment
         self.env = env
         self.saved_episode_dir = saved_episode_dir
@@ -49,7 +48,6 @@ class Sampler:
         env: Environment,
         sampling_strategy: str = "sequential",
     ):
-
         self.experiment = experiment
         self.env = env
 
@@ -92,7 +90,6 @@ class Sampler:
         return self.episode_buffer
 
     def set_config(self, **kwargs):
-
         for key, value in kwargs.items():
             if key == "max_episode_count":
                 self.max_episode_count = value
@@ -128,7 +125,6 @@ class Sampler:
         return sampled_batch
 
     def configure_sampler(self, **kwargs):
-
         self.sampler_type = kwargs.get("sampler_type", SamplerType.sequential)
         self.sample_model = kwargs.get("sample_model", None)
         self.max_episode_count = kwargs.get("max_episode_count", 1000)

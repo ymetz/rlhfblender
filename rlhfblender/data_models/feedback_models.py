@@ -221,7 +221,6 @@ class RelativeFeedback(StandardizedFeedback):
 
 
 def get_target(target: dict, granularity: str) -> Target | None:
-
     if granularity == "episode":
         return Episode(
             target_id=target["target_id"],
