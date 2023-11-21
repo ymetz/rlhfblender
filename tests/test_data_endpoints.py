@@ -5,6 +5,9 @@
 """
 import os
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from rlhfblender.data_models.global_models import (
     Dataset,
     Environment,
@@ -12,8 +15,6 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 # Set DB environment variable
 os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"

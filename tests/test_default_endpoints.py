@@ -4,10 +4,11 @@
 
 import json
 import os
+from unittest import TestCase
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
-from unittest import TestCase
 
 from rlhfblender.app import app
 from rlhfblender.data_models.global_models import (
