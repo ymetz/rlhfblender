@@ -31,7 +31,7 @@ class Project(BaseModel):
         mode="before",
     )
     def process_(cls, in_list):
-        if isinstance(in_list,list):
+        if isinstance(in_list, list):
             return in_list
         return eval(in_list)
 

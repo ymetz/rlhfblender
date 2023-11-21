@@ -51,6 +51,7 @@ app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", DB_HOST))
 
+
 @app.on_event("startup")
 async def startup():
     await database.connect()
@@ -124,6 +125,7 @@ class AddDataRequest(BaseModel):
     model_name: str
     data: dict
 
+
 @app.post("/add_data", response_model=BaseModel, tags=["DATA"])
 async def add_data(req: AddDataRequest):
     model = get_model_by_name(req.model_name)
@@ -132,10 +134,12 @@ async def add_data(req: AddDataRequest):
     await db_handler.add_entry(database, model, req.data)
     return {"message": f"Added {req.model_name}"}
 
+
 class UpdateDataRequest(BaseModel):
     model_name: str
     item_id: int
     data: dict
+
 
 @app.post("/update_data", response_model=BaseModel, tags=["DATA"])
 async def update_data(req: UpdateDataRequest):

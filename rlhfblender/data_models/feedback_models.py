@@ -58,7 +58,7 @@ class UnprocessedFeedback(BaseModel):
     action: int | List[float] | None = None
     state: dict | None = None
     action_preferences: List[int] | List[List[float]] | None = None
-    state_preferences:List[dict] | None = None
+    state_preferences: List[dict] | None = None
 
     # Demo feedback is handled separately
     is_demo: bool = False
