@@ -11,10 +11,10 @@ from stable_baselines3.common.vec_env import (
     VecFrameStack,
     VecNormalize,
 )
-from rlhfblender.utils import get_wrapper_class
 
 from rlhfblender.data_handling.database_handler import add_entry
 from rlhfblender.data_models.global_models import Environment
+from rlhfblender.utils import get_wrapper_class
 
 
 def get_environment(

@@ -9,7 +9,6 @@ import numpy as np
 
 # Register custom envs
 import yaml
-
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import (
     BaseCallback,
@@ -38,6 +37,7 @@ from stable_baselines3.common.vec_env import (
 
 # For custom activation fn
 from torch import nn as nn
+
 from rlhfblender.utils.callbacks import SaveVecNormalizeCallback
 from rlhfblender.utils.reward_wrapper import RewardVecEnvWrapper
 from rlhfblender.utils.utils import (

@@ -4,10 +4,10 @@ from typing import Dict, Optional
 import gymnasium
 import numpy as np
 import torch as th
-from rlhfblender.config import DB_HOST
 from databases import Database
 from scipy.stats import entropy
 
+from rlhfblender.config import DB_HOST
 from rlhfblender.data_models.agent import TrainedAgent
 from rlhfblender.data_models.global_models import Experiment
 from rlhfblender.utils import babyai_utils as utils

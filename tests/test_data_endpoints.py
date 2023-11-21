@@ -30,5 +30,5 @@ def test_available_frameworks():
 
 
 def test_get_algorithms():
-    response = client.get("/data/get_algorithms")
+    response = client.get("/data/get_algorithms", params={"selected_framework": "StableBaselines3"})
     assert response.status_code == 200

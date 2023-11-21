@@ -2,6 +2,7 @@ import argparse
 import os
 
 from stable_baselines3.common.vec_env import VecVideoRecorder
+
 from rlhfblender.utils.exp_manager import ExperimentManager
 from rlhfblender.utils.utils import ALGOS, create_test_env, get_latest_run_id, get_saved_hyperparams
 

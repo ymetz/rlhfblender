@@ -51,7 +51,6 @@ app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", DB_HOST))
 
-
 @app.on_event("startup")
 async def startup():
     await database.connect()
@@ -121,22 +120,30 @@ async def get_data_by_id(model_name: str, item_id: int):
     return await db_handler.get_single_entry(database, model, item_id)
 
 
-@app.post("/add_data", response_model=BaseModel, tags=["DATA"])
-async def add_data(model_name: str, data: dict):
-    model = get_model_by_name(model_name)
-    if model is None:
-        return {"message": f"Model {model_name} not found."}
-    await db_handler.add_entry(database, model, data)
-    return {"message": f"Added {model_name}"}
+class AddDataRequest(BaseModel):
+    model_name: str
+    data: dict
 
+@app.post("/add_data", response_model=BaseModel, tags=["DATA"])
+async def add_data(req: AddDataRequest):
+    model = get_model_by_name(req.model_name)
+    if model is None:
+        return {"message": f"Model {req.model_name} not found."}
+    await db_handler.add_entry(database, model, req.data)
+    return {"message": f"Added {req.model_name}"}
+
+class UpdateDataRequest(BaseModel):
+    model_name: str
+    item_id: int
+    data: dict
 
 @app.post("/update_data", response_model=BaseModel, tags=["DATA"])
-async def update_data(model_name: str, item_id: int, data: dict):
-    model = get_model_by_name(model_name)
+async def update_data(req: UpdateDataRequest):
+    model = get_model_by_name(req.model_name)
     if model is None:
-        return {"message": f"Model {model_name} not found."}
-    await db_handler.update_entry(database, model, item_id, data)
-    return {"message": f"Updated {model_name} with id {item_id}"}
+        return {"message": f"Model {req.model_name} not found."}
+    await db_handler.update_entry(database, model, req.item_id, req.data)
+    return {"message": f"Updated {req.model_name} with id {req.item_id}"}
 
 
 @app.delete("/delete_data", response_model=BaseModel, tags=["DATA"])
@@ -183,43 +190,52 @@ async def delete_ui_config(ui_config_name: str):
 async def retreive_logs():
     # Return list of CSV files from logs directory, zip them and proide download link
     logs = []
-    for filename in os.listdir("logs"):
-        if filename.endswith(".csv"):
-            logs.append(filename)
-    with zipfile.ZipFile("logs.zip", "w") as zip:
-        for log in logs:
-            zip.write(os.path.join("logs", log))
-    return FileResponse("logs.zip", media_type="application/zip", filename="logs.zip")
+    try:
+        for filename in os.listdir("logs"):
+            if filename.endswith(".csv"):
+                logs.append(filename)
+        with zipfile.ZipFile("logs.zip", "w") as zip:
+            for log in logs:
+                zip.write(os.path.join("logs", log))
+        return FileResponse("logs.zip", media_type="application/zip", filename="logs.zip")
+    except FileNotFoundError:
+        return {"message": "No logs found."}
 
 
 @app.get("/retreive_demos", tags=["LOGS"])
-async def retreive_logs():
+async def retreive_demos():
     # Return list of CSV files from logs directory, zip them and proide download link
-    logs = []
-    for filename in os.listdir(os.path.join("data", "generated_demos")):
-        if filename.endswith(".npz"):
-            logs.append(filename)
-    with zipfile.ZipFile("logs.zip", "w") as zip:
-        for log in logs:
-            zip.write(os.path.join("data", "generated_demos", log))
-    return FileResponse("demos.zip", media_type="application/zip", filename="demos.zip")
+    demos = []
+    try:
+        for filename in os.listdir(os.path.join("data", "generated_demos")):
+            if filename.endswith(".npz"):
+                demos.append(filename)
+        with zipfile.ZipFile("logs.zip", "w") as zip:
+            for log in demos:
+                zip.write(os.path.join("data", "generated_demos", log))
+        return FileResponse("demos.zip", media_type="application/zip", filename="demos.zip")
+    except FileNotFoundError:
+        return {"message": "No demos found."}
 
 
 @app.get("/retreive_feature_feedback", tags=["LOGS"])
-async def retreive_logs():
+async def retreive_feature_feedback():
     # Return list of CSV files from logs directory, zip them and proide download link
-    logs = []
-    for filename in os.listdir(os.path.join("data", "feature_feedback")):
-        if filename.endswith(".png"):
-            logs.append(filename)
-    with zipfile.ZipFile("logs.zip", "w") as zip:
-        for log in logs:
-            zip.write(os.path.join("data", "feature_feedback", log))
-    return FileResponse(
-        "feature_selections.zip",
-        media_type="application/zip",
-        filename="feature_selections.zip",
-    )
+    feedbacks = []
+    try:
+        for filename in os.listdir(os.path.join("data", "feature_feedback")):
+            if filename.endswith(".png"):
+                feedbacks.append(filename)
+        with zipfile.ZipFile("logs.zip", "w") as zip:
+            for log in feedbacks:
+                zip.write(os.path.join("data", "feature_feedback", log))
+        return FileResponse(
+            "feature_selections.zip",
+            media_type="application/zip",
+            filename="feature_selections.zip",
+        )
+    except FileNotFoundError:
+        return {"message": "No feature feedback data found."}
 
 
 def main(args):

@@ -1,5 +1,7 @@
 from typing import Type
 
+from pydantic import BaseModel
+
 from .feedback_models import StandardizedFeedback, UnprocessedFeedback
 from .global_models import (
     Dataset,
@@ -10,7 +12,6 @@ from .global_models import (
     RecordedEpisodes,
     TrackingItem,
 )
-from pydantic import BaseModel
 
 
 def get_model_by_name(name) -> Type[BaseModel] | None:

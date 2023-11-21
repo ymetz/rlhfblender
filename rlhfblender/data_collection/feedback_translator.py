@@ -3,10 +3,10 @@ This module translates incoming feedback of different types into a common format
 """
 
 import numpy as np
-from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
 
 from rlhfblender.data_models.feedback_models import *
 from rlhfblender.data_models.global_models import Environment, Experiment
+from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
 
 
 class FeedbackTranslator:
