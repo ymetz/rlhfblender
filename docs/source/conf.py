@@ -19,6 +19,7 @@
 #
 import os
 import sys
+import datetime
 
 # source code directory, relative to this file, for sphinx-autobuild
 sys.path.insert(0, os.path.abspath("../.."))
@@ -75,7 +76,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "RLHF-Blender"
-copyright = "{datetime.date.today().year}, Yannick Metz, Raphael Baur"
+copyright = f"{datetime.date.today().year}, University of Konstanz, ETH Zurich"
 author = "Yannick Metz, Raphael Baur"
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
