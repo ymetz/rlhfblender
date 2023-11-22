@@ -1,7 +1,6 @@
 import enum
 from typing import List, Union
 
-import gymnasium as gym
 from pydantic import BaseModel
 
 from rlhfblender.data_models.global_models import EpisodeID
@@ -52,24 +51,24 @@ class UnprocessedFeedback(BaseModel):
     text_feedback: str = ""  # e.g.: "The agent is doing well in the beginning, but then it fails to collect the key."
 
     # Evaluative feedback content
-    score: Union[float, None] = 0.0  # e.g.: 0.5
-    preferences: Union[List[int], None] = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
+    score: float | None = 0.0  # e.g.: 0.5
+    preferences: List[int] | None = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
 
     # Instructional feedback content
-    action: Union[int, List[float], None] = None
-    state: Union[dict, None] = None
-    action_preferences: Union[List[int], List[List[float]], None] = None
-    state_preferences: Union[List[dict], None] = None
+    action: int | List[float] | None = None
+    state: dict | None = None
+    action_preferences: List[int] | List[List[float]] | None = None
+    state_preferences: List[dict] | None = None
 
     # Demo feedback is handled separately
     is_demo: bool = False
     demo_preferences: Union[List[int], None] = None
 
     # Descriptive feedback content
-    feature_selection: List[dict] = None
-    feature_importance: Union[float, List[float]] = None
-    feature_selections_preferences: List[List[dict]] = None
-    feature_importance_preferences: List[Union[float, List[float]]] = None
+    feature_selection: List[dict] | None = None
+    feature_importance: float | List[float] | None = None
+    feature_selections_preferences: List[List[dict]] | None = None
+    feature_importance_preferences: List[float | List[float]] | None = None
 
     # Meta information
     user_id: int = -1
@@ -221,8 +220,7 @@ class RelativeFeedback(StandardizedFeedback):
     content: Union[RelativeEvaluation, RelativeInstruction, RelativeDescription] = None
 
 
-def get_target(target: dict, granularity: str) -> Target:
-
+def get_target(target: dict, granularity: str) -> Target | None:
     if granularity == "episode":
         return Episode(
             target_id=target["target_id"],
@@ -250,10 +248,10 @@ def get_target(target: dict, granularity: str) -> Target:
     elif granularity == "entire":
         return Entire(
             target_id=target["target_id"],
-            reference=target["reference"],
             origin=get_origin(target["origin"]),
             timestamp=target["timestamp"],
         )
+    return None
 
 
 def get_granularity(granularity: str) -> Granularity:
@@ -265,6 +263,7 @@ def get_granularity(granularity: str) -> Granularity:
         return Granularity.segment
     elif granularity == "entire":
         return Granularity.entire
+    return Granularity.episode
 
 
 def get_origin(origin: str) -> Origin:
@@ -274,3 +273,4 @@ def get_origin(origin: str) -> Origin:
         return Origin.online
     elif origin == "generated":
         return Origin.generated
+    return Origin.offline

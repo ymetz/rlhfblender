@@ -5,7 +5,6 @@ import time
 import uuid
 from typing import Dict, List, Optional
 
-import rlhfblender.data_models.connector as connector
 import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
@@ -13,6 +12,8 @@ import torch as th
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.utils import set_random_seed
 from torch import Tensor
+
+import rlhfblender.data_models.connector as connector
 
 # Register custom envs
 from rlhfblender.data_handling.database_handler import get_single_entry

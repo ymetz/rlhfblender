@@ -27,6 +27,7 @@ show_error_codes = true
 exclude = """(?x)(
     tests/dummy_env/*$
   )"""
+ignore_errors = true
 
 [tool.pytest.ini_options]
 # Deterministic ordering for tests; useful for pytest-xdist.

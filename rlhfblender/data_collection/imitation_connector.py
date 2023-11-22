@@ -7,7 +7,6 @@ from typing import List, Optional
 
 import gymnasium as gym
 import numpy as np
-import rl_baselines3_zoo.utils.import_envs  # noqa: F401 pytype: disable=import-error
 import torch as th
 from stable_baselines3.common.utils import set_random_seed
 

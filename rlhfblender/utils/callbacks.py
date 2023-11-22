@@ -14,6 +14,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import Video
 
+
 class SaveVecNormalizeCallback(BaseCallback):
     """
     Callback for saving a VecNormalize wrapper every ``save_freq`` steps

@@ -156,7 +156,6 @@ async def main(benchmark_dicts: List[Dict]):
 
     skipped = 0
     for item in benchmark_dicts:
-
         benchmark_run = BenchmarkRequestModel(**item)
         save_file_name = os.path.join(
             f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
@@ -263,7 +262,6 @@ async def main(benchmark_dicts: List[Dict]):
 
 
 if __name__ == "__main__":
-
     os.makedirs("data", exist_ok=True)
 
     # Run benchmarks for Atari-Breakout

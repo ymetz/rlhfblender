@@ -5,12 +5,6 @@ from typing import Any, Dict, List
 
 import cv2
 import numpy as np
-from rlhfblender.data_collection.demo_session import (
-    check_socket_connection,
-    close_demo_session,
-    create_new_session,
-    demo_perform_step,
-)
 from databases import Database
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -18,6 +12,12 @@ from pydantic import BaseModel
 
 from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection import framework_selector
+from rlhfblender.data_collection.demo_session import (
+    check_socket_connection,
+    close_demo_session,
+    create_new_session,
+    demo_perform_step,
+)
 from rlhfblender.data_collection.environment_handler import (
     get_environment,
     initial_registration,

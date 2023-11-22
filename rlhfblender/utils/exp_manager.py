@@ -9,7 +9,6 @@ import numpy as np
 
 # Register custom envs
 import yaml
-
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import (
     BaseCallback,
@@ -38,6 +37,7 @@ from stable_baselines3.common.vec_env import (
 
 # For custom activation fn
 from torch import nn as nn
+
 from rlhfblender.utils.callbacks import SaveVecNormalizeCallback
 from rlhfblender.utils.reward_wrapper import RewardVecEnvWrapper
 from rlhfblender.utils.utils import (
@@ -427,7 +427,6 @@ class ExperimentManager(object):
         os.makedirs(self.params_path, exist_ok=True)
 
     def create_callbacks(self):
-
         if self.save_freq > 0:
             # Account for the number of parallel environments
             self.save_freq = max(self.save_freq // self.n_envs, 1)
@@ -462,7 +461,6 @@ class ExperimentManager(object):
             self.callbacks.append(eval_callback)
 
         if not self.no_video_callback:
-
             video_save_freq = max(self.video_save_freq // self.n_envs, 1)
 
             video_recorder_callback = VideoRecorderCallback(self.create_envs(1, eval_env=True), render_freq=video_save_freq)

@@ -3,7 +3,8 @@ from typing import List
 
 from rlhfblender.data_handling import database_handler
 from rlhfblender.data_models import StandardizedFeedback, UnprocessedFeedback
-from rlhfblender.logger import Logger
+
+from .logger import Logger
 
 
 class SQLLogger(Logger):

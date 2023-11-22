@@ -1,7 +1,7 @@
 from typing import List
 
 import numpy as np
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 """
     Main Data Models
@@ -23,15 +23,15 @@ class Project(BaseModel):
     project_experiments: list = []
     wandb_entity: str = ""
 
-    @validator(
+    @field_validator(
         "project_tags",
         "project_environments",
         "project_datasets",
         "project_experiments",
-        pre=True,
+        mode="before",
     )
     def process_(cls, in_list):
-        if type(in_list) == list:
+        if isinstance(in_list, list):
             return in_list
         return eval(in_list)
 
@@ -41,7 +41,7 @@ class Experiment(BaseModel):
     exp_name: str = ""
     created_timestamp: int = -1
     run_timestamp: int = -1
-    last_modified: int
+    last_modified: int = -1
     pid: int = -1
     status: List[str] = []
     env_id: int = -1
@@ -64,7 +64,7 @@ class Experiment(BaseModel):
     trained_agent_path: str = ""
     seed: int = -1
 
-    @validator(
+    @field_validator(
         "status",
         "checkpoint_list",
         "exp_tags",
@@ -72,10 +72,10 @@ class Experiment(BaseModel):
         "hyperparams",
         "observation_space_info",
         "action_space_info",
-        pre=True,
+        mode="before",
     )
     def process_(cls, in_value):
-        if type(in_value) == list or type(in_value) == dict:
+        if isinstance(in_value, list) or isinstance(in_value, dict):
             return in_value
         return eval(in_value)
 
@@ -94,15 +94,15 @@ class Environment(BaseModel):
     env_path: str = ""
     additional_gym_packages: List[str] = []
 
-    @validator(
+    @field_validator(
         "tags",
         "additional_gym_packages",
         "observation_space_info",
         "action_space_info",
-        pre=True,
+        mode="before",
     )
     def process_(cls, in_value):
-        if type(in_value) == list or type(in_value) == dict:
+        if isinstance(in_value, list) or isinstance(in_value, dict):
             return in_value
         return eval(in_value)
 
@@ -116,16 +116,16 @@ class Dataset(BaseModel):
     dataset_tags: list = []
     dataset_environment: str = ""
 
-    @validator("dataset_tags", pre=True)
+    @field_validator("dataset_tags", mode="before")
     def process_(cls, in_list):
-        if type(in_list) == list:
+        if isinstance(in_list, list):
             return in_list
         return eval(in_list)
 
 
 class TrackingItem(BaseModel):
     id: int = -1
-    tracking_id: str = -1
+    tracking_id: int = -1
     exp_id: int = -1
     exp_name: str = ""
     env_id: int = -1
@@ -148,9 +148,9 @@ class EvaluationConfig(BaseModel):
     eval_comment: str = ""
     eval_timestamp: int = -1
 
-    @validator("eval_tags", pre=True)
+    @field_validator("eval_tags", mode="before")
     def process_(cls, in_list):
-        if type(in_list) == list:
+        if isinstance(in_list, list):
             return in_list
         return eval(in_list)
 
