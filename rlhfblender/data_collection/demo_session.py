@@ -92,7 +92,6 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
                 data = conn.recv(1024)
                 # convert the data to a dict
                 data = eval(data.decode("utf-8"))
-                assert isinstance(data, dict)
                 if not data:
                     break
                 elif data["command"] == "step":

@@ -27,7 +27,14 @@ Main Features
 - Wrappers for reward model training
 - Comprenhensive logging of feedback and user interactions
 
-RLHF-BLender is designed to be fully compatible with `gymnasium <https://github.com/Farama-Foundation/Gymnasium>`_ and `Stable Baselines3 <https://github.com/DLR-RM/stable-baselines3>`_.
+.. figure:: ./images/user_interface.png
+    :width: 90 %
+    :align: center
+    :alt: User interface of the application
+    
+    A view of the user interface of the application showing "BabyAI". The environement is pre-configured for a study.
+
+RLHF-Blender is designed to be fully compatible with `gymnasium <https://github.com/Farama-Foundation/Gymnasium>`_ and `Stable Baselines3 <https://github.com/DLR-RM/stable-baselines3>`_.
 A list of currently supported environments:
 
   - Atari
@@ -50,7 +57,6 @@ A list of currently supported environments:
 
   misc/changelog
   misc/projects
-
 
 Citing RLHF-Blender
 ------------------------

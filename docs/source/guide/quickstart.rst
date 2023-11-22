@@ -11,6 +11,14 @@ For the manual installation, you can start the Python backend via `python rlhfbl
 The application is then reachable at http://localhost:3000.
 
 
+.. figure:: ../images/user_interface.png
+    :width: 90 %
+    :align: center
+    :alt: User interface of the application
+    
+    A view of the user interface of the application showing "BabyAI". The environement is pre-configured for a study.
+
+
 Configuring
 -----------
 There are two types of configuration you can do: The configruation for the backend (i.e., which environment to run, which data to load, which models to train with the human feedback, etc.),
@@ -25,8 +33,12 @@ By default, the application will look in the `configs`directory for a `default.j
 
 The configuration can also be done via the frontend interface:
 
-![Configuration](../docs/images/configuration.png)
-Figure: Configuration of the application via the frontend interface.
+.. figure:: ../images/configuration.png
+    :width: 50 %
+    :align: center
+    :alt: Configuration of the application via the frontend interface.
+    
+    Configuration of the application via the frontend interface.
 
 
 Run experiments
@@ -37,6 +49,15 @@ The application can be served in two modes: `config` and `experiment`.
 
 In `config` mode, the application provides you with full access to configurations and the data.
 Use this mode to try out different options and configure the application according to your needs.
+
+You can access the configuration by calling `url:port?StudyMode=configure`.
+
+.. figure:: ../images/option_selection.png
+    :width: 90 %
+    :align: center
+    :alt: In the config mode, controls to choose the environment and configurations are available for individual configuration of the application.
+    
+    In the config mode, controls to choose the environment and configurations are available for individual configuration of the application.
 
 In `experiment` mode, the application will run the experiment as configured in the backend configuration.
 The application can then be served to participants. During the experiment, the application will log the actions of the participants and the results of the experiment.

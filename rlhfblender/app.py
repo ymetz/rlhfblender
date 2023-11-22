@@ -172,6 +172,8 @@ async def ui_configs():
         if filename.endswith(".json"):
             with open(os.path.join("configs/ui_configs", filename)) as f:
                 ui_confs.append(json.load(f))
+    ui_confs.sort(key=lambda x: x["id"])
+    # Check if there 
     return ui_confs
 
 
@@ -251,11 +253,16 @@ def main(args):
         action="store_true",
         help="If true, restart the server as changes occur to the code.",
     )
+    parser.add_argument("--ui-config", type=str, default=None, help="Path to UI config file.")
+    parser.add_argument("--backend-config", type=str, default=None, help="Path to backend config file.")
 
     args = parser.parse_args(args)
 
     if args.dev:
         print(f"Serving on port {args.port} in development mode.")
+        # set config paths in app state
+        app.state.ui_config_path = args.ui_config
+
         uvicorn.run(
             "app:app",
             host="0.0.0.0",

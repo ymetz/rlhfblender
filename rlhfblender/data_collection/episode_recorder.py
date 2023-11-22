@@ -99,8 +99,8 @@ class EpisodeRecorder(object):
         probs_buffer = []
 
         seed = random.randint(0, 2000)
-        observations = env.reset(seed=seed) if not isinstance(env, VecEnv) else env.reset(seed=seed)
         if not isinstance(env, VecEnv):
+            observations, _ = env.reset(seed=seed)
             rewards = 0
             dones = False
             infos = {}
@@ -109,6 +109,8 @@ class EpisodeRecorder(object):
                 infos["mission"] = observations["mission"]
                 infos["seed"] = seed
         else:
+            env.seed(seed=seed)
+            observations = env.reset()
             rewards = np.zeros(n_envs)
             dones = np.zeros(n_envs, dtype=bool)
             infos = [{} for _ in range(n_envs)]
@@ -126,6 +128,7 @@ class EpisodeRecorder(object):
         values = None
         probs = None
         total_steps = 0
+
         while (episode_counts < episode_count_targets).any() and total_steps <= max_steps:
             actions = agent.act(observations)
             # If policy is not part of the model, we have directly loaded a policy
@@ -148,7 +151,11 @@ class EpisodeRecorder(object):
                 # If not dummy vec env, we need to reset ourselves
                 if dones:
                     seed = random.randint(0, 1000000)
-                    observation = env.reset(seed=seed)
+                    if isinstance(env, VecEnv):
+                        env.seed(seed=seed)
+                        observations = env.reset()
+                    else:
+                        observation, _ = env.reset(seed=seed)
                     if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observation.keys():
                         infos[0]["mission"] = observation["mission"]
                         infos[0]["seed"] = seed
@@ -162,8 +169,6 @@ class EpisodeRecorder(object):
             for i in range(n_envs):
                 if episode_counts[i] < episode_count_targets[i]:
                     # unpack values so that the callback can access the local variables
-                    reward = rewards[i]
-                    done = dones[i]
 
                     if "feature_extractor_output" in additional_out_attributes:
                         feature_extractor_buffer.append(np.squeeze(additional_out_attributes["feature_extractor_output"][i]))
@@ -237,8 +242,15 @@ class EpisodeRecorder(object):
                 render_buffer.append(np.squeeze(render_frame))
             total_steps += 1
 
-            observation, reward, terminated, truncated, info = env.step(actions)
-            done = terminated or truncated
+            if not isinstance(env, VecEnv):
+                observation, reward, terminated, truncated, info = env.step(actions)
+                done = terminated or truncated
+                observations = np.expand_dims(observation, axis=0)
+                rewards = np.expand_dims(reward, axis=0)
+                dones = np.expand_dims(done, axis=0)
+                infos = [info]
+            else:
+                observation, rewards, dones, info = env.step(actions)
 
         # Add last render frame to buffer
         if render:
@@ -262,15 +274,6 @@ class EpisodeRecorder(object):
                 infos_buffer[np.argmin([i["value"] for i in infos_buffer])]["label"] = "Min. Value"
                 infos_buffer[np.argmax(rew_buffer)]["label"] = "Max. Step Reward"
                 infos_buffer[np.argmin(rew_buffer)]["label"] = "Min. Step Reward"
-
-            ep_length_idx = 0
-            step_idx = 0
-            for i in range(len(infos_buffer)):
-                if step_idx >= episode_lengths[ep_length_idx]:
-                    ep_length_idx += 1
-                    step_idx = 0
-                infos_buffer[i]["game episode step"] = step_idx
-                step_idx += 1
 
         if render:
             render_buffer = np.array(render_buffer)
@@ -320,7 +323,7 @@ class EpisodeRecorder(object):
                 additional_metrics={},
             )
         )
-
+        
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(os.path.join(save_path + ".npz"), "wb") as f:
             np.savez(

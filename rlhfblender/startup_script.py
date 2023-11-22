@@ -135,7 +135,7 @@ def encode_video(renders: np.ndarray, path: str) -> None:
     # Create video in H264 format
     out = cv2.VideoWriter(
         f"{path}.mp4",
-        cv2.VideoWriter_fourcc(*"mpv4"),
+        cv2.VideoWriter_fourcc(*"mp4v"),
         24,
         (renders.shape[2], renders.shape[1]),
     )
