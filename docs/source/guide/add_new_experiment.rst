@@ -56,38 +56,38 @@ Using pre-generated data
 
 In case you want to use pre-generated data, you need to put the data in the ``data`` folder. The data needs to be in the following format:
 
-.. code-block:: python
-    data
-    ├── renders
-    │   ├── MyExperiment
-    │   │   ├── subfolder1
-    │   │   │   ├── 0.mp4
-    │   │   │   ├── 1.mp4
-    │   │   ...
-    ├── thumbnails
-    │   ├── MyExperiment
-    │   │   ├── subfolder1
-    │   │   │   ├── 0.png
-    │   │   │   ├── 1.png
-    │   │   ...
-    ├── episodes
-    │   ├── MyExperiment
-    │   │   ├── subfolder1
-    │   │   │   ├── 0.npz
-    │   │   │   ├── 1.npz
-    │   │   ...
-    ├── rewards
-    │   ├── MyExperiment
-    │   │   ├── subfolder1
-    │   │   │   ├── 0.npz
-    │   │   │   ├── 1.npz
-    │   │   ...
-    ├── uncertainty
-    │   ├── MyExperiment
-    │   │   ├── subfolder1
-    │   │   │   ├── 0.npz
-    │   │   │   ├── 1.npz
-    │   │   ...
+
+| data
+| ├── renders
+| │   ├── MyExperiment
+| │   │   ├── subfolder1
+| │   │   │   ├── 0.mp4
+| │   │   │   ├── 1.mp4
+| │   │   ...
+| ├── thumbnails
+| │   ├── MyExperiment
+| │   │   ├── subfolder1
+| │   │   │   ├── 0.png
+| │   │   │   ├── 1.png
+| │   │   ...
+| ├── episodes
+| │   ├── MyExperiment
+| │   │   ├── subfolder1
+| │   │   │   ├── 0.npz
+| │   │   │   ├── 1.npz
+| │   │   ...
+| ├── rewards
+| │   ├── MyExperiment
+| │   │   ├── subfolder1
+| │   │   │   ├── 0.npz
+| │   │   │   ├── 1.npz
+| │   │   ...
+| ├── uncertainty
+| │   ├── MyExperiment
+| │   │   ├── subfolder1
+| │   │   │   ├── 0.npz
+| │   │   │   ├── 1.npz
+| │   │   ...
 
 
 The easiest way to generate the data is to use the ``generate_data.py`` script running inference with a trained model. You can run it with the following command:
