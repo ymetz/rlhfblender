@@ -5,7 +5,6 @@
 """
 import os
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from rlhfblender.data_models.global_models import (
@@ -17,7 +16,7 @@ from rlhfblender.data_models.global_models import (
 )
 
 # Set DB environment variable
-os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
+os.environ["RLHFBLENDER_DB_HOST"] = "test_api.db"
 
 from rlhfblender.app import app
 from rlhfblender.routes.data import *

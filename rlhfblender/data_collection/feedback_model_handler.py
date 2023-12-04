@@ -1,8 +1,3 @@
-"""
-This file contains the class that handles the feedback model.
-It contains a reference to a FeedbackDataset and a FeedbackNet.
-Collected feedback can be submitted to the model handler, and training/re-training can be initiated.
-"""
 import numpy as np
 from imitation.rewards.reward_nets import (
     BasicRewardNet,
@@ -22,6 +17,20 @@ from rlhfblender.data_models.feedback_models import (
 
 
 class FeedbackModelHandler:
+    """
+    This class handles the feedback model (trainable with collected feedback).
+    It contains a reference to a FeedbackDataset and a FeedbackNet.
+
+    Collected feedback can be submitted to the model handler, and training/re-training can be initiated.
+
+    : param session_id: The session ID
+    : param feedback_model_cls: The feedback model class
+    : param observation_space: The observation space of the environment
+    : param action_space: The action space of the environment
+    : param feedback_dataset: The feedback dataset
+    : param feedback_net: The feedback net
+    """
+
     def __init__(
         self,
         session_id: str,

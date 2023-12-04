@@ -4,12 +4,38 @@ This module translates incoming feedback of different types into a common format
 
 import numpy as np
 
-from rlhfblender.data_models.feedback_models import *
+from rlhfblender.data_models.feedback_models import (
+    AbsoluteFeedback,
+    Actuality,
+    Content,
+    Description,
+    Evaluation,
+    FeedbackType,
+    Granularity,
+    Instruction,
+    Intention,
+    Relation,
+    RelativeEvaluation,
+    RelativeFeedback,
+    RelativeInstruction,
+    StandardizedFeedback,
+    StandardizedFeedbackType,
+    UnprocessedFeedback,
+    get_granularity,
+    get_target,
+)
 from rlhfblender.data_models.global_models import Environment, Experiment
-from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
+from rlhfblender.logger import CSVLogger, JSONLogger
 
 
 class FeedbackTranslator:
+    """
+    This class translates incoming feedback of different types into a common format (StandardizedFeedback).
+
+    : param experiment: The experiment object
+    : param env: The environment object
+    """
+
     def __init__(self, experiment: Experiment, env: Environment):
         self.experiment = experiment
         self.env = env
@@ -19,7 +45,13 @@ class FeedbackTranslator:
         self.logger = JSONLogger(experiment, env, "feedback") if experiment is not None and env is not None else None
         self.feedback_buffer = []
 
-    def set_translator(self, experiment: Experiment, env: Environment):
+    def set_translator(self, experiment: Experiment, env: Environment) -> str:
+        """
+        Sets the experiment and environment for the translator
+        :param experiment: The experiment object
+        :param env: The environment object
+        :return: The logger ID
+        """
         self.experiment = experiment
         self.env = env
 
@@ -29,7 +61,11 @@ class FeedbackTranslator:
 
         return self.logger.logger_id
 
-    def reset(self):
+    def reset(self) -> None:
+        """
+        Resets the feedback translator
+        :return:
+        """
         self.feedback_id = 0
         self.logger.reset()
         self.feedback_buffer = []
@@ -38,8 +74,9 @@ class FeedbackTranslator:
         """
         We get either a single number or a list of numbers as feedback. We need to translate this into a common format
         called StandardizedFeedback
-        :param feedback:
-        :return:
+        :param session_id: The session ID
+        :param feedback: (UnprocessedFeedback) The feedback
+        :return: (StandardizedFeedback) The standardized feedback
         """
         return_feedback = None
 
@@ -120,11 +157,11 @@ class FeedbackTranslator:
 
         self.feedback_buffer.append(return_feedback)
 
-    def submit(self, session_id: str):
+    def submit(self, session_id: str) -> None:
         """
         Submits the content of the current feedback buffer to the feedback dataset
-        :param session_id:
-        :return:
+        :param session_id: The session ID
+        :return: None
         """
         # De-duplicate feedback in the feedback buffer
         # If feedback.episode_id and feedback.feedback_type are the same, we can assume that the feedback is the same,

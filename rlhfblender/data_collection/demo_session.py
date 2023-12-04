@@ -26,10 +26,10 @@ async def create_new_session(session_id: str, gym_env: str, seed: Union[str, int
     """
     Create a new session as a asynchronous process. In the process, initialize a gym environment and
     wait for commands via a pipe.
-    :param session_id:
-    :param demo_number:
-    :param gym_env:
-    :param seed:
+    :param session_id: The unique id of the session
+    :param demo_number: The index of the demo
+    :param gym_env: The gym environment id
+    :param seed: The seed for the environment
     :return:
     """
     # Create render directory if it doesn't exist
@@ -55,10 +55,10 @@ async def create_new_session(session_id: str, gym_env: str, seed: Union[str, int
 def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union[str, int]):
     """
     Blocking loop that initializes a gym environment and waits for commands via a socket.
-    :param session_id: The unique id of the session
-    :param demo_number: The index of the demo
-    :param gym_env: The gym environment id
-    :param seed: The seed for the environment
+    :param session_id: (str) The unique id of the session (used for the socket port
+    :param demo_number: (int) The index of the demo
+    :param gym_env: (str) The gym environment id
+    :param seed: (int) The seed for the environment
     :return:
     """
     # Create the gym environment
@@ -169,8 +169,8 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
 def demo_perform_step(session_id: str, action: Union[int, List[float]]) -> dict:
     """
     Send a step command via the socket to the environment and return the results
-    :param session_id:
-    :param action:
+    :param session_id: The unique id of the session
+    :param action: The action to take in the environment
     :return:
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -193,8 +193,8 @@ def demo_perform_step(session_id: str, action: Union[int, List[float]]) -> dict:
 def close_demo_session(session_id: str, pid: int):
     """
     Send a close command via the socket to the environment and return the results. Also terminate the process.
-    :param session_id:
-    :param pid:
+    :param session_id: The unique id of the session
+    :param pid: The process id of the environment
     :return:
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -219,5 +219,5 @@ def check_socket_connection(session_id: str) -> bool:
         try:
             s.connect((HOST, PORT))
             return True
-        except:
+        except Exception:
             return False

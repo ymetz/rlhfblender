@@ -12,7 +12,6 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.sampler import Sampler
 from rlhfblender.data_handling import database_handler as db_handler
@@ -49,7 +48,7 @@ app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_fi
 app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")
 app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
-database = Database(os.environ.get("RLHFBLENDER_DB_HOST", DB_HOST))
+database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
 
 
 @app.on_event("startup")
@@ -173,7 +172,7 @@ async def ui_configs():
             with open(os.path.join("configs/ui_configs", filename)) as f:
                 ui_confs.append(json.load(f))
     ui_confs.sort(key=lambda x: x["id"])
-    # Check if there 
+    # Check if there
     return ui_confs
 
 
@@ -185,10 +184,45 @@ async def save_ui_config(ui_config: dict):
     return {"message": "OK"}
 
 
-@app.post("delete_ui_config", tags=["UI"])
-async def delete_ui_config(ui_config_name: str):
+class DeleteUIConfigRequest(BaseModel):
+    ui_config_name: str
+
+
+@app.post("/delete_ui_config", tags=["UI"])
+async def delete_ui_config(req: DeleteUIConfigRequest):
     # Delete UI config from configs/ui_configs directory
-    os.remove(os.path.join("configs/ui_configs", ui_config_name + ".json"))
+    os.remove(os.path.join("configs/ui_configs", req.ui_config_name + ".json"))
+    return {"message": "OK"}
+
+
+@app.get("/backend_configs", tags=["BACKEND"])
+async def backend_configs():
+    # Return list of JSONs with backend configs from configs/backend_configs directory
+    backend_confs = []
+    for filename in os.listdir("configs/backend_configs"):
+        if filename.endswith(".json"):
+            with open(os.path.join("configs/backend_configs", filename)) as f:
+                backend_confs.append(json.load(f))
+    backend_confs.sort(key=lambda x: x["id"])
+    return backend_confs
+
+
+@app.post("/save_backend_config", tags=["BACKEND"])
+async def save_backend_config(backend_config: dict):
+    # Save backend config to configs/backend_configs directory
+    with open(os.path.join("configs/backend_configs", backend_config["name"] + ".json"), "w") as f:
+        json.dump(backend_config, f)
+    return {"message": "OK"}
+
+
+class DeleteBackendConfigRequest(BaseModel):
+    backend_config_name: str
+
+
+@app.post("/delete_backend_config", tags=["BACKEND"])
+async def delete_backend_config(req: DeleteBackendConfigRequest):
+    # Delete backend config from configs/backend_configs directory
+    os.remove(os.path.join("configs/backend_configs", req.backend_config_name + ".json"))
     return {"message": "OK"}
 
 
@@ -255,13 +289,17 @@ def main(args):
     )
     parser.add_argument("--ui-config", type=str, default=None, help="Path to UI config file.")
     parser.add_argument("--backend-config", type=str, default=None, help="Path to backend config file.")
+    parser.add_argument("--db-host", type=str, default="test.db", help="Path to database file.")
 
     args = parser.parse_args(args)
 
+    # Write config paths to environment variables
+    os.environ["RLHFBLENDER_UI_CONFIG_PATH"] = args.ui_config if args.ui_config is not None else ""
+    os.environ["RLHFBLENDER_BACKEND_CONFIG_PATH"] = args.backend_config if args.backend_config is not None else ""
+    os.environ["RLHFBLENDER_DB_HOST"] = args.db_host if args.db_host is not None else ""
+
     if args.dev:
         print(f"Serving on port {args.port} in development mode.")
-        # set config paths in app state
-        app.state.ui_config_path = args.ui_config
 
         uvicorn.run(
             "app:app",

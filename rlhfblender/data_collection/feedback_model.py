@@ -13,6 +13,15 @@ from rlhfblender.data_models.global_models import Experiment
 
 
 class FeedbackDataset(Dataset):
+    """
+    Dataset for the feedback model containing the observations, actions, rewards and feedback.
+
+    : param obs_buffer: The observation buffer
+    : param action_buffer: The action buffer
+    : param reward_buffer: The reward buffer
+    : param user_feedback_buffer: The user feedback buffer
+    """
+
     def __init__(self, obs_buffer, action_buffer, reward_buffer, user_feedback_buffer):
         self.obs_buffer = obs_buffer
         self.action_buffer = action_buffer
@@ -32,13 +41,14 @@ class FeedbackDataset(Dataset):
 
 
 class FeedbackNet(RewardNet):
-    def __init__(self, observation_space, action_space):
-        """
-        Initialize the feedback model
-        :param observation_space:
-        :param action_space:
-        """
+    """
+    Feedback net for the feedback model.
 
+    : param observation_space: The observation space of the environment
+    : param action_space: The action space of the environment
+    """
+
+    def __init__(self, observation_space: gym.spaces.Space, action_space: gym.spaces.Space):
         super().__init__(observation_space, action_space)
 
         self.observation_space = observation_space
@@ -48,16 +58,24 @@ class FeedbackNet(RewardNet):
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 1)
 
-    def forward(self, obs: th.Tensor, action: th.Tensor, next_obs: th.Tensor = None, done: th.Tensor = None, **kwargs):
+    def forward(
+        self, obs: th.Tensor, action: th.Tensor, next_obs: th.Tensor = None, done: th.Tensor = None, **kwargs
+    ) -> th.Tensor:
+        """
+        Forward pass of the feedback net
+        :param obs: The observation
+        :param action: The action
+        :param next_obs: The next observation
+        :param done: Whether the episode is done
+        :param kwargs: Additional keyword arguments
+        :return: The predicted reward
+        """
         x = th.cat([obs, action], dim=-1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
 
         return x
-
-    def predict(self, obs: th.Tensor, action: th.Tensor, next_obs: th.Tensor = None, done: th.Tensor = None, **kwargs):
-        return self.forward(obs, action, next_obs, done)
 
 
 class FeedbackModel:
@@ -114,6 +132,7 @@ class FeedbackModel:
             for obs, action, reward, user_feedback in dataloader:
                 optimizer.zero_grad()
                 pred = self.model(obs, action)
+                # For now, we only use the environment reward as the ground truth, TODO: use the feedback as well/instead
                 loss = criterion(pred, reward)
                 loss.backward()
                 optimizer.step()

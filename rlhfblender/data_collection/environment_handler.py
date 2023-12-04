@@ -27,11 +27,11 @@ def get_environment(
     """
     Get the gym environment by name.
     Code partially taken from SB Baselines 3
-    :param env_name:
-    :param n_envs:
-    :param additional_packages:
-    :param environment_config:
-    :param norm_env_path:
+    :param env_name: (str) Name of the environment
+    :param n_envs: (int) Number of parallel environments
+    :param additional_packages: (dict) Additional packages to import
+    :param environment_config: (dict) Environment configuration
+    :param norm_env_path: (str) Path to the normalized environment
     :return:
     """
     for env_module in additional_packages:
@@ -96,7 +96,7 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
         tag_dict = {f"tag_{i}": i for i in range(shape[-1])}
 
     return {
-        "label": f"{space.__class__.__name__}({str(shape)})",
+        "label": f"{space.__class__.__name__}({shape!s})",
         "shape": shape,
         "low": space_low.tolist() if space_low is not None else [],
         "high": space_high.tolist() if space_high is not None else [],
@@ -105,12 +105,12 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
     }
 
 
-async def initial_registration(database: Database, env_name: str = "CartPole-v0"):
+async def initial_registration(database: Database, env_name: str = "CartPole-v0", additional_gym_packages: list = []) -> None:
     """
     Register the environment with the database.
-    :param database:
-    :param env_name:
-    :return:
+    :param database: (Database) The database to register the environment with (see database_handler.py)
+    :param env_name: (str) The name of the environment
+    :return: None
     """
     env = gym.make(env_name, render_mode="rgb_array")
 
@@ -141,6 +141,6 @@ async def initial_registration(database: Database, env_name: str = "CartPole-v0"
             description="",
             tags=[],
             env_path="",
-            additional_gym_packages=[],
+            additional_gym_packages=additional_gym_packages,
         ).dict(),
     )

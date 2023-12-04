@@ -19,6 +19,17 @@ class SamplerType(Enum):
 
 
 class Sampler:
+    """
+    A sampler serving episodes for Blender experiments
+
+    :param experiment: The experiment object
+    :param env: The environment object
+    :param saved_episode_dir: The directory where the episodes are saved
+    :param max_episode_count: The maximum number of episodes to sample
+    :param sampler_type: The type of sampler to use (sequential, random, model_based, manual)
+    :param sample_model: The model to use for sampling (only used if sampler_type is model_based)
+    """
+
     def __init__(
         self,
         experiment: Experiment,
@@ -47,7 +58,14 @@ class Sampler:
         experiment: Experiment,
         env: Environment,
         sampling_strategy: str = "sequential",
-    ):
+    ) -> None:
+        """
+        Set the sampler
+        :param experiment: The experiment object
+        :param env: The environment object
+        :param sampling_strategy: The sampling strategy to use (sequential, random, model_based, manual)
+        :return: None
+        """
         self.experiment = experiment
         self.env = env
 
@@ -82,14 +100,23 @@ class Sampler:
 
         self.sampler_type = SamplerType[sampling_strategy]
 
-        print("Sampler initialized with {} episodes".format(self.episode_count))
+        print(f"Sampler initialized with {self.episode_count} episodes")
 
         self.reset()
 
     def get_full_episode_list(self) -> List[EpisodeID]:
+        """
+        Return the full episode list
+        :return: The full episode list
+        """
         return self.episode_buffer
 
-    def set_config(self, **kwargs):
+    def set_config(self, **kwargs) -> None:
+        """
+        Set the configuration of the sampler
+        :param kwargs: The configuration parameters
+        :return: None
+        """
         for key, value in kwargs.items():
             if key == "max_episode_count":
                 self.max_episode_count = value
@@ -98,9 +125,13 @@ class Sampler:
             elif key == "sample_model":
                 self.sample_model = value
             else:
-                raise Exception("Invalid key {} for sampler config".format(key))
+                raise Exception(f"Invalid key {key} for sampler config")
 
-    def reset(self):
+    def reset(self) -> None:
+        """
+        Reset the sampler with the current configuration
+        :return: None
+        """
         if self.sampler_type == SamplerType.sequential:
             self.episode_pointer = 0
 
@@ -110,8 +141,8 @@ class Sampler:
     def sample(self, batch_size: int = 1) -> List[EpisodeID]:
         """
         Return a list of episodes
-        :param batch_size:
-        :return:
+        :param batch_size: The batch size to sample
+        :return: The list of episodes of length batch_size
         """
         if self.sampler_type == SamplerType.sequential:
             sampled_batch = self.episode_buffer[self.episode_pointer : self.episode_pointer + batch_size]
@@ -124,7 +155,12 @@ class Sampler:
             raise Exception("Invalid sampler type")
         return sampled_batch
 
-    def configure_sampler(self, **kwargs):
+    def configure_sampler(self, **kwargs) -> None:
+        """
+        Configure the sampler
+        :param kwargs: The configuration parameters
+        :return: None
+        """
         self.sampler_type = kwargs.get("sampler_type", SamplerType.sequential)
         self.sample_model = kwargs.get("sample_model", None)
         self.max_episode_count = kwargs.get("max_episode_count", 1000)

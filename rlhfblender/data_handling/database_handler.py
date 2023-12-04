@@ -86,6 +86,25 @@ async def get_single_entry(cursor: Database, model: Type[T], id: int, table_name
     return model(**{**row})
 
 
+async def check_if_exists(
+    cursor: Database, model: Type[T], value: any, column: Optional[str] = None, table_name: Optional[str] = None
+) -> bool:
+    """
+    Checks if an entry exists in a table with a given model. If no column is specified, the id column is used, otherwise
+    the specified column is used.
+    :param cursor: sqlite3.Cursor
+    :param model: pydantics.BaseModel
+    :param value: any
+    :param column: Optional[str] - If not specified, the id column is used
+    :param table_name:  Optional[str] - If not specified, the model name is used
+    """
+    table_name = model.__name__ if table_name is None else table_name
+    column = "id" if column is None else column
+    query = "SELECT * FROM " + table_name + " WHERE " + column + " = " + str(value)
+    row = await cursor.fetch_one(query)
+    return row is not None
+
+
 async def add_entry(
     cursor: Database,
     model: Type[BaseModel],
@@ -124,7 +143,8 @@ async def add_entry(
             query += '"' + str(data_field) + '",'
 
     query = query[:-1] + ")"
-    return await cursor.execute(query)
+    await cursor.execute(query)
+    return cursor.lastrowid
 
 
 async def update_entry(

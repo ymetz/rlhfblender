@@ -13,6 +13,14 @@ from rlhfblender.data_models.global_models import Environment, Experiment
 
 
 class Logger:
+    """
+    This class implements a logger that logs feedback to a file or database.
+
+    :param exp: The experiment object
+    :param env: The environment object
+    :param suffix: The suffix for the logger ID
+    """
+
     def __init__(self, exp: Experiment, env: Environment, suffix: str):
         self.exp = exp
         self.env = env
@@ -22,7 +30,11 @@ class Logger:
         # Replace all spaces with underscores
         self.logger_id = self.logger_id.replace(" ", "_").replace(":", "-").replace("/", "-")
 
-    def reset(self):
+    def reset(self) -> None:
+        """
+        Resets the logger
+        :return: None
+        """
         self.logger_id = (
             datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             + "_"
@@ -38,7 +50,7 @@ class Logger:
         """
         Logs the feedback to a file or database
         :param feedback: A StandardizedFeedback instance
-        :return:
+        :return: None
         """
 
     @abstractmethod
@@ -46,19 +58,19 @@ class Logger:
         """
         Logs the feedback to a file or database
         :param feedback:
-        :return:
+        :return: None
         """
 
     @abstractmethod
     def read(self) -> List[StandardizedFeedback]:
         """
         Reads all feedback from the logger
-        :return:
+        :return: The processed feedback
         """
 
     @abstractmethod
     def read_raw(self) -> List[UnprocessedFeedback]:
         """
         Reads all feedback from the logger
-        :return:
+        :return: The unprocessed feedback
         """

@@ -15,7 +15,7 @@ All of these options can be configure in the frontend.
 
 
 1. Configure via the frontend
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The frontend allows you to easily configure your experiments based on the avaialble feeedback types and implemented components.
 You can reach the configuration page via the URL `http://localhost:5000?studyMode=configure`. 
 
@@ -49,5 +49,5 @@ Equivalently, you can pass both as query parameters to the frontend URL, e.g. `h
 
 
 2. Configure via the config file
-
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You can also directly via the config files, placed on the `configs` directory.

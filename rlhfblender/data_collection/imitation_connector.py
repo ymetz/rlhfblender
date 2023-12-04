@@ -3,7 +3,7 @@ import importlib
 import os
 import time
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -26,13 +26,29 @@ from .sb_zoo_connector import StableBaselines3Agent
 
 
 class ImitationConnector(connector.Connector):
+    """
+    This class is the connector for the imitation learning framework.
+    """
+
     def __init__(self):
         super().__init__()
 
-    def start_training(self, experiment: Experiment, project: Project):
+    def start_training(self, experiment: Experiment, project: Project) -> None:
+        """
+        Starts training of the experiment.
+        :param experiment: Experiment object
+        :param project: Project object
+        :return: None
+        """
         self._run_training(experiment, project)
 
-    def continue_training(self, experiment: Experiment, project: Project):
+    def continue_training(self, experiment: Experiment, project: Project) -> None:
+        """
+        Continues training of the experiment.
+        :param experiment: Experiment object
+        :param project: Project object
+        :return: None
+        """
         self._run_training(experiment, project, continue_training=True)
 
     def _run_training(
@@ -41,12 +57,14 @@ class ImitationConnector(connector.Connector):
         project: Project,
         continue_training: bool = False,
         sweep_config: Optional[dict] = None,
-    ):
+    ) -> None:
         """
-
-        :param experiment:
-        :param project:
-        :return:
+        Runs the training of the experiment.
+        :param experiment: Experiment object
+        :param project: Project object
+        :param continue_training: Whether to continue training or not
+        :param sweep_config: Sweep configuration
+        :return: None
         """
         try:
             env = get_single_entry(self.database, Environment, experiment.env_id)
@@ -130,10 +148,12 @@ class ImitationConnector(connector.Connector):
                 exp_manager.learn(model)
                 exp_manager.save_trained_model(model)
 
-    def _combine_experiments(self, experiments: List[Experiment]):
+    def _combine_experiments(self, experiments: List[Experiment]) -> Tuple[Dict[str, Any], List[Dict]]:
         """
         Combines multiple experiment configurations into one.
         Keep shared settings, and create parameter configs
+        :param experiments: List of experiments
+
         """
         # Get the shared settings
         shared_settings = experiments[0].dict()
@@ -166,6 +186,7 @@ class ImitationConnector(connector.Connector):
         :param evaluation_config: EvaluationConfig object
         :return:
         """
+        pass
 
     def start_evaluation_sweep(
         self,
@@ -180,12 +201,13 @@ class ImitationConnector(connector.Connector):
         :param evaluation_configs:
         :return:
         """
+        pass
 
     @staticmethod
     def get_algorithms() -> List[str]:
         """
         Returns all available algorithms.
-        :return:
+        :return: List of algorithms
         """
         return [
             "BC",
@@ -201,7 +223,7 @@ class ImitationConnector(connector.Connector):
         """
         Returns the parameter settings values of a selected algorithm.
         :param algorithm_name:
-        :return:
+        :return: Dict of parameter settings
         """
         from imitation.algorithms import (
             bc,
@@ -231,10 +253,12 @@ class ImitationConnector(connector.Connector):
         if selected_algorithm is None:
             raise ValueError(f"Algorithm {algorithm_name} is not supported.")
 
+        return selected_algorithm.default_config()
+
     def get_evaluation_agent(self, env: gym.Env, path: str) -> StableBaselines3Agent:
         """
         Returns the model that can be used to run in an environment.
-        :return:
+        :return: The model
         """
         agent = StableBaselines3Agent(env.observation_space, env.action_space)
         agent.load(path)

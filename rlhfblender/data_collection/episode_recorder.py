@@ -323,7 +323,7 @@ class EpisodeRecorder(object):
                 additional_metrics={},
             )
         )
-        
+
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(os.path.join(save_path + ".npz"), "wb") as f:
             np.savez(
@@ -349,14 +349,15 @@ class EpisodeRecorder(object):
         )
 
     @staticmethod
-    def load_episodes(save_path) -> RecordedEpisodesContainer:
+    def load_episodes(save_path: str) -> RecordedEpisodesContainer:
         """
         Load episodes from a file.
+        :param save_path: The path to the file to load
         """
-        print("[INFO] Loading episodes from {}".format(save_path))
+        print(f"[INFO] Loading episodes from {save_path}")
         bm = np.load(save_path + ".npz", allow_pickle=True)
 
-        print("[INFO] Successfully loaded NPZ episodes from {}".format(save_path))
+        print(f"[INFO] Successfully loaded NPZ episodes from {save_path}")
 
         return RecordedEpisodesContainer(
             obs=bm["obs"],
@@ -373,9 +374,10 @@ class EpisodeRecorder(object):
         )
 
     @staticmethod
-    def get_aggregated_data(save_path) -> BenchmarkSummary:
+    def get_aggregated_data(save_path: str) -> BenchmarkSummary:
         """
         Load episodes from a file.
+        :param save_path: The path to the file to load
         """
         bm = np.load(save_path + ".npz", allow_pickle=True)
 
@@ -391,6 +393,7 @@ def convert_infos(infos: np.ndarray):
     """
     Convert a numpy array of dict objects to a list of dict objects.
     Add id, episode step, and label to each info dict.
+    :param infos: The numpy array of dict objects
     """
     infos = infos.tolist()
     for i, info in enumerate(infos):

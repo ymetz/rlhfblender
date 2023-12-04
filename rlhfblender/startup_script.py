@@ -5,6 +5,7 @@ models, then creates video/thumbnail/reward data etc.
 """
 import asyncio
 import os
+import time
 from types import SimpleNamespace as sn
 from typing import Dict, List
 
@@ -14,17 +15,17 @@ import numpy as np
 from databases import Database
 from pydantic import BaseModel
 
-from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection import framework_selector as framework_selector
-from rlhfblender.data_collection.environment_handler import get_environment
+from rlhfblender.data_collection.environment_handler import get_environment, initial_registration
 from rlhfblender.data_collection.episode_recorder import EpisodeRecorder
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models import Experiment
+from rlhfblender.data_models.global_models import Environment
 
 DATA_ROOT_DIR = "data"
 BENCHMARK_DIR = "saved_benchmarks"
 
-database = Database(DB_HOST)
+database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
 
 
 def get_custom_thumbnail_creator(env_id: str):
@@ -69,7 +70,30 @@ async def run_benchmark(request: List[BenchmarkRequestModel]):
     for i, benchmark_run in enumerate(request):
         save_file_name = f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
 
-        exp: Experiment = await db_handler.get_single_entry(database, Experiment, id=benchmark_run.benchmark_id)
+        if benchmark_run.benchmark_id != -1:
+            exp: Experiment = await db_handler.get_single_entry(database, Experiment, id=benchmark_run.benchmark_id)
+        else:
+            # for the experiments, we need to register the environment first (e.g. for annotations, naming of the action space, etc.)
+            if not db_handler.check_if_exists(database, Environment, value=benchmark_run.env_id, column="registration_id"):
+                # We lazily register the environment if it is not registered yet, this is only done once
+                env_id = await initial_registration(
+                    database,
+                    benchmark_run.env_id,
+                    additional_gym_packages=benchmark_run.additional_packages
+                    if "additional_packages" in benchmark_run
+                    else [],
+                )
+            else:
+                env_id = benchmark_run.env_id
+
+            # create and register a "dummy" experiment
+            exp: Experiment = Experiment(
+                exp_name=f"{benchmark_run.env_id}_{benchmark_run.framwork}_{benchmark_run.benchmark_type}_Experiment",
+                env_id=env_id,
+                framework=benchmark_run.framework,
+                created_timestamp=int(time.time()),
+            )
+            await db_handler.add_entry(database, Experiment, exp)
 
         benchmark_env = (
             get_environment(
@@ -78,7 +102,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]):
                 n_envs=1,
                 norm_env_path=os.path.join(benchmark_run.path, benchmark_run.env_id),
                 # this is how SB-Zoo does it, so we stick to it for easy cross-compatabily
-                additional_packages=[],
+                additional_packages=benchmark_run.additional_packages if "additional_packages" in benchmark_run else [],
             )
             if "BabyAI" not in benchmark_run.env_id
             else gym.make(benchmark_run.env_id, render_mode="rgb_array")

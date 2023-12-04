@@ -25,10 +25,10 @@ There are two types of configuration you can do: The configruation for the backe
 and the configuration for the user interface (i.e.,  which feedback is enabled in the UI, which elements to show to the user).
 
 The backend configuration can be either done by loading a YAML file via the `--backend-config` command line argument giving the path to the YAML file. 
-By default, the application will look in the `configs`directory for a `backend_config.yaml`.
+By default, the application will look in the `configs`directory for a `default_backend_config.yaml`.
 
-The frontend configuration can be done by loading a JSON file via the `--frontend-config` command line argument giving the path to the JSON file.
-By default, the application will look in the `configs`directory for a `default.json`.
+The frontend configuration can be done by loading a JSON file via the `--ui-config` command line argument giving the path to the JSON file.
+By default, the application will look in the `configs`directory for a `default_ui_config.json`.
 
 
 The configuration can also be done via the frontend interface:

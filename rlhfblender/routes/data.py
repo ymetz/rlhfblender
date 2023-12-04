@@ -10,7 +10,6 @@ from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from rlhfblender.config import DB_HOST
 from rlhfblender.data_collection import framework_selector
 from rlhfblender.data_collection.demo_session import (
     check_socket_connection,
@@ -31,7 +30,6 @@ from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.agent import RandomAgent
 from rlhfblender.data_models.feedback_models import UnprocessedFeedback
 from rlhfblender.data_models.global_models import (
-    AggregatedRecordedEpisodes,
     Dataset,
     Environment,
     EpisodeID,
@@ -39,7 +37,7 @@ from rlhfblender.data_models.global_models import (
     RecordedEpisodes,
 )
 
-database = Database(DB_HOST)
+database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
 
 router = APIRouter(prefix="/data")
 

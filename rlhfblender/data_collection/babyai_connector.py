@@ -4,18 +4,26 @@ from typing import Dict, Optional
 import gymnasium
 import numpy as np
 import torch as th
-from databases import Database
 from scipy.stats import entropy
 
-from rlhfblender.config import DB_HOST
 from rlhfblender.data_models.agent import TrainedAgent
 from rlhfblender.data_models.global_models import Experiment
 from rlhfblender.utils import babyai_utils as utils
 
-DATABASE = Database(DB_HOST)
-
 
 class BabyAIAgent(TrainedAgent):
+    """
+    BabyAI agents have a separate network architecture and preprocessing pipeline.
+    To be compatible with pre-trained models, we instantiate BabyAI agents as a separate class.
+
+    : param observation_space: The observation space of the environment
+    : param action_space: The action space of the environment
+    : param exp: The experiment object
+    : param env: The environment object
+    : param device: The device on which to run the model
+    : param kwargs: Additional keyword arguments (e.g. the checkpoint step [checkpoint_step=<int>], whether to use a deterministic policy [deterministic=<bool>])
+    """
+
     def __init__(
         self,
         observation_space: gymnasium.spaces.Space,
@@ -31,7 +39,7 @@ class BabyAIAgent(TrainedAgent):
         if "checkpoint_step" in kwargs:
             path = os.path.join(exp.path, "rl_model_{}_steps".format(kwargs["checkpoint_step"]))
         else:
-            path = os.path.join(exp.path, "{}".format(exp.env_id))
+            path = os.path.join(exp.path, f"{exp.env_id}")
 
         torch_model = th.load(os.path.join(path, "model.pt"), map_location="cpu")
 
@@ -46,19 +54,26 @@ class BabyAIAgent(TrainedAgent):
         self.current_prediction = None
 
     def act(self, observation) -> np.ndarray:
+        """
+        Return the action to take in the environment
+        """
         act = self.model.act(observation)
         self.current_prediction = act
         return act["action"]
 
     def reset(self):
+        """
+        Reset the agent.
+        No need to reset the model, as it is stateless/ can handle environement resets internally.
+        """
         pass
 
     def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
         """
-        If the model has additional outputs, they can be accessed here.
-        :param observation:
-        :param action:
-        :param output_list:
+        If the model has additional outputs, they can be accessed here. Containts the current outputs for the previous act() call.
+        :param observation: The observation from the environment
+        :param action: The action taken in the environment
+        :param output_list: A list of outputs to return
         :return:
         """
         if output_list is None:
@@ -85,4 +100,9 @@ class BabyAIAgent(TrainedAgent):
         return out_dict
 
     def extract_features(self, observation):
+        """
+        Extract the latent features from the observation
+        Currently not implemented for BabyAI
+        :param observation: The observation from the environment
+        """
         return np.zeros(0)
