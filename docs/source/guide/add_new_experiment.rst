@@ -94,7 +94,7 @@ The easiest way to generate the data is to use the ``generate_data.py`` script r
 
 .. code-block:: bash
 
-    python generate_data.py --exp_name MyExperiment --env_id MyEnv-v0 --model_path path/to/model.zip --num_episodes 100 --num_parallel 10
+    python rlhfblender.generate_data --exp_name MyExperiment --env_id MyEnv-v0 --model_path path/to/model.zip --num_episodes 100 --num_parallel 10
 
 
 

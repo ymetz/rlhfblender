@@ -74,9 +74,7 @@ class EpisodeRecorder(object):
         # if not isinstance(env, VecEnv):
         #    env = DummyVecEnv([lambda: env])
 
-        is_monitor_wrapped = (
-            (is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]) if isinstance(env, VecEnv) else False
-        )
+        is_monitor_wrapped = is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]
 
         n_envs = env.num_envs if isinstance(env, VecEnv) else 1
         episode_rewards = []
@@ -213,6 +211,7 @@ class EpisodeRecorder(object):
                                 info["label"] = "Real Game End"
                                 # Only increment at the real end of an episode
                                 episode_counts[i] += 1
+                                print("INCREMENT 1")
                                 # Reset the done environment to the initial state
                                 if reset_to_initial_state:
                                     env.envs[i] = deepcopy(initial_states[i])
@@ -222,9 +221,11 @@ class EpisodeRecorder(object):
                             episode_rewards.append(current_rewards[i])
                             episode_lengths.append(current_lengths[i])
                             episode_counts[i] += 1
+                            print("INCREMENT 2")
                             if reset_to_initial_state:
                                 env.envs[i] = deepcopy(initial_states[i])
                                 observations[i] = reset_obs[i]
+                        print(episode_counts)
                         # Remove terminal_observation as we don't need it to pass to the next episode
                         if "terminal_observation" in info.keys():
                             info.pop("terminal_observation")
@@ -250,7 +251,8 @@ class EpisodeRecorder(object):
                 dones = np.expand_dims(done, axis=0)
                 infos = [info]
             else:
-                observation, rewards, dones, info = env.step(actions)
+                observation, rewards, dones, infos = env.step(actions)
+                print(observation, rewards, dones, infos, env.step(actions))
 
         # Add last render frame to buffer
         if render:

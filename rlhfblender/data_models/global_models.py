@@ -12,7 +12,7 @@ from pydantic import BaseModel, field_validator
 
 
 class Project(BaseModel):
-    id: int = -1
+    id: int = -1  # Is autofilled in database
     project_name: str = ""
     created_timestamp: int = -1
     project_path: str = ""
@@ -37,14 +37,14 @@ class Project(BaseModel):
 
 
 class Experiment(BaseModel):
-    id: int = -1
+    id: int = -1  # Is autofilled in database
     exp_name: str = ""
     created_timestamp: int = -1
     run_timestamp: int = -1
     last_modified: int = -1
     pid: int = -1
     status: List[str] = []
-    env_id: int = -1
+    env_id: str = "Cartpole-v1"
     environment_config: dict = {}
     framework: str = ""
     path: str = ""
@@ -108,7 +108,7 @@ class Environment(BaseModel):
 
 
 class Dataset(BaseModel):
-    id: int = -1
+    id: int = -1  # Is autofilled in database
     dataset_name: str = ""
     created_timestamp: int = -1
     dataset_path: str = ""
@@ -124,11 +124,11 @@ class Dataset(BaseModel):
 
 
 class TrackingItem(BaseModel):
-    id: int = -1
+    id: int = -1  # Is autofilled in database
     tracking_id: int = -1
     exp_id: int = -1
     exp_name: str = ""
-    env_id: int = -1
+    env_id: str = ""
     env_name: str = ""
     step_value: int = -1
     obs: str = ""
@@ -140,7 +140,7 @@ class TrackingItem(BaseModel):
 
 
 class EvaluationConfig(BaseModel):
-    id: int = -1
+    id: int = -1  # Is autofilled in database
     eval_name: str = ""
     exp_id: int = -1
     eval_config: dict = {}
@@ -156,7 +156,7 @@ class EvaluationConfig(BaseModel):
 
 
 class RecordedEpisodes(BaseModel):
-    env_id: int = -1
+    env_id: str = ""
     obs: list = []
     rewards: list = []
     dones: list = []

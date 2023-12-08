@@ -1,9 +1,8 @@
 import importlib
 import os
-from typing import Union
+from typing import Optional, Union
 
 import gymnasium as gym
-from databases import Database
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -12,7 +11,6 @@ from stable_baselines3.common.vec_env import (
     VecNormalize,
 )
 
-from rlhfblender.data_handling.database_handler import add_entry
 from rlhfblender.data_models.global_models import Environment
 from rlhfblender.utils import get_wrapper_class
 
@@ -78,17 +76,11 @@ def get_environment(
 
 def initial_space_info(space: gym.spaces.Space) -> dict:
     """
-    Get the initial space info for the environment.
-    Currently only works for Box, Discrete, MultiDiscrete and MultiBinary spaces.
+    Get the initial space info for the environment, in particular the tag dict which is used for the
+    the naming of the observation and action space in the user interface.
     :param space:
     :return:
     """
-    space_low = None
-    space_high = None
-    if hasattr(space, "low"):
-        space_low = space.low if len(space.shape) < 2 else space.low[0]
-    if hasattr(space, "high"):
-        space_high = space.high if len(space.shape) < 2 else space.high[0]
     shape = (space.n,) if isinstance(space, gym.spaces.Discrete) else space.shape
 
     tag_dict = {}
@@ -98,49 +90,39 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
     return {
         "label": f"{space.__class__.__name__}({shape!s})",
         "shape": shape,
-        "low": space_low.tolist() if space_low is not None else [],
-        "high": space_high.tolist() if space_high is not None else [],
         "dtype": str(space.dtype),
         **tag_dict,
     }
 
 
-async def initial_registration(database: Database, env_name: str = "CartPole-v0", additional_gym_packages: list = []) -> None:
+def initial_registration(
+    env_id: str = "CartPole-v0", entry_point: Optional[str] = "", additional_gym_packages: Optional[list] = []
+) -> Environment:
     """
     Register the environment with the database.
     :param database: (Database) The database to register the environment with (see database_handler.py)
     :param env_name: (str) The name of the environment
     :return: None
     """
-    env = gym.make(env_name, render_mode="rgb_array")
 
-    # Replace inf/-inf values inside of the spaces with the max/min values of the spaces with min/max float values
-    if hasattr(env.observation_space, "low"):
-        env.observation_space.low[env.observation_space.low == -float("inf")] = -1000
-        env.observation_space.low[env.observation_space.low == float("inf")] = 1000
-    if hasattr(env.observation_space, "high"):
-        env.observation_space.high[env.observation_space.high == -float("inf")] = -1000
-        env.observation_space.high[env.observation_space.high == float("inf")] = 1000
-    if hasattr(env.action_space, "low"):
-        env.action_space.low[env.action_space.low == -float("inf")] = -1000
-        env.action_space.low[env.action_space.low == float("inf")] = 1000
-    if hasattr(env.action_space, "high"):
-        env.action_space.high[env.action_space.high == -float("inf")] = -1000
-        env.action_space.high[env.action_space.high == float("inf")] = 1000
+    if len(additional_gym_packages) > 0:
+        for env_module in additional_gym_packages:
+            importlib.import_module(env_module)
 
-    return await add_entry(
-        database,
-        Environment,
-        Environment(
-            env_name=env_name,
-            registered=1,
-            registration_id=env.spec.id,
-            observation_space_info=initial_space_info(env.observation_space),
-            action_space_info=initial_space_info(env.action_space),
-            has_state_loading=0,
-            description="",
-            tags=[],
-            env_path="",
-            additional_gym_packages=additional_gym_packages,
-        ).dict(),
+    if entry_point != "":
+        gym.register(id=env_id, entry_point=entry_point)
+
+    env = gym.make(env_id, render_mode="rgb_array")
+
+    return Environment(
+        env_name=env_id,
+        registered=1,
+        registration_id=env_id,
+        observation_space_info=initial_space_info(env.observation_space),
+        action_space_info=initial_space_info(env.action_space),
+        has_state_loading=0,
+        description="",
+        tags=[],
+        env_path="",
+        additional_gym_packages=additional_gym_packages,
     )

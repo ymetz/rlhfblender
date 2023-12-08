@@ -71,7 +71,9 @@ async def get_all(cursor: Database, model: Type[T], table_name: Optional[str] = 
     return [model(**{**row}) for row in rows]
 
 
-async def get_single_entry(cursor: Database, model: Type[T], id: int, table_name: Optional[str] = None) -> T:
+async def get_single_entry(
+    cursor: Database, model: Type[T], key: int, key_column: Optional[str] = "id", table_name: Optional[str] = None
+) -> T:
     """
     Returns a single entry from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -81,26 +83,29 @@ async def get_single_entry(cursor: Database, model: Type[T], id: int, table_name
     :return: model
     """
     table_name = model.__name__ if table_name is None else table_name
-    query = "SELECT * FROM " + table_name + " WHERE id = " + str(id)
+    column = "id" if key_column is None else key_column
+    formatted_key = str(key) if isinstance(key, int) else '"' + str(key) + '"'
+    query = "SELECT * FROM " + table_name + " WHERE " + column + " = " + formatted_key
     row = await cursor.fetch_one(query)
     return model(**{**row})
 
 
 async def check_if_exists(
-    cursor: Database, model: Type[T], value: any, column: Optional[str] = None, table_name: Optional[str] = None
+    cursor: Database, model: Type[T], key: any, key_column: Optional[str] = "id", table_name: Optional[str] = None
 ) -> bool:
     """
-    Checks if an entry exists in a table with a given model. If no column is specified, the id column is used, otherwise
+    Checks if an entry exists in a table with a given model. If no key_column is specified, the id is used, otherwise
     the specified column is used.
     :param cursor: sqlite3.Cursor
     :param model: pydantics.BaseModel
-    :param value: any
-    :param column: Optional[str] - If not specified, the id column is used
+    :param key: any
+    :param key_column: Optional[str] - If not specified, the id column is used
     :param table_name:  Optional[str] - If not specified, the model name is used
     """
     table_name = model.__name__ if table_name is None else table_name
-    column = "id" if column is None else column
-    query = "SELECT * FROM " + table_name + " WHERE " + column + " = " + str(value)
+    column = "id" if key_column is None else key_column
+    formatted_key = str(key) if isinstance(key, int) else '"' + str(key) + '"'
+    query = "SELECT * FROM " + table_name + " WHERE " + column + " = " + formatted_key
     row = await cursor.fetch_one(query)
     return row is not None
 
@@ -144,14 +149,14 @@ async def add_entry(
 
     query = query[:-1] + ")"
     await cursor.execute(query)
-    return cursor.lastrowid
 
 
 async def update_entry(
     cursor: Database,
     model: Type[BaseModel],
-    id: int,
-    data: dict,
+    key: int,
+    key_column: Optional[str] = "id",
+    data: dict = {},
     table_name: Optional[str] = None,
 ) -> None:
     """
@@ -176,11 +181,12 @@ async def update_entry(
             query += field + "=" + '"' + str(data_field) + '",'
         else:
             query += field + "=" + '"' + str(data_field) + '",'
-    query = query[:-1] + " WHERE id = " + str(id)
+    formatted_key = str(key) if isinstance(key, int) else '"' + str(key) + '"'
+    query = query[:-1] + " WHERE " + key_column + " = " + formatted_key
     await cursor.execute(query)
 
 
-async def delete_entry(cursor: Database, model: Type[BaseModel], id: int, table_name: Optional[str] = None) -> None:
+async def delete_entry(cursor: Database, model: Type[BaseModel], key: int, key_column: Optional[str] = "id", table_name: Optional[str] = None,) -> None:
     """
     Deletes a single entry from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -190,5 +196,6 @@ async def delete_entry(cursor: Database, model: Type[BaseModel], id: int, table_
     :return: None
     """
     table_name = model.__name__ if table_name is None else table_name
-    query = "DELETE FROM " + table_name + " WHERE id = " + str(id)
+    formatted_key = str(key) if isinstance(key, int) else '"' + str(key) + '"'
+    query = "DELETE FROM " + table_name + " WHERE " + key_column + " = " + formatted_key
     await cursor.execute(query)

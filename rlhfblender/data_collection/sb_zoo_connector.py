@@ -138,7 +138,7 @@ class StableBaselines3ZooConnector(connector.Connector):
         :return:
         """
         try:
-            env = get_single_entry(self.database, Environment, experiment.env_id)
+            env = get_single_entry(self.database, Environment, key=experiment.env_id, key_column="registration_id")
         except Exception as e:
             print(e)
             return

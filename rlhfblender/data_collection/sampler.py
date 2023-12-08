@@ -74,7 +74,7 @@ class Sampler:
         for checkpoint in self.experiment.checkpoint_list:
             cp_path = os.path.join(
                 self.saved_episode_dir,
-                env_name + "_trained_" + str(self.experiment.id) + "_" + str(checkpoint),
+                env_name + "_" + str(self.experiment.id) + "_" + str(checkpoint),
             )
             if not os.path.exists(cp_path):
                 continue

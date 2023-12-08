@@ -19,7 +19,6 @@ from rlhfblender.data_collection.demo_session import (
 )
 from rlhfblender.data_collection.environment_handler import (
     get_environment,
-    initial_registration,
 )
 from rlhfblender.data_collection.episode_recorder import (
     BenchmarkSummary,
@@ -66,9 +65,8 @@ class BenchmarkModel(BaseModel):
     A request model for a single benchmark run
     """
 
-    env_id: int = 0
-    benchmark_type: str = "random"
-    benchmark_id: int = -1
+    env_id: str = ""
+    benchmark_id: str = ""
     checkpoint_step: int = -1
 
 
@@ -78,7 +76,6 @@ class BenchmarkRequestModel(BenchmarkModel):
     render: bool = True
     deterministic: bool = True
     reset_state: bool = False
-    gym_registration_id: str = ""
     split_by_episode: bool = False
     record_episode_videos: bool = False
 
@@ -108,109 +105,9 @@ class FeedbackModel(BenchmarkModel):
     feedback_type: FeedbackType = FeedbackType.rating
     feedback_time: float = -1.0
 
-
-@router.post("/run_benchmark", response_model=dict, tags=["DATA"])
-async def run_benchmark(request: List[BenchmarkRequestModel]) -> BenchmarkResponseModel:
-    """
-    Run an agent in the provided environment with the given parameters. The experiment id only has to provided
-    if benchmark_type trained is used.
-    :param request (
-    :return:
-    """
-    env_ids = []
-    for env_id, gym_registration_id in set([(r.env_id, r.gym_registration_id) for r in request]):
-        if gym_registration_id != "" and int(env_id) < 0:
-            # We lazily register the environment if it is not registered yet, this is only done once
-            env_id = await initial_registration(database, gym_registration_id)
-            env_ids.append(env_id)
-        else:
-            env_ids.append(-1)  # The case for datasets
-
-    benchmarked_models = []
-    for i, benchmark_run in enumerate(request):
-        if benchmark_run.benchmark_type == "dataset":
-            # Dummy env id for datasets
-            db_env = Environment(id=-1, name="dataset", gym_registration_id="dataset")
-            db_dataset = await db_handler.get_single_entry(database, Dataset, id=benchmark_run.benchmark_id)
-            benchmarked_models.append(EpisodeRecorder.get_aggregated_data(os.path.join("datasets", db_dataset.dataset_path)))
-            continue
-        db_env: Environment = await db_handler.get_single_entry(
-            database,
-            Environment,
-            id=int(benchmark_run.env_id) if int(benchmark_run.env_id) >= 0 else env_ids[0],
-        )
-        registration_id = db_env.registration_id
-
-        save_file_name = (
-            f"{registration_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
-        )
-
-        # If there is a cached benchmark, use it instead. Force_overwrites leads to the existing saved data to be
-        # rewritten
-        if benchmark_run.force_overwrite or not os.path.isfile(
-            os.path.join("data", "saved_benchmarks", save_file_name + ".npz")
-        ):
-            if benchmark_run.benchmark_type == "trained":
-                exp: Experiment = await db_handler.get_single_entry(database, Experiment, id=benchmark_run.benchmark_id)
-                benchmark_env = get_environment(
-                    registration_id,
-                    environment_config=exp.environment_config,
-                    n_envs=1,
-                    norm_env_path=os.path.join(exp.path, db_env.registration_id),
-                    # this is how SB-Zoo does it, so we stick to it for easy cross-compatibility
-                    additional_packages=db_env.additional_gym_packages,
-                )
-                agent = framework_selector.get_agent(framework=exp.framework)(
-                    observation_space=benchmark_env.observation_space,
-                    action_space=benchmark_env.action_space,
-                    exp=exp,
-                    device="auto",
-                    checkpoint_step=benchmark_run.checkpoint_step,
-                )
-            else:
-                benchmark_env = get_environment(
-                    registration_id,
-                    n_envs=1,
-                    additional_packages=db_env.additional_gym_packages,
-                )
-                agent = RandomAgent(benchmark_env.observation_space, benchmark_env.action_space)
-
-            benchmarked_models.append(
-                EpisodeRecorder.record_episodes(
-                    agent,
-                    benchmark_env,
-                    benchmark_run.n_episodes,
-                    max_steps=int(2e4),
-                    # Record a maximum of 20k steps
-                    save_path=os.path.join("data", "saved_benchmarks", save_file_name),
-                    overwrite=True,
-                    render=benchmark_run.render,
-                    deterministic=benchmark_run.deterministic,
-                    reset_to_initial_state=benchmark_run.reset_state,
-                )
-            )
-
-        else:
-            benchmarked_models.append(
-                EpisodeRecorder.get_aggregated_data(os.path.join("data", "saved_benchmarks", save_file_name))
-            )
-
-    # Only return the last checkpoint (is the only one e.g. for a single benchmark run)
-    # return data mainly for space infos, the frontend should query other results by itself via get_step_benchmark_data
-    return BenchmarkResponseModel(
-        n_steps=sum([bm.benchmark_steps for bm in benchmarked_models]),
-        models=benchmarked_models,
-        env_space_info={
-            "obs_space": db_env.observation_space_info,
-            "action_space": db_env.action_space_info,
-        },
-    )
-
-
 @router.get("/get_rewards", response_model=List, tags=["DATA"])
 async def get_rewards(
     env_name: str,
-    benchmark_type: str,
     benchmark_id: int,
     checkpoint_step: int,
     episode_num: int,
@@ -221,7 +118,7 @@ async def get_rewards(
         os.path.join(
             "data",
             "rewards",
-            f"{env_name}_{benchmark_type}_{benchmark_id}_{checkpoint_step}",
+            f"{env_name}_{benchmark_id}_{checkpoint_step}",
             f"rewards_{episode_num}.npy",
         ),
     )
@@ -232,7 +129,6 @@ async def get_rewards(
 @router.get("/get_uncertainty", response_model=List, tags=["DATA"])
 async def get_uncertainty(
     env_name: str,
-    benchmark_type: str,
     benchmark_id: int,
     checkpoint_step: int,
     episode_num: int,
@@ -243,7 +139,7 @@ async def get_uncertainty(
         os.path.join(
             "data",
             "uncertainty",
-            f"{env_name}_{benchmark_type}_{benchmark_id}_{checkpoint_step}",
+            f"{env_name}_{benchmark_id}_{checkpoint_step}",
             f"uncertainty_{episode_num}.npy",
         ),
     )
@@ -254,7 +150,6 @@ async def get_uncertainty(
 @router.get("/get_video", response_class=FileResponse)
 async def get_video(
     env_name: str,
-    benchmark_type: str,
     benchmark_id: int,
     checkpoint_step: int,
     episode_num: int,
@@ -264,7 +159,7 @@ async def get_video(
         os.path.join(
             "data",
             "renders",
-            f"{env_name}_{benchmark_type}_{benchmark_id}_{checkpoint_step}",
+            f"{env_name}_{benchmark_id}_{checkpoint_step}",
             f"{episode_num}.mp4",
         ),
         media_type="video/mp4",
@@ -274,7 +169,6 @@ async def get_video(
 @router.get("/get_thumbnail", response_class=FileResponse)
 async def get_thumbnail(
     env_name: str,
-    benchmark_type: str,
     benchmark_id: int,
     checkpoint_step: int,
     episode_num: int,
@@ -287,7 +181,7 @@ async def get_thumbnail(
         os.path.join(
             "data",
             "thumbnails",
-            f"{env_name}_{benchmark_type}_{benchmark_id}_{checkpoint_step}",
+            f"{env_name}_{benchmark_id}_{checkpoint_step}",
             f"{episode_num}.jpg",
         ),
         media_type="image/jpg",
@@ -296,7 +190,6 @@ async def get_thumbnail(
 
 class DetailRequest(BaseModel):
     env_name: str
-    benchmark_type: str
     benchmark_id: int
     checkpoint_step: int
     episode_num: int
@@ -327,7 +220,7 @@ async def get_single_step_details(request: SingleStepDetailRequest):
         os.path.join(
             "data",
             "episodes",
-            f"{request.env_name}_{request.benchmark_type}_{request.benchmark_id}_{request.checkpoint_step}",
+            f"{request.env_name}_{request.benchmark_id}_{request.checkpoint_step}",
             f"benchmark_{request.episode_num}.npz",
         ),
         allow_pickle=True,
@@ -356,7 +249,7 @@ async def get_actions_for_episode(request: DetailRequest):
         os.path.join(
             "data",
             "episodes",
-            f"{request.env_name}_{request.benchmark_type}_{request.benchmark_id}_{request.checkpoint_step}",
+            f"{request.env_name}_{request.benchmark_id}_{request.checkpoint_step}",
             f"benchmark_{request.episode_num}.npz",
         ),
         allow_pickle=True,
@@ -392,45 +285,8 @@ async def save_feature_feedback(image: UploadFile = File(...)):
     return {"message": "Image saved successfully"}
 
 
-@router.get("/episode_ids_chronologically", response_model=List[EpisodeID])
-async def get_episode_ids_chronologically():
-    """
-    TODO: Find a better way to do this/reflect on why this is really necessary.
-    This function defines the chronological order in which episodes are
-    ordered. It defines the form of the identifier and the order.
-    """
-
-    # Right now, all data is generated with gen_data.py and then postprocessed
-    # using deconstruct_data.ipynb. The IDs are thus built from this very
-    # specific process, which will likely change in the future. Right now we
-    # also assume that data/renders is full and contains all relevant episodes.
-    episode_ids = []
-    dir_names = os.listdir(os.path.join("data", "renders"))
-    for dir_name in dir_names:
-        if "_trained" not in dir_name and "_random" not in dir_name:
-            continue
-        split_file_name = dir_name.split("_")
-        env_name = split_file_name[0]
-        benchmark_type = split_file_name[1]
-        benchmark_id = split_file_name[2]
-        checkpoint_step = split_file_name[3]
-        episode_files = os.listdir(os.path.join("data", "renders", dir_name))
-        for episode_file in episode_files:
-            num = episode_file.split(".")[0]
-            episode_id = EpisodeID(
-                env_name=env_name,
-                benchmark_type=benchmark_type,
-                benchmark_id=int(benchmark_id),
-                checkpoint_step=int(checkpoint_step),
-                episode_num=int(num),
-            )
-            episode_ids.append(episode_id)
-    episode_ids = sorted(episode_ids, key=lambda x: (x.checkpoint_step, x.episode_num))
-    return episode_ids
-
-
 class ActionLabelRequest(BaseModel):
-    envId: int
+    envId: str
 
 
 @router.post("/get_action_label_urls", response_model=List[str])
@@ -438,7 +294,7 @@ async def get_action_label_urls(request: ActionLabelRequest):
     """
     Returns a list of urls for the action labels of the given environment
     """
-    db_env = await db_handler.get_single_entry(database, Environment, id=request.envId)
+    db_env = await db_handler.get_single_entry(database, Environment, key=request.envId, key_column="registration_id")
     if db_env is None:
         return []
     db_env_name = db_env.env_name
@@ -462,8 +318,9 @@ async def reset_sampler(request: Request):
     sampling_strategy = request.query_params.get("sampling_strategy", None)
     if experiment_id is None:
         return "No experiment id given"
-    experiment: Experiment = await db_handler.get_single_entry(database, Experiment, id=experiment_id)
-    environment = await db_handler.get_single_entry(database, Environment, id=experiment.env_id)
+    print("Resetting sampler for experiment: ", experiment_id)
+    experiment: Experiment = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
+    environment = await db_handler.get_single_entry(database, Environment, key=experiment.env_id, key_column="registration_id")
 
     request.app.state.sampler.set_sampler(experiment, environment, sampling_strategy)
 
@@ -531,7 +388,7 @@ async def initialize_demo_session(request: Request):
     session_id = request["session_id"]
 
     action_space = {}
-    db_env = await db_handler.get_single_entry(database, Environment, id=env_id)
+    db_env = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
     if db_env is not None:
         action_space = db_env.action_space_info
 
@@ -610,126 +467,3 @@ async def check_demo_connection(session_id: str):
     :return:
     """
     return check_socket_connection(session_id)
-
-
-def _load_data(
-    load_file_name: str,
-    env_id: int = -1,
-    return_raw: bool = False,
-    env_space_info: dict = {},
-    split_by_episode: bool = False,
-    record_videos: bool = False,
-) -> List[RecordedEpisodes]:
-    load_episodes = EpisodeRecorder.load_episodes(os.path.join("data", "saved_benchmarks", load_file_name))
-
-    if load_episodes.obs.size == 0:
-        return RecordedEpisodes()
-
-    if not split_by_episode:
-        split_indices = [0, len(load_episodes.dones)]
-    else:
-        split_indices = np.where(load_episodes.dones)[0]
-        # add 0 and the last index to the split indices
-        split_indices = np.concatenate(([0], split_indices, [len(load_episodes.dones)]))
-
-    multi_dones_per_episode = len(split_indices) / load_episodes.episode_lengths.shape[0] > 1
-
-    recorded_episodes = [
-        RecordedEpisodes(
-            env_id=env_id,
-            obs=load_episodes.obs[split_indices[i] : split_indices[i + 1]].tolist(),
-            actions=load_episodes.actions[split_indices[i] : split_indices[i + 1]].tolist(),
-            rewards=load_episodes.rewards[split_indices[i] : split_indices[i + 1]].tolist(),
-            dones=load_episodes.dones[split_indices[i] : split_indices[i + 1]].tolist(),
-            infos=[info for info in load_episodes.infos[split_indices[i] : split_indices[i + 1]]],
-            renders=load_episodes.renders[split_indices[i] : split_indices[i + 1]].tolist(),
-            features=load_episodes.features[split_indices[i] : split_indices[i + 1]].tolist(),
-            probs=load_episodes.probs[split_indices[i] : split_indices[i + 1]].tolist(),
-            episode_rewards=load_episodes.episode_rewards[i].tolist()
-            if len(load_episodes.episode_rewards) > 0 and not multi_dones_per_episode
-            else [],
-            episode_lengths=load_episodes.episode_lengths[i].tolist()
-            if len(load_episodes.episode_lengths) > 0 and not multi_dones_per_episode
-            else [],
-            additional_metrics=load_episodes.additional_metrics.item(),
-        )
-        for i in range(len(split_indices) - 1)
-    ]
-
-    # generate a video for each episode, consisting of the renders (redundant unpacking)
-    if record_videos:
-        for i, episode in enumerate(recorded_episodes):
-            renders = np.array(episode.renders)
-            out = cv2.VideoWriter(
-                os.path.join("data", "saved_renders", f"{load_file_name}_{i}.mp4"),
-                cv2.VideoWriter_fourcc(*"mp4v"),
-                24,
-                (renders.shape[2], renders.shape[1]),
-            )
-            for render in renders:
-                render = cv2.convertScaleAbs(render)
-                render = cv2.cvtColor(render, cv2.COLOR_RGB2BGR)
-                out.write(render)
-            out.release()
-
-    # Zero out the renders to save memory
-    if (
-        not return_raw and len(load_episodes.obs.shape) >= 3
-    ):  # If the observation is an image, overwrite it because it is too large
-        for episode in recorded_episodes:
-            episode.obs = [[0]]
-            episode.renders = [[0]]
-            episode.features = [[0]]
-            episode.probs = [[0]]
-
-    return recorded_episodes
-
-
-def _load_dataset(db_dataset: Dataset, return_raw=False, split_by_episode: bool = False) -> List[RecordedEpisodes]:
-    print("load_dataset:", db_dataset.dataset_name)
-
-    load_episodes = EpisodeRecorder.load_episodes(os.path.join("datasets", db_dataset.dataset_path))
-
-    if load_episodes.obs.size == 0:
-        return RecordedEpisodes()
-
-    # For datasets, make sure the last step is also marked as done
-    load_episodes.dones[-1] = True
-
-    if not return_raw and np.prod(load_episodes.obs.shape[1:]) > 100:
-        load_episodes.obs = np.zeros(1)
-    if not return_raw and np.prod(load_episodes.renders.shape[1:]) > 100:
-        load_episodes.renders = np.zeros(1)
-    if not return_raw and np.prod(load_episodes.features.shape[1:]) > 100:
-        load_episodes.features = np.zeros(1)
-
-    if not split_by_episode:
-        split_indices = [0, len(load_episodes.dones)]
-    else:
-        split_indices = np.where(load_episodes.dones)[0]
-        # add 0 and the last index to the split indices
-        split_indices = np.concatenate(([0], split_indices, [len(load_episodes.dones)]))
-
-    multi_dones_per_episode = len(split_indices) / load_episodes.episode_lengths.shape[0] > 1
-
-    return [
-        RecordedEpisodes(
-            env_id=-1,
-            obs=load_episodes.obs[split_indices[i] : split_indices[i + 1]].tolist(),
-            actions=load_episodes.actions[split_indices[i] : split_indices[i + 1]].tolist(),
-            rewards=load_episodes.rewards[split_indices[i] : split_indices[i + 1]].tolist(),
-            dones=load_episodes.dones[split_indices[i] : split_indices[i + 1]].tolist(),
-            infos=convert_infos(load_episodes.infos[split_indices[i] : split_indices[i + 1]]),
-            renders=load_episodes.renders[split_indices[i] : split_indices[i + 1]].tolist(),
-            features=load_episodes.features[split_indices[i] : split_indices[i + 1]].tolist(),
-            probs=load_episodes.probs[split_indices[i] : split_indices[i + 1]].tolist(),
-            episode_rewards=load_episodes.episode_rewards[i].tolist()
-            if len(load_episodes.episode_rewards) > 0 and not multi_dones_per_episode
-            else [],
-            episode_lengths=load_episodes.episode_lengths[i].tolist()
-            if len(load_episodes.episode_lengths) > 0 and not multi_dones_per_episode
-            else [],
-            additional_metrics=load_episodes.additional_metrics.item(),
-        )
-        for i in range(len(split_indices) - 1)
-    ]
