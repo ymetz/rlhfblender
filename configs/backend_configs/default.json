@@ -1,0 +1,10 @@
+{
+    "id": 0,
+    "name": "Default",
+    "description": "Default configuration",
+    "samplingStrategy": "sequential",
+    "loggerMode": "local",
+    "feedbackModelTrainingEnabled": false,
+    "feedbackModelType": "feedbackModelConfig",
+    "feedbackModelConfig": {}
+}

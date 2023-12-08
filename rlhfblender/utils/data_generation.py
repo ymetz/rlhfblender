@@ -112,8 +112,8 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
                 # this is how SB-Zoo does it, so we stick to it for easy cross-compatabily
                 additional_packages=benchmark_run.additional_packages if "additional_packages" in benchmark_run else [],
             )
-            #if "BabyAI" not in benchmark_run.env_id
-            #else gym.make(benchmark_run.env_id, render_mode="rgb_array")
+            if "BabyAI" not in benchmark_run.env_id
+            else gym.make(benchmark_run.env_id, render_mode="rgb_array")
         )
         framework = exp.framework
         if benchmark_run.benchmark_type == "random":
@@ -173,7 +173,7 @@ def encode_video(renders: np.ndarray, path: str) -> None:
     # Create video in H264 format
     out = cv2.VideoWriter(
         f"{path}.mp4",
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*"avc1"),
         24,
         (renders.shape[2], renders.shape[1]),
     )

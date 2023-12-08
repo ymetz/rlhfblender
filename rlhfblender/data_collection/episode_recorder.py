@@ -74,7 +74,7 @@ class EpisodeRecorder(object):
         # if not isinstance(env, VecEnv):
         #    env = DummyVecEnv([lambda: env])
 
-        is_monitor_wrapped = is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]
+        is_monitor_wrapped = is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0] if isinstance(env, VecEnv) else False
 
         n_envs = env.num_envs if isinstance(env, VecEnv) else 1
         episode_rewards = []
@@ -106,6 +106,10 @@ class EpisodeRecorder(object):
             if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations.keys():
                 infos["mission"] = observations["mission"]
                 infos["seed"] = seed
+            observations = np.expand_dims(observations, axis=0)
+            rewards = np.expand_dims(rewards, axis=0)
+            dones = np.expand_dims(dones, axis=0)
+            infos = [infos]
         else:
             env.seed(seed=seed)
             observations = env.reset()
@@ -141,11 +145,7 @@ class EpisodeRecorder(object):
                 ],
             )
 
-            # Expand dims, if env was not wrapped with DummyVecEnv
             if not isinstance(env, VecEnv):
-                rewards = np.expand_dims(rewards, axis=0)
-                dones = np.expand_dims(dones, axis=0)
-                infos = [infos]
                 # If not dummy vec env, we need to reset ourselves
                 if dones:
                     seed = random.randint(0, 1000000)
@@ -153,9 +153,9 @@ class EpisodeRecorder(object):
                         env.seed(seed=seed)
                         observations = env.reset()
                     else:
-                        observation, _ = env.reset(seed=seed)
-                    if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observation.keys():
-                        infos[0]["mission"] = observation["mission"]
+                        observations, _ = env.reset(seed=seed)
+                    if isinstance(env.observation_space, gym.spaces.Dict) and "mission" in observations.keys():
+                        infos[0]["mission"] = observations["mission"]
                         infos[0]["seed"] = seed
             obs_buffer.append(np.squeeze(observations))
             actions_buffer.append(np.squeeze(actions))
@@ -211,7 +211,6 @@ class EpisodeRecorder(object):
                                 info["label"] = "Real Game End"
                                 # Only increment at the real end of an episode
                                 episode_counts[i] += 1
-                                print("INCREMENT 1")
                                 # Reset the done environment to the initial state
                                 if reset_to_initial_state:
                                     env.envs[i] = deepcopy(initial_states[i])
@@ -221,11 +220,9 @@ class EpisodeRecorder(object):
                             episode_rewards.append(current_rewards[i])
                             episode_lengths.append(current_lengths[i])
                             episode_counts[i] += 1
-                            print("INCREMENT 2")
                             if reset_to_initial_state:
                                 env.envs[i] = deepcopy(initial_states[i])
                                 observations[i] = reset_obs[i]
-                        print(episode_counts)
                         # Remove terminal_observation as we don't need it to pass to the next episode
                         if "terminal_observation" in info.keys():
                             info.pop("terminal_observation")
@@ -244,15 +241,14 @@ class EpisodeRecorder(object):
             total_steps += 1
 
             if not isinstance(env, VecEnv):
-                observation, reward, terminated, truncated, info = env.step(actions)
-                done = terminated or truncated
-                observations = np.expand_dims(observation, axis=0)
-                rewards = np.expand_dims(reward, axis=0)
-                dones = np.expand_dims(done, axis=0)
-                infos = [info]
+                observations, rewards, terminated, truncated, infos = env.step(np.squeeze(actions))
+                dones = terminated or truncated
+                observations = np.expand_dims(observations, axis=0)
+                rewards = np.expand_dims(rewards, axis=0)
+                dones = np.expand_dims(dones, axis=0)
+                infos = [infos]
             else:
-                observation, rewards, dones, infos = env.step(actions)
-                print(observation, rewards, dones, infos, env.step(actions))
+                observations, rewards, dones, infos = env.step(actions)
 
         # Add last render frame to buffer
         if render:
