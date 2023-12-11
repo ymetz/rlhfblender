@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 
 
-class BaseAgent(object):
+class BaseAgent:
     def __init__(self, observation_space, action_space, **kwargs):
         self.observation_space = observation_space
         self.action_space = action_space
@@ -35,7 +35,9 @@ class TrainedAgent(BaseAgent, ABC):
     def extract_features(self, observation: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
-    def additional_outputs(self, observation: np.ndarray, action: np.ndarray, output_list: Optional[list[str]] = None) -> Optional[Dict]:
+    def additional_outputs(
+        self, observation: np.ndarray, action: np.ndarray, output_list: Optional[list[str]] = None
+    ) -> Optional[Dict]:
         raise NotImplementedError
 
 
@@ -49,5 +51,7 @@ class RandomAgent(BaseAgent):
     def reset(self):
         pass
 
-    def additional_outputs(self, observation: np.ndarray, action: np.ndarray, output_list: Optional[list[str]] = None) -> Optional[Dict]:
+    def additional_outputs(
+        self, observation: np.ndarray, action: np.ndarray, output_list: Optional[list[str]] = None
+    ) -> Optional[Dict]:
         return {"log_probs": np.zeros_like(action), "value": np.array([1.0]), "entropy": np.array([1.0])}

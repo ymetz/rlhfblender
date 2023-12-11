@@ -3,7 +3,6 @@ Make sure that the data for the demo is available, run at application startup.
 Expects pre-trained models in the experimentation directory. First runs benchmarks with the provided
 models, then creates video/thumbnail/reward data etc.
 """
-import asyncio
 import os
 import time
 from types import SimpleNamespace as sn
@@ -19,7 +18,7 @@ from rlhfblender.data_collection import framework_selector as framework_selector
 from rlhfblender.data_collection.environment_handler import get_environment, initial_registration
 from rlhfblender.data_collection.episode_recorder import EpisodeRecorder
 from rlhfblender.data_handling import database_handler as db_handler
-from rlhfblender.data_models import Experiment, Environment
+from rlhfblender.data_models import Environment, Experiment
 
 DATA_ROOT_DIR = "data"
 BENCHMARK_DIR = "saved_benchmarks"
@@ -66,12 +65,13 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
     :return:
     """
     benchmarked_experiments = []
-    for i, benchmark_run in enumerate(request):
-
+    for benchmark_run in request:
         if benchmark_run.benchmark_id != "":
-            exp: Experiment = await db_handler.get_single_entry(database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name")
+            exp: Experiment = await db_handler.get_single_entry(
+                database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name"
+            )
         else:
-            # for the experiments, we need to register the environment first (e.g. for annotations, naming of the action space, etc.)
+            # for the experiments, we need to register the environment first (e.g. for annotations, naming of the action space)
             if not db_handler.check_if_exists(database, Environment, value=benchmark_run.env_id, column="registration_id"):
                 # We lazily register the environment if it is not registered yet, this is only done once
                 database_env = initial_registration(
@@ -194,7 +194,6 @@ async def generate_data(benchmark_dicts: List[Dict]):
 
     skipped = 0
     for item in benchmark_dicts:
-
         benchmark_run = BenchmarkRequestModel(**item)
         save_file_name = os.path.join(
             f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
@@ -219,9 +218,7 @@ async def generate_data(benchmark_dicts: List[Dict]):
     # Now create the video/thumbnail/reward data etc.
     for benchmark_run, exp_id in zip(requests, benchmarked_experiments):
         # Path to benchmark file
-        save_file_name = os.path.join(
-            f"{benchmark_run.env_id}_{exp_id}_{benchmark_run.checkpoint_step}.npz"
-        )
+        save_file_name = os.path.join(f"{benchmark_run.env_id}_{exp_id}_{benchmark_run.checkpoint_step}.npz")
         data = np.load(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
         episode_data = split_data(data)
 
@@ -285,16 +282,23 @@ async def generate_data(benchmark_dicts: List[Dict]):
         os.remove(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}")
 
         # Delete the last episode, as it is not complete (TODO: Fix this)
-        print(f"Deleting last episode of {len(episode_data['dones']) - 1}")
-        os.remove(
-            f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}/benchmark_{len(episode_data['dones']) - 1}.npz"
-        )
-        os.remove(
-            f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{len(episode_data['dones']) - 1}.npy"
-        )
+        episode_idx = len(episode_data['dones']) - 1
+        episode_dir = f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"
+        rewards_dir = f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}"
+        uncertainty_dir = f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}"
+        renders_dir = f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}"
+        thumbnails_dir = f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}"
+
+        episode_file = f"{episode_dir}/benchmark_{episode_idx}.npz"
+        rewards_file = f"{rewards_dir}/rewards_{episode_idx}.npy"
+        uncertainty_file = f"{uncertainty_dir}/uncertainty_{episode_idx}.npy"
+        renders_file = f"{renders_dir}/{episode_idx}.mp4"
+        thumbnails_file = f"{thumbnails_dir}/{episode_idx}.jpg"
+
+        print(f"Deleting last episode of {episode_idx}")
+        os.remove(episode_file)
+        os.remove(rewards_file)
         if "infos" in episode_data:
-            os.remove(
-                f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{len(episode_data['dones']) - 1}.npy"
-            )
-        os.remove(f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.mp4")
-        os.remove(f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}/{len(episode_data['dones']) - 1}.jpg")
+            os.remove(uncertainty_file)
+        os.remove(renders_file)
+        os.remove(thumbnails_file)

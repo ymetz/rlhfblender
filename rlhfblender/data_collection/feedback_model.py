@@ -128,8 +128,8 @@ class FeedbackModel:
         optimizer = th.optim.Adam(self.model.parameters(), lr=1e-3)
         criterion = nn.MSELoss()
 
-        for epoch in range(epochs):
-            for obs, action, reward, user_feedback in dataloader:
+        for _epoch in range(epochs):
+            for obs, action, reward, _user_feedback in dataloader:
                 optimizer.zero_grad()
                 pred = self.model(obs, action)
                 # For now, we only use the environment reward as the ground truth, TODO: use the feedback as well/instead

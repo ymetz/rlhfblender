@@ -43,7 +43,7 @@ class SQLLogger(Logger):
         :return: None
         """
         self.feedback.append(feedback)
-        asyncio.create_task(self.dump())
+        _task = asyncio.create_task(self.dump())
 
     def log_raw(self, feedback: UnprocessedFeedback) -> None:
         """
@@ -52,7 +52,7 @@ class SQLLogger(Logger):
         :return: None
         """
         self.raw_feedback.append(feedback)
-        asyncio.create_task(self.dump_raw())
+        _task = asyncio.create_task(self.dump_raw())
 
     async def dump(self) -> None:
         """

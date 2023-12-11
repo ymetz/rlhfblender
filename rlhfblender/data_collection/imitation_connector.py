@@ -109,16 +109,14 @@ class ImitationConnector(connector.Connector):
 
         # Set random seed
         set_random_seed(experiment.seed)
-        # Create the experiment directory
-        experiment_dir = os.path.join(self.experiment_dir, experiment.exp_name + str(experiment.id))
 
         if experiment.wandb_tracking:
             try:
                 import wandb
-            except ImportError:
+            except ImportError as e:
                 raise ImportError(
                     "if you want to use Weights & Biases to track experiment, please install W&B via `pip install wandb`"
-                )
+                ) from e
 
             run_name = f"{experiment.env_id}__{experiment.algorithm}__{experiment.seed}__{int(time.time())}"
             run = wandb.init(

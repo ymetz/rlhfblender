@@ -116,14 +116,14 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
         # after a reset we DO want to access the first observation of the new
         # trajectory, not the last observation of the old trajectory
         self._old_obs = obs
-        for i, (info_dict, old_rew) in enumerate(zip(infos, old_rews)):
+        for info_dict, old_rew in zip(infos, old_rews):
             info_dict["wrapped_env_rew"] = old_rew
             # info_dict["disc_saliency_map"] = discriminator_saliency_maps[i]
         return obs, rews, dones, infos
 
     def load_reward_function(self, load_path: str) -> Callable:
         print("==== Use trained reward function ========")
-        print("==== Load Reward Model from path: {} ========".format(load_path))
+        print(f"==== Load Reward Model from path: {load_path} ========")
         reward_net = th.load(load_path, map_location=get_device("auto"))
         reward_net.eval()
 

@@ -63,7 +63,7 @@ def load_model(model_name, raise_not_found=True):
         return model
     except FileNotFoundError:
         if raise_not_found:
-            raise FileNotFoundError("No model found at {}".format(path))
+            raise FileNotFoundError(f"No model found at {path}") from None
 
 
 def get_vocab_path(model_name):
@@ -99,7 +99,7 @@ class Vocabulary:
         self.vocab.update(other.vocab)
 
 
-class InstructionsPreprocessor(object):
+class InstructionsPreprocessor:
     def __init__(self, model_name, load_vocab_from=None):
         self.model_name = model_name
         self.vocab = Vocabulary(model_name)
@@ -133,14 +133,14 @@ class InstructionsPreprocessor(object):
         return instrs
 
 
-class RawImagePreprocessor(object):
+class RawImagePreprocessor:
     def __call__(self, obss, device=None):
         images = numpy.array([obs["image"] for obs in obss])
         images = torch.tensor(images, device=device, dtype=torch.float)
         return images
 
 
-class IntImagePreprocessor(object):
+class IntImagePreprocessor:
     def __init__(self, num_channels, max_high=255):
         self.num_channels = num_channels
         self.max_high = max_high
@@ -174,7 +174,7 @@ class ObssPreprocessor:
         return obs_
 
 
-class IntObssPreprocessor(object):
+class IntObssPreprocessor:
     def __init__(self, model_name, obs_space, load_vocab_from=None):
         image_obs_space = obs_space.spaces["image"]
         self.image_preproc = IntImagePreprocessor(image_obs_space.shape[-1], max_high=image_obs_space.high.max())
@@ -202,6 +202,7 @@ class Agent(ABC):
     - to choose an action given an observation,
     - to analyze the feedback (i.e. reward and done state) of its action."""
 
+    @abstractmethod    
     def on_reset(self):
         pass
 

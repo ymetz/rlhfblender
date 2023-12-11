@@ -10,7 +10,8 @@ long_description = """
 
 # RLHF-Blender
 
-RLHF-Blender is an library to train reward models from diverse human feedback. It encompasses both a Python library and a TypeScript-based user interface for collecting human feedback.
+RLHF-Blender is an library to train reward models from diverse human feedback. 
+It encompasses both a Python library and a TypeScript-based user interface for collecting human feedback.
 
 ## Links
 
@@ -22,7 +23,7 @@ https://rlhfblender.readthedocs.io/en/latest/
 
 RLHF-Blender UI:
 https://github.com/ymetz/rlhfblender-ui
-"""  # noqa:E501
+"""
 
 setup(
     name="rlhfblender",
@@ -70,11 +71,12 @@ setup(
             "sphinx_copybutton",
         ],
     },
-    description="Implementation for RLHF-Blender: A Configurable Interactive Interface for Learning from Diverse Human Feedback",
+    description="Implementation for RLHF-Blender: A Configurable Interface for Learning from Human Feedback",
     author="Yannick Metz",
     url="https://github.com/ymetz/rlhfblender",
     author_email="yannick.metz@uni-konstanz.de",
-    keywords="react reinforcement-learning experimentation human-ai-interaction reinforcement-learning-from-human-feedback python",
+    keywords="react reinforcement-learning experimentation "
+             "human-ai-interaction reinforcement-learning-from-human-feedback python",
     license="MIT",
     long_description=long_description,
     long_description_content_type="text/markdown",

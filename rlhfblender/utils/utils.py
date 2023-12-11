@@ -13,11 +13,7 @@ from sb3_contrib import QRDQN, TQC
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.sb2_compat.rmsprop_tf_like import (
-    RMSpropTFLike,
-)
 
-# noqa: F401
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
     SubprocVecEnv,
@@ -27,7 +23,7 @@ from stable_baselines3.common.vec_env import (
 )
 
 # For custom activation fn
-from torch import nn as nn  # noqa: F401 pylint: disable=unused-import
+from torch import nn as nn  # pylint: disable=unused-import
 
 ALGOS = {
     "a2c": A2C,
@@ -99,7 +95,7 @@ def get_wrapper_class(hyperparams: Dict[str, Any]) -> Optional[Callable[[gym.Env
                     "You should check the indentation."
                 )
                 wrapper_dict = wrapper_name
-                wrapper_name = list(wrapper_dict.keys())[0]
+                wrapper_name = next(iter(wrapper_dict.keys()))
                 kwargs = wrapper_dict[wrapper_name]
             else:
                 kwargs = {}
@@ -168,7 +164,7 @@ def get_callback_list(hyperparams: Dict[str, Any]) -> List[BaseCallback]:
                     "You should check the indentation."
                 )
                 callback_dict = callback_name
-                callback_name = list(callback_dict.keys())[0]
+                callback_name = next(iter(callback_dict.keys()))
                 kwargs = callback_dict[callback_name]
             else:
                 kwargs = {}
@@ -647,7 +643,7 @@ def get_saved_hyperparams(
         config_file = os.path.join(stats_path, "config.yml")
         if os.path.isfile(config_file):
             # Load saved hyperparameters
-            with open(os.path.join(stats_path, "config.yml"), "r") as f:
+            with open(os.path.join(stats_path, "config.yml")) as f:
                 hyperparams = yaml.load(f, Loader=yaml.UnsafeLoader)  # pytype: disable=module-attr
             hyperparams["normalize"] = hyperparams.get("normalize", False)
         else:
@@ -679,7 +675,7 @@ class StoreDict(argparse.Action):
 
     def __init__(self, option_strings, dest, nargs=None, **kwargs):
         self._nargs = nargs
-        super(StoreDict, self).__init__(option_strings, dest, nargs=nargs, **kwargs)
+        super().__init__(option_strings, dest, nargs=nargs, **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
         arg_dict = {}

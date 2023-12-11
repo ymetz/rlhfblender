@@ -20,7 +20,7 @@ class BenchmarkSummary(BaseModel):
     additional_metrics: dict
 
 
-class EpisodeRecorder(object):
+class EpisodeRecorder:
     def __init__(self):
         pass
 
@@ -74,7 +74,9 @@ class EpisodeRecorder(object):
         # if not isinstance(env, VecEnv):
         #    env = DummyVecEnv([lambda: env])
 
-        is_monitor_wrapped = is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0] if isinstance(env, VecEnv) else False
+        is_monitor_wrapped = (
+            is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0] if isinstance(env, VecEnv) else False
+        )
 
         n_envs = env.num_envs if isinstance(env, VecEnv) else 1
         episode_rewards = []
@@ -290,6 +292,51 @@ class EpisodeRecorder(object):
         feature_extractor_buffer = np.array(feature_extractor_buffer)
         infos_buffer = np.array(infos_buffer)
         probs_buffer = np.array(probs_buffer)
+
+        EpisodeRecorder.save_episodes(
+            obs_buffer=obs_buffer,
+            actions_buffer=actions_buffer,
+            dones_buffer=dones_buffer,
+            rew_buffer=rew_buffer,
+            episode_rewards=episode_rewards,
+            episode_lengths=episode_lengths,
+            feature_extractor_buffer=feature_extractor_buffer,
+            infos_buffer=infos_buffer,
+            probs_buffer=probs_buffer,
+            render_buffer=render_buffer,
+            save_path=save_path,
+            overwrite=overwrite,
+        )
+
+    def save_episodes(
+        obs_buffer: np.ndarray,
+        actions_buffer: np.ndarray,
+        dones_buffer: np.ndarray,
+        rew_buffer: np.ndarray,
+        episode_rewards: np.ndarray,
+        episode_lengths: np.ndarray,
+        feature_extractor_buffer: np.ndarray,
+        infos_buffer: np.ndarray,
+        probs_buffer: np.ndarray,
+        render_buffer: np.ndarray,
+        save_path: str,
+        overwrite: bool = False,
+    ) -> BenchmarkSummary:
+        """
+        Save episodes to a file.
+        :param obs_buffer: The observations buffer
+        :param actions_buffer: The actions buffer
+        :param dones_buffer: The dones buffer
+        :param rew_buffer: The rewards buffer
+        :param episode_rewards: The episode rewards buffer
+        :param episode_lengths: The episode lengths buffer
+        :param feature_extractor_buffer: The feature extractor buffer
+        :param infos_buffer: The infos buffer
+        :param probs_buffer: The probabilities buffer
+        :param render_buffer: The render buffer
+        :param save_path: The path to the file to save
+        :param overwrite: Whether to overwrite the existing file
+        """
 
         # If overwrite is not set, we will append to the existing buffer
         if not overwrite and os.path.isfile(save_path + ".npz"):

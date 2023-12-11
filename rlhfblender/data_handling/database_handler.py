@@ -156,7 +156,7 @@ async def update_entry(
     model: Type[BaseModel],
     key: int,
     key_column: Optional[str] = "id",
-    data: dict = {},
+    data: Optional[dict] = None,
     table_name: Optional[str] = None,
 ) -> None:
     """
@@ -170,6 +170,10 @@ async def update_entry(
     """
     table_name = model.__name__ if table_name is None else table_name
     query = "UPDATE " + table_name + " SET "
+
+    if data is None:
+        data = {}
+
     for field in data:
         data_field = data[field]
 
@@ -186,7 +190,13 @@ async def update_entry(
     await cursor.execute(query)
 
 
-async def delete_entry(cursor: Database, model: Type[BaseModel], key: int, key_column: Optional[str] = "id", table_name: Optional[str] = None,) -> None:
+async def delete_entry(
+    cursor: Database,
+    model: Type[BaseModel],
+    key: int,
+    key_column: Optional[str] = "id",
+    table_name: Optional[str] = None,
+) -> None:
     """
     Deletes a single entry from a table with a given model
     :param cursor: sqlite3.Cursor

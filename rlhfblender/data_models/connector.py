@@ -7,7 +7,7 @@ from rlhfblender.data_models.agent import BaseAgent
 from rlhfblender.data_models.global_models import EvaluationConfig, Experiment, Project
 
 
-class Connector(object):
+class Connector:
     def __init__(self, database: Database, experiment_dir: str, gym_compatible: bool = True):
         """
         Common Connector Super class for all data connectors.

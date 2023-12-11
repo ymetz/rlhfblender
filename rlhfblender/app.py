@@ -145,7 +145,7 @@ async def update_data(req: UpdateDataRequest):
     model = get_model_by_name(req.model_name)
     if model is None:
         return {"message": f"Model {req.model_name} not found."}
-    await db_handler.update_entry(database, model, req.item_id, req.data)
+    await db_handler.update_entry(database, model, req.item_id, data=req.data)
     return {"message": f"Updated {req.model_name} with id {req.item_id}"}
 
 

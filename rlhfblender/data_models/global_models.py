@@ -1,6 +1,5 @@
 from typing import List
 
-import numpy as np
 from pydantic import BaseModel, field_validator
 
 """

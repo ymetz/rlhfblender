@@ -4,20 +4,15 @@ These can the be loaded in the user interface for studies
 """
 import argparse
 import asyncio
-import os
 import sys
 
 from rlhfblender.data_collection import framework_selector as framework_selector
 from rlhfblender.utils.data_generation import generate_data
 
 if __name__ == "__main__":
-    # must fit:     python rlhfblender.generate_data --exp_name MyExperiment --env_id MyEnv-v0 --model_path path/to/model.zip --num_episodes 100 --num_parallel 10
-
     parser = argparse.ArgumentParser(description="Generate data for RLHFBlender")
     parser.add_argument("--exp", type=str, help="The experiment name.")
     parser.add_argument("--env", type=str, help="The environment id.")
-    #parser.add_argument("--model-path", type=str, help="The path to the model.", default="")
-    #parser.add_argument("--random", type=bool, help="Whether to use random action selection.", default=False)
     parser.add_argument("--num-episodes", type=int, help="The number of episodes to run.", default=10)
 
     group = parser.add_mutually_exclusive_group()

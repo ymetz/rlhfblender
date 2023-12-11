@@ -56,7 +56,7 @@ class JSONLogger(Logger):
         :return: None
         """
         self.feedback.append(feedback)
-        asyncio.create_task(self.dump())
+        _task = asyncio.create_task(self.dump())
 
     def read(self) -> List[StandardizedFeedback]:
         """
@@ -72,7 +72,7 @@ class JSONLogger(Logger):
         :return: None
         """
         self.raw_feedback.append(feedback)
-        asyncio.create_task(self.dump_raw())
+        _task = asyncio.create_task(self.dump_raw())
 
     def read_raw(self) -> List[UnprocessedFeedback]:
         """

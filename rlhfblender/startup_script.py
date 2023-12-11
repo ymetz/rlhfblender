@@ -20,7 +20,7 @@ if __name__ == "__main__":
             "benchmark_id": str(1),
             "checkpoint_step": i * 1000000,
             "n_episodes": 1,
-            "path": os.path.join(f"rlhfblender_demo_models/Atari Breakout"),
+            "path": os.path.join("rlhfblender_demo_models/Atari Breakout"),
         }
         for i in range(2, 12, 2)
     ]
@@ -38,7 +38,7 @@ if __name__ == "__main__":
             "benchmark_id": str(8),
             "checkpoint_step": 10000000,
             "n_episodes": 20,
-            "path": os.path.join(f"rlhfblender_demo_models/BabyAI"),
+            "path": os.path.join("rlhfblender_demo_models/BabyAI"),
         }
     ]
 
@@ -55,7 +55,7 @@ if __name__ == "__main__":
             "benchmark_id": str(7),
             "checkpoint_step": (i + 1) * 4000,
             "n_episodes": 10,
-            "path": os.path.join(f"rlhfblender_demo_models/Highway_env"),
+            "path": os.path.join("rlhfblender_demo_models/Highway_env"),
         }
         for i in range(3)
     ]

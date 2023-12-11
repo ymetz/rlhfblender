@@ -159,7 +159,7 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
                 elif data["command"] == "close":
                     env.close()
                     # Close the socket
-                    conn.sendall(str("closed").encode("utf-8"))
+                    conn.sendall(b"closed")
                     break
 
     # Exit the process

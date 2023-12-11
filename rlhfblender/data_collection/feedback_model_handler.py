@@ -1,19 +1,8 @@
-import numpy as np
 from imitation.rewards.reward_nets import (
-    BasicRewardNet,
-    BasicShapedRewardNet,
-    CnnRewardNet,
-    RewardEnsemble,
     RewardNet,
-    RewardNetWithVariance,
 )
 
 from rlhfblender.data_collection import feedback_model
-from rlhfblender.data_models.feedback_models import (
-    FeedbackType,
-    StandardizedFeedback,
-    UnprocessedFeedback,
-)
 
 
 class FeedbackModelHandler:

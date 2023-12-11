@@ -1,5 +1,4 @@
 import difflib
-import importlib
 import os
 import time
 import uuid
@@ -9,15 +8,13 @@ import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
 import torch as th
-from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.utils import set_random_seed
-from torch import Tensor
 
 import rlhfblender.data_models.connector as connector
 
 # Register custom envs
 from rlhfblender.data_handling.database_handler import get_single_entry
-from rlhfblender.data_models.agent import BaseAgent, TrainedAgent
+from rlhfblender.data_models.agent import TrainedAgent
 from rlhfblender.data_models.global_models import (
     Environment,
     EvaluationConfig,
@@ -43,7 +40,7 @@ class StableBaselines3Agent(TrainedAgent):
         if "checkpoint_step" in kwargs:
             path = os.path.join(exp.path, "rl_model_{}_steps.zip".format(kwargs["checkpoint_step"]))
         else:
-            path = os.path.join(exp.path, "{}.zip".format(exp.env_id))
+            path = os.path.join(exp.path, f"{exp.env_id}.zip")
 
         self.model = ALGOS[exp.algorithm].load(path, device=device)
         self.agent_state = None
@@ -182,10 +179,10 @@ class StableBaselines3ZooConnector(connector.Connector):
         if experiment.wandb_tracking:
             try:
                 import wandb
-            except ImportError:
+            except ImportError as err:
                 raise ImportError(
                     "if you want to use Weights & Biases to track experiment, please install W&B via `pip install wandb`"
-                )
+                ) from err
 
             run_name = f"{experiment.env_id}__{experiment.algorithm}__{experiment.seed}__{int(time.time())}"
             run = wandb.init(

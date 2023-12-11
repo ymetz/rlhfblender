@@ -1,8 +1,8 @@
 import argparse
 import asyncio
 import os
-from typing import Dict, Optional
 import time
+from typing import Dict, Optional
 
 from databases import Database
 
@@ -13,11 +13,13 @@ from rlhfblender.utils.utils import StoreDict
 
 database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
 
+
 async def init_db():
-        # Make sure all database tables exist
+    # Make sure all database tables exist
     await db_handler.create_table_from_model(database, Project)
     await db_handler.create_table_from_model(database, Experiment)
     await db_handler.create_table_from_model(database, Environment)
+
 
 async def add_to_project(project: str = "RLHF-Blender", env: Optional[str] = None, exp: Optional[str] = None):
     """Add an environment or experiment to a project.
@@ -27,11 +29,9 @@ async def add_to_project(project: str = "RLHF-Blender", env: Optional[str] = Non
         env (Optional[str], optional): The environment id. Defaults to None.
         exp (Optional[str], optional): The experiment name. Defaults to None.
     """
-    
+
     # check if project exists
-    if not await db_handler.check_if_exists(
-        database, Project, key=project, key_column="project_name"
-    ):
+    if not await db_handler.check_if_exists(database, Project, key=project, key_column="project_name"):
         # register new project
         await db_handler.add_entry(
             database,
@@ -42,10 +42,8 @@ async def add_to_project(project: str = "RLHF-Blender", env: Optional[str] = Non
         existing_exps = []
     else:
         # get the project and existing envs and exps
-        project_obj: Project = await db_handler.get_single_entry(
-            database, Project, key=project, key_column="project_name"
-        )
-        existing_envs = project_obj.project_environments 
+        project_obj: Project = await db_handler.get_single_entry(database, Project, key=project, key_column="project_name")
+        existing_envs = project_obj.project_environments
         existing_exps = project_obj.project_experiments
 
     # now add env or exp to project
@@ -68,7 +66,11 @@ async def add_to_project(project: str = "RLHF-Blender", env: Optional[str] = Non
 
 
 async def register_env(
-    id: str = "Cartpole-v1", entry_point: Optional[str] = "", display_name: str = "", env_kwargs: Optional[Dict] = None, project: str = "RLHF-Blender"
+    id: str = "Cartpole-v1",
+    entry_point: Optional[str] = "",
+    display_name: str = "",
+    env_kwargs: Optional[Dict] = None,
+    project: str = "RLHF-Blender",
 ):
     """Register an environment in the database.
 
@@ -87,9 +89,7 @@ async def register_env(
     for key, value in env_kwargs.items():
         setattr(env, key, value)
 
-    if not await db_handler.check_if_exists(
-        database, Environment, key=id, key_column="registration_id"
-    ):
+    if not await db_handler.check_if_exists(database, Environment, key=id, key_column="registration_id"):
         await db_handler.add_entry(
             database,
             Environment,
@@ -100,6 +100,7 @@ async def register_env(
 
     else:
         print(f"Environment with id {id} already exists. Skipping registration.")
+
 
 async def register_experiment(
     exp_name: str,
@@ -125,9 +126,7 @@ async def register_experiment(
     """
     exp = Experiment(exp_name=exp_name, env_id=env_id, path=path, **exp_kwargs)
 
-    if not await db_handler.check_if_exists(
-        database, Experiment, key=exp_name, key_column="exp_name"
-    ):
+    if not await db_handler.check_if_exists(database, Experiment, key=exp_name, key_column="exp_name"):
         await db_handler.add_entry(
             database,
             Experiment,
@@ -203,10 +202,16 @@ if __name__ == "__main__":
         env_kwargs = args.env_kwargs if args.env_kwargs is not None else {}
         asyncio.run(
             register_env(
-                args.env, entry_point=args.env_gym_entrypoint, display_name=args.env_display_name, env_kwargs=env_kwargs, project=args.project
+                args.env,
+                entry_point=args.env_gym_entrypoint,
+                display_name=args.env_display_name,
+                env_kwargs=env_kwargs,
+                project=args.project,
             )
         )
     if args.exp != "":
         exp_kwargs = args.exp_kwargs if args.exp_kwargs is not None else {}
         exp_env_id = args.exp_env_id if args.exp_env_id != "" else args.env
-        asyncio.run(register_experiment(args.exp, env_id=exp_env_id, path=args.exp_path, exp_kwargs=exp_kwargs, project=args.project))
+        asyncio.run(
+            register_experiment(args.exp, env_id=exp_env_id, path=args.exp_path, exp_kwargs=exp_kwargs, project=args.project)
+        )

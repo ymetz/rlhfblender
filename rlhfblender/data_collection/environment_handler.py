@@ -18,9 +18,9 @@ from rlhfblender.utils import get_wrapper_class
 def get_environment(
     env_name: str = "CartPole-v0",
     n_envs: int = 1,
-    environment_config: dict = {},
+    environment_config: Optional[dict] = None,
     norm_env_path: Union[str, None] = None,
-    additional_packages: dict = [],
+    additional_packages: list = (),
 ) -> VecEnv:
     """
     Get the gym environment by name.
@@ -32,6 +32,8 @@ def get_environment(
     :param norm_env_path: (str) Path to the normalized environment
     :return:
     """
+    if environment_config is None:
+        environment_config = {}
     for env_module in additional_packages:
         importlib.import_module(env_module)
 
@@ -96,7 +98,7 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
 
 
 def initial_registration(
-    env_id: str = "CartPole-v0", entry_point: Optional[str] = "", additional_gym_packages: Optional[list] = []
+    env_id: str = "CartPole-v0", entry_point: Optional[str] = "", additional_gym_packages: Optional[list] = ()
 ) -> Environment:
     """
     Register the environment with the database.

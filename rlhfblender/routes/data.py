@@ -1,9 +1,8 @@
 import os
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
-import cv2
 import numpy as np
 from databases import Database
 from fastapi import APIRouter, File, Request, UploadFile
@@ -17,23 +16,15 @@ from rlhfblender.data_collection.demo_session import (
     create_new_session,
     demo_perform_step,
 )
-from rlhfblender.data_collection.environment_handler import (
-    get_environment,
-)
 from rlhfblender.data_collection.episode_recorder import (
     BenchmarkSummary,
-    EpisodeRecorder,
-    convert_infos,
 )
 from rlhfblender.data_handling import database_handler as db_handler
-from rlhfblender.data_models.agent import RandomAgent
 from rlhfblender.data_models.feedback_models import UnprocessedFeedback
 from rlhfblender.data_models.global_models import (
-    Dataset,
     Environment,
     EpisodeID,
     Experiment,
-    RecordedEpisodes,
 )
 
 database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
@@ -101,9 +92,10 @@ class FeedbackType(str, Enum):
 
 class FeedbackModel(BenchmarkModel):
     episode_id: int = -1
-    feedback: dict = {}
+    feedback: Union[dict, None] = None
     feedback_type: FeedbackType = FeedbackType.rating
     feedback_time: float = -1.0
+
 
 @router.get("/get_rewards", response_model=List, tags=["DATA"])
 async def get_rewards(
@@ -259,7 +251,8 @@ async def get_actions_for_episode(request: DetailRequest):
 
 
 @router.post("/save_feature_feedback")
-async def save_feature_feedback(image: UploadFile = File(...)):
+async def save_feature_feedback(image: UploadFile = None):
+    image = image or File(...)
     import base64
     import io
 
@@ -397,7 +390,7 @@ async def initialize_demo_session(request: Request):
 
         first_step = demo_perform_step(session_id, [])
         success = True
-    except Exception as e:
+    except Exception:
         pid = -1
         first_step = {"reward": 0, "done": False, "infos": {}}
         success = False
@@ -425,7 +418,7 @@ async def demo_step(request: Request):
     try:
         return_data = demo_perform_step(session_id, action)
         success = True
-    except Exception as e:
+    except Exception:
         return_data = {"reward": 0, "done": False, "infos": {}}
         success = False
 

@@ -21,7 +21,7 @@ class BabyAIAgent(TrainedAgent):
     : param exp: The experiment object
     : param env: The environment object
     : param device: The device on which to run the model
-    : param kwargs: Additional keyword arguments (e.g. the checkpoint step [checkpoint_step=<int>], whether to use a deterministic policy [deterministic=<bool>])
+    : param kwargs: Additional keyword arguments (e.g. the checkpoint step [checkpoint_step=<int>, deterministic=<bool>])
     """
 
     def __init__(
@@ -70,7 +70,7 @@ class BabyAIAgent(TrainedAgent):
 
     def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
         """
-        If the model has additional outputs, they can be accessed here. Containts the current outputs for the previous act() call.
+        If the model has additional outputs, they can be accessed here. Containts the current outputs for the previous act().
         :param observation: The observation from the environment
         :param action: The action taken in the environment
         :param output_list: A list of outputs to return

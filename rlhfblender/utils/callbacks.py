@@ -32,7 +32,7 @@ class SaveVecNormalizeCallback(BaseCallback):
         name_prefix: Optional[str] = None,
         verbose: int = 0,
     ):
-        super(SaveVecNormalizeCallback, self).__init__(verbose)
+        super().__init__(verbose)
         self.save_freq = save_freq
         self.save_path = save_path
         self.name_prefix = name_prefix
@@ -74,7 +74,7 @@ class ParallelTrainCallback(BaseCallback):
     """
 
     def __init__(self, gradient_steps: int = 100, verbose: int = 0, sleep_time: float = 0.0):
-        super(ParallelTrainCallback, self).__init__(verbose)
+        super().__init__(verbose)
         self.batch_size = 0
         self._model_ready = True
         self._model = None

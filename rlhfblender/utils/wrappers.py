@@ -1,10 +1,7 @@
 import gymnasium as gym
 import numpy as np
-from sb3_contrib.common.wrappers import (
-    TimeFeatureWrapper,
-)
 
-# noqa: F401 (backward compatibility)
+# (backward compatibility)
 from scipy.signal import iirfilter, sosfilt, zpk2sos
 
 
@@ -15,7 +12,7 @@ class DoneOnSuccessWrapper(gym.Wrapper):
     """
 
     def __init__(self, env: gym.Env, reward_offset: float = 0.0, n_successes: int = 1):
-        super(DoneOnSuccessWrapper, self).__init__(env)
+        super().__init__(env)
         self.reward_offset = reward_offset
         self.n_successes = n_successes
         self.current_successes = 0
@@ -50,7 +47,7 @@ class ActionNoiseWrapper(gym.Wrapper):
     """
 
     def __init__(self, env, noise_std=0.1):
-        super(ActionNoiseWrapper, self).__init__(env)
+        super().__init__(env)
         self.noise_std = noise_std
 
     def step(self, action):
@@ -105,7 +102,7 @@ class LowPassFilterWrapper(gym.Wrapper):
     """
 
     def __init__(self, env, freq=5.0, df=25.0):
-        super(LowPassFilterWrapper, self).__init__(env)
+        super().__init__(env)
         self.freq = freq
         self.df = df
         self.signal = []
@@ -132,7 +129,7 @@ class ActionSmoothingWrapper(gym.Wrapper):
     """
 
     def __init__(self, env, smoothing_coef: float = 0.0):
-        super(ActionSmoothingWrapper, self).__init__(env)
+        super().__init__(env)
         self.smoothing_coef = smoothing_coef
         self.smoothed_action = None
         # from https://github.com/rail-berkeley/softlearning/issues/3
@@ -161,7 +158,7 @@ class DelayedRewardWrapper(gym.Wrapper):
     """
 
     def __init__(self, env, delay=10):
-        super(DelayedRewardWrapper, self).__init__(env)
+        super().__init__(env)
         self.delay = delay
         self.current_step = 0
         self.accumulated_reward = 0.0
@@ -213,7 +210,7 @@ class HistoryWrapper(gym.Wrapper):
         # Overwrite the observation space
         env.observation_space = gym.spaces.Box(low=low, high=high, dtype=wrapped_obs_space.dtype)
 
-        super(HistoryWrapper, self).__init__(env)
+        super().__init__(env)
 
         self.horizon = horizon
         self.low_action, self.high_action = low_action, high_action
@@ -273,7 +270,7 @@ class HistoryWrapperObsDict(gym.Wrapper):
         # Overwrite the observation space
         env.observation_space.spaces["observation"] = gym.spaces.Box(low=low, high=high, dtype=wrapped_obs_space.dtype)
 
-        super(HistoryWrapperObsDict, self).__init__(env)
+        super().__init__(env)
 
         self.horizon = horizon
         self.low_action, self.high_action = low_action, high_action

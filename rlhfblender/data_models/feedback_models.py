@@ -216,7 +216,7 @@ class AbsoluteFeedback(StandardizedFeedback):
 
 
 class RelativeFeedback(StandardizedFeedback):
-    target: List[Target] = []
+    target: List[Target] = None
     content: Union[RelativeEvaluation, RelativeInstruction, RelativeDescription] = None
 
 

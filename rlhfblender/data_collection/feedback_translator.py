@@ -2,7 +2,6 @@
 This module translates incoming feedback of different types into a common format.
 """
 
-import numpy as np
 
 from rlhfblender.data_models.feedback_models import (
     AbsoluteFeedback,
@@ -25,7 +24,8 @@ from rlhfblender.data_models.feedback_models import (
     get_target,
 )
 from rlhfblender.data_models.global_models import Environment, Experiment
-from rlhfblender.logger import CSVLogger, JSONLogger
+from rlhfblender.logger.csv_logger import CSVLogger
+from rlhfblender.logger.json_logger import JSONLogger
 
 
 class FeedbackTranslator:
