@@ -12,7 +12,7 @@ from stable_baselines3.common.vec_env import (
 )
 
 from rlhfblender.data_models.global_models import Environment
-from rlhfblender.utils import get_wrapper_class
+from rlhfblender.utils.utils import get_wrapper_class
 
 
 def get_environment(
@@ -87,18 +87,21 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
 
     tag_dict = {}
     if shape is not None:
-        tag_dict = {f"tag_{i}": i for i in range(shape[-1])}
+        tag_dict = {f"{i}": i for i in range(shape[-1])}
 
     return {
         "label": f"{space.__class__.__name__}({shape!s})",
         "shape": shape,
         "dtype": str(space.dtype),
-        **tag_dict,
+        "labels": tag_dict,
     }
 
 
 def initial_registration(
-    env_id: str = "CartPole-v0", entry_point: Optional[str] = "", additional_gym_packages: Optional[list] = ()
+    env_id: str = "CartPole-v0", 
+    entry_point: Optional[str] = "", 
+    additional_gym_packages: Optional[list] = (), 
+    gym_env_kwargs: Optional[dict] = None
 ) -> Environment:
     """
     Register the environment with the database.
@@ -114,7 +117,7 @@ def initial_registration(
     if entry_point != "":
         gym.register(id=env_id, entry_point=entry_point)
 
-    env = gym.make(env_id, render_mode="rgb_array")
+    env = gym.make(env_id, render_mode="rgb_array", **gym_env_kwargs)
 
     return Environment(
         env_name=env_id,

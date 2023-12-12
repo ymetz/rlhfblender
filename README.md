@@ -11,6 +11,8 @@ Paper: https://arxiv.org/abs/2308.04332 (Presented at the ICML2023 Interactive L
 
 <div align="center">
 
+Website + Demo: https://sites.google.com/view/rlhfblender
+
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![License](https://img.shields.io/github/license/ymetz/rlhfblender)](https://github.com/ymetz/rlhfblender/blob/master/LICENSE)
 ![CI](https://github.com/ymetz/rlhfblender/workflows/CI/badge.svg)

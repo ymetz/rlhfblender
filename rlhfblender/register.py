@@ -69,6 +69,7 @@ async def register_env(
     id: str = "Cartpole-v1",
     entry_point: Optional[str] = "",
     display_name: str = "",
+    additional_gym_packages: Optional[list] = (),
     env_kwargs: Optional[Dict] = None,
     project: str = "RLHF-Blender",
 ):
@@ -80,9 +81,9 @@ async def register_env(
         kwargs (Optional[Dict], optional): The kwargs for the environment class. Defaults to None.
     """
     env_name = display_name if display_name != "" else id
-    additional_gym_packages = env_kwargs.get("additional_gym_packages", []) if env_kwargs is not None else []
+    env_kwargs = env_kwargs if env_kwargs is not None else {}
     env: Environment = environment_handler.initial_registration(
-        env_id=id, entry_point=entry_point, additional_gym_packages=additional_gym_packages
+        env_id=id, entry_point=entry_point, additional_gym_packages=additional_gym_packages, gym_env_kwargs=env_kwargs
     )
 
     env.env_name = env_name
@@ -105,6 +106,7 @@ async def register_env(
 async def register_experiment(
     exp_name: str,
     env_id: Optional[str] = "Cartpole-v1",
+    env_kwargs: Optional[Dict] = None,
     path: Optional[str] = "",
     exp_kwargs: Optional[Dict] = None,
     project: Optional[str] = "RLHF-Blender",
@@ -112,19 +114,15 @@ async def register_experiment(
     """Register an experiment in the database.
 
     Args:
+        exp_name (str): The experiment name.
         env_id (str, optional): The environment id. Defaults to "Cartpole-v1".
-        path (str, optional): The path to the experiment. Defaults to "".
-        benchmark_type (str, optional): The benchmark type. Defaults to "random".
-        benchmark_id (int, optional): The benchmark id. Defaults to -1.
-        checkpoint_step (int, optional): The checkpoint step. Defaults to -1.
-        n_episodes (int, optional): The number of episodes. Defaults to 1.
-        force_overwrite (bool, optional): Force overwrite. Defaults to False.
-        render (bool, optional): Render. Defaults to True.
-        deterministic (bool, optional): Deterministic. Defaults to False.
-        reset_state (bool, optional): Reset state. Defaults to False.
-        split_by_episode (bool, optional): Split by episode. Defaults to False.
+        env_kwargs (Optional[Dict], optional): The kwargs for the environment class. Defaults to None.
+        path (Optional[str], optional): The path to the experiment. Defaults to "".
+        exp_kwargs (Optional[Dict], optional): The kwargs for the experiment class. Defaults to None.
+        project (Optional[str], optional): The project name. Defaults to "RLHF-Blender".
     """
-    exp = Experiment(exp_name=exp_name, env_id=env_id, path=path, **exp_kwargs)
+    env_kwargs = env_kwargs if env_kwargs is not None else {}
+    exp = Experiment(exp_name=exp_name, env_id=env_id, path=path, environment_config=env_kwargs, **exp_kwargs)
 
     if not await db_handler.check_if_exists(database, Experiment, key=exp_name, key_column="exp_name"):
         await db_handler.add_entry(
@@ -137,6 +135,38 @@ async def register_experiment(
 
     else:
         print(f"Experiment with name {exp_name} already exists. Skipping registration.")
+
+
+async def get_action_dims(env_id: str) -> None:
+    """Get the action dimensions for a given environment.
+
+    Args:
+        env_id (str): The environment id.
+
+    Returns:
+        int: The action dimensions.
+    """
+    env: Environment = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
+    print(f"Action dimensions: {env.action_space_info.get('shape', 0)}")
+
+async def register_action_labels(env_id: str, action_labels: list):
+    """Register action labels for a given environment.
+
+    Args:
+        env_id (str): The environment id.
+        action_labels (list): The action labels.
+    """
+    env: Environment = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
+    overwrite_action_space = env.action_space_info
+    for key in overwrite_action_space["labels"]:
+        overwrite_action_space["labels"][key] = action_labels[int(key)] if int(key) < len(action_labels) else key
+    await db_handler.update_entry(
+        database,
+        Environment,
+        key=env_id,
+        key_column="registration_id",
+        data={"action_space_info": overwrite_action_space},
+    )
 
 
 if __name__ == "__main__":
@@ -166,6 +196,13 @@ if __name__ == "__main__":
         default="",
     )
     argparser.add_argument(
+        "--additional-gym-packages",
+        type=str,
+        nargs="+",
+        help="(Optional) Additional gym packages to import. Relevant for local custom environments",
+        default=[],
+    )
+    argparser.add_argument(
         "--env-kwargs",
         type=str,
         nargs="+",
@@ -175,7 +212,7 @@ if __name__ == "__main__":
 
     # args for exp registration
     argparser.add_argument(
-        "--exp-env-id",
+        "--exp-env",
         type=str,
         help="(Optional) A separate environment-id for the experiment. By default the environment-id is used.",
         default="",
@@ -194,6 +231,21 @@ if __name__ == "__main__":
         help='Experiment Kwargs (e.g. description:"An optional exp description")',
     )
 
+    # action label registration
+    argparser.add_argument(
+        "--get-action-dims",
+        action="store_true",
+        help="Get the action dimensions for a given environment.",
+        default=False,
+    )
+    argparser.add_argument(
+        "--action-labels",
+        type=str,
+        nargs="+",
+        help="(Optional) Action labels for the environment.",
+        default=[],
+    )
+
     args = argparser.parse_args()
 
     asyncio.run(init_db())
@@ -205,13 +257,21 @@ if __name__ == "__main__":
                 args.env,
                 entry_point=args.env_gym_entrypoint,
                 display_name=args.env_display_name,
+                additional_gym_packages=args.additional_gym_packages,
                 env_kwargs=env_kwargs,
                 project=args.project,
             )
         )
     if args.exp != "":
         exp_kwargs = args.exp_kwargs if args.exp_kwargs is not None else {}
-        exp_env_id = args.exp_env_id if args.exp_env_id != "" else args.env
+        exp_env_id = args.exp_env if args.exp_env != "" else args.env
+        env_kwargs = args.env_kwargs if args.env_kwargs is not None else {}
         asyncio.run(
-            register_experiment(args.exp, env_id=exp_env_id, path=args.exp_path, exp_kwargs=exp_kwargs, project=args.project)
+            register_experiment(args.exp, env_id=exp_env_id, env_kwargs=args.env_kwargs, path=args.exp_path, exp_kwargs=exp_kwargs, project=args.project)
         )
+
+    if args.get_action_dims:
+        asyncio.run(get_action_dims(args.env))
+
+    if len(args.action_labels) > 0:
+        asyncio.run(register_action_labels(args.env, args.action_labels))
