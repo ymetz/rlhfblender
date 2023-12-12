@@ -202,7 +202,7 @@ class Agent(ABC):
     - to choose an action given an observation,
     - to analyze the feedback (i.e. reward and done state) of its action."""
 
-    @abstractmethod    
+    @abstractmethod
     def on_reset(self):
         pass
 

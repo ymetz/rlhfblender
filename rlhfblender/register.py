@@ -149,6 +149,7 @@ async def get_action_dims(env_id: str) -> None:
     env: Environment = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
     print(f"Action dimensions: {env.action_space_info.get('shape', 0)}")
 
+
 async def register_action_labels(env_id: str, action_labels: list):
     """Register action labels for a given environment.
 
@@ -267,7 +268,14 @@ if __name__ == "__main__":
         exp_env_id = args.exp_env if args.exp_env != "" else args.env
         env_kwargs = args.env_kwargs if args.env_kwargs is not None else {}
         asyncio.run(
-            register_experiment(args.exp, env_id=exp_env_id, env_kwargs=args.env_kwargs, path=args.exp_path, exp_kwargs=exp_kwargs, project=args.project)
+            register_experiment(
+                args.exp,
+                env_id=exp_env_id,
+                env_kwargs=args.env_kwargs,
+                path=args.exp_path,
+                exp_kwargs=exp_kwargs,
+                project=args.project,
+            )
         )
 
     if args.get_action_dims:

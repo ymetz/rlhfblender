@@ -98,10 +98,10 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
 
 
 def initial_registration(
-    env_id: str = "CartPole-v0", 
-    entry_point: Optional[str] = "", 
-    additional_gym_packages: Optional[list] = (), 
-    gym_env_kwargs: Optional[dict] = None
+    env_id: str = "CartPole-v0",
+    entry_point: Optional[str] = "",
+    additional_gym_packages: Optional[list] = (),
+    gym_env_kwargs: Optional[dict] = None,
 ) -> Environment:
     """
     Register the environment with the database.

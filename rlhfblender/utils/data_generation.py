@@ -282,7 +282,7 @@ async def generate_data(benchmark_dicts: List[Dict]):
         os.remove(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}")
 
         # Delete the last episode, as it is not complete (TODO: Fix this)
-        episode_idx = len(episode_data['dones']) - 1
+        episode_idx = len(episode_data["dones"]) - 1
         episode_dir = f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"
         rewards_dir = f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}"
         uncertainty_dir = f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}"

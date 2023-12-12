@@ -43,7 +43,8 @@ if __name__ == "__main__":
             "checkpoint_step": checkpoint,
             "n_episodes": args.num_episodes,
             "path": args.model_path,
-        } for checkpoint in checkpoints
+        }
+        for checkpoint in checkpoints
     ]
 
     asyncio.run(generate_data(benchmark_dicts))

@@ -44,7 +44,6 @@ class CSVLogger(Logger):
         """
         self.feedback.append(feedback)
         _task = asyncio.create_task(self.dump())
-        
 
     def read(self) -> List[StandardizedFeedback]:
         """

@@ -5,10 +5,9 @@
 """
 import os
 
-from rlhfblender.app import app
-
 from fastapi.testclient import TestClient
 
+from rlhfblender.app import app
 
 # Set DB environment variable
 os.environ["RLHFBLENDER_DB_HOST"] = "test_api.db"

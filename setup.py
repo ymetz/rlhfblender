@@ -76,7 +76,7 @@ setup(
     url="https://github.com/ymetz/rlhfblender",
     author_email="yannick.metz@uni-konstanz.de",
     keywords="react reinforcement-learning experimentation "
-             "human-ai-interaction reinforcement-learning-from-human-feedback python",
+    "human-ai-interaction reinforcement-learning-from-human-feedback python",
     license="MIT",
     long_description=long_description,
     long_description_content_type="text/markdown",
