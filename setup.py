@@ -59,7 +59,7 @@ setup(
             "ruff>=0.0.288",
             # Reformat
             "black",
-            "httpx==0.25.2",
+            "httpx",
         ],
         "docs": [
             "sphinx>=5,<8",

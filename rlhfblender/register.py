@@ -87,8 +87,6 @@ async def register_env(
     )
 
     env.env_name = env_name
-    for key, value in env_kwargs.items():
-        setattr(env, key, value)
 
     if not await db_handler.check_if_exists(database, Environment, key=id, key_column="registration_id"):
         await db_handler.add_entry(
