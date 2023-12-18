@@ -84,7 +84,6 @@ class Environment(BaseModel):
     env_name: str = ""
     registered: int = 0
     registration_id: str = ""
-    type: str = ""
     observation_space_info: dict = {}
     action_space_info: dict = {}
     has_state_loading: int = 0

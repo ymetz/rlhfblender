@@ -71,6 +71,7 @@ async def register_env(
     display_name: str = "",
     additional_gym_packages: Optional[list] = (),
     env_kwargs: Optional[Dict] = None,
+    env_description: str = "",
     project: str = "RLHF-Blender",
 ):
     """Register an environment in the database.
@@ -87,6 +88,7 @@ async def register_env(
     )
 
     env.env_name = env_name
+    env.description = env_description
 
     if not await db_handler.check_if_exists(database, Environment, key=id, key_column="registration_id"):
         await db_handler.add_entry(
@@ -208,6 +210,12 @@ if __name__ == "__main__":
         action=StoreDict,
         help='Environment Kwargs (e.g. description:"An optional env description")',
     )
+    argparser.add_argument(
+        "--env-description",
+        type=str,
+        help="(Optional) A description for the environment.",
+        default="",
+    )
 
     # args for exp registration
     argparser.add_argument(
@@ -258,6 +266,7 @@ if __name__ == "__main__":
                 display_name=args.env_display_name,
                 additional_gym_packages=args.additional_gym_packages,
                 env_kwargs=env_kwargs,
+                env_description=args.env_description,
                 project=args.project,
             )
         )
