@@ -3,6 +3,7 @@ Make sure that the data for the demo is available, run at application startup.
 Expects pre-trained models in the experimentation directory. First runs benchmarks with the provided
 models, then creates video/thumbnail/reward data etc.
 """
+
 import os
 import time
 from types import SimpleNamespace as sn
@@ -76,9 +77,9 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
                 # We lazily register the environment if it is not registered yet, this is only done once
                 database_env = initial_registration(
                     benchmark_run.env_id,
-                    additional_gym_packages=benchmark_run.additional_packages
-                    if "additional_packages" in benchmark_run
-                    else [],
+                    additional_gym_packages=(
+                        benchmark_run.additional_packages if "additional_packages" in benchmark_run else []
+                    ),
                 )
                 await db_handler.add_entry(database, Environment, database_env.model_dump())
 

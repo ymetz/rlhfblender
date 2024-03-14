@@ -2,6 +2,7 @@
 Pre-generated data for the RLHFBlender project (e.g. record videos, reward logs, etc.)
 These can the be loaded in the user interface for studies
 """
+
 import argparse
 import asyncio
 import sys

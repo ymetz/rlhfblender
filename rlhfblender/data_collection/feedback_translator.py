@@ -2,7 +2,6 @@
 This module translates incoming feedback of different types into a common format.
 """
 
-
 from rlhfblender.data_models.feedback_models import (
     AbsoluteFeedback,
     Actuality,

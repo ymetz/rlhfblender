@@ -1,6 +1,7 @@
 """
 Logging component for feedback logging
 """
+
 from abc import abstractmethod
 from datetime import datetime
 from typing import List

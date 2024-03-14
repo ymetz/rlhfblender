@@ -3,6 +3,7 @@ Make sure that the data for the demo is available, run at application startup.
 Expects pre-trained models in the experimentation directory. First runs benchmarks with the provided
 models, then creates video/thumbnail/reward data etc.
 """
+
 import asyncio
 import os
 
