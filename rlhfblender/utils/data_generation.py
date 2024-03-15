@@ -24,7 +24,7 @@ from rlhfblender.data_models import Environment, Experiment
 DATA_ROOT_DIR = "data"
 BENCHMARK_DIR = "saved_benchmarks"
 
-database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
 def get_custom_thumbnail_creator(env_id: str):
@@ -67,6 +67,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
     """
     benchmarked_experiments = []
     for benchmark_run in request:
+        print(request)
         if benchmark_run.benchmark_id != "":
             exp: Experiment = await db_handler.get_single_entry(
                 database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name"
@@ -117,6 +118,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
             else gym.make(benchmark_run.env_id, render_mode="rgb_array")
         )
         framework = exp.framework
+        print(exp, framework)
         if benchmark_run.benchmark_type == "random":
             framework = "Random"
         agent = framework_selector.get_agent(framework=framework)(

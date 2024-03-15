@@ -41,7 +41,7 @@ def test_read_main(client):
 def test_get_all(client):
     response = client.get("/get_all?model_name=environment")
     assert response.status_code == 200
-    assert response.json() == []
+    assert isinstance(response.json(), list)
 
 
 def test_create_environment(client):

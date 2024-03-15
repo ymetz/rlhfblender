@@ -36,15 +36,9 @@ class Logger:
         Resets the logger
         :return: None
         """
-        self.logger_id = (
-            datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            + "_"
-            + self.exp.exp_name
-            + "_"
-            + self.env.env_name
-            + "_"
-            + self.suffix
-        )
+        self.logger_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + self.exp.exp_name + "_" + self.suffix
+        # Replace all spaces with underscores
+        self.logger_id = self.logger_id.replace(" ", "_").replace(":", "-").replace("/", "-")
 
     @abstractmethod
     def log(self, feedback: StandardizedFeedback):

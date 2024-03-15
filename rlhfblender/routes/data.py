@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Union
 
@@ -27,7 +26,7 @@ from rlhfblender.data_models.global_models import (
     Experiment,
 )
 
-database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/data")
 
@@ -250,15 +249,22 @@ async def get_actions_for_episode(request: DetailRequest):
     return episode_benchmark_data["actions"].tolist()
 
 
+class SaveFeatureFeedbackRequest(BaseModel):
+    session_id: str
+
+
 @router.post("/save_feature_feedback")
-async def save_feature_feedback(image: UploadFile = None):
+async def save_feature_feedback(request: Request, image: UploadFile = None):
+
+    save_image_name = request.query_params.get("save_image_name", None)
+    print("Save Image Name: ", save_image_name)
+
     image = image or File(...)
     import base64
     import io
 
     from PIL import Image
 
-    print("Saving image...")
     contents = await image.read()
 
     contents_str = contents.decode("utf-8")
@@ -269,11 +275,8 @@ async def save_feature_feedback(image: UploadFile = None):
     img = Image.open(io.BytesIO(base64.b64decode(contents_str)))
 
     # Save image
-    os.makedirs(os.path.join("data", "feature_feedback"), exist_ok=True)
-    # get current time formatted as string
-    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    img.save(os.path.join("data", "feature_feedback", "feature_feedback_" + current_time + ".png"))
+    os.makedirs(os.path.join("logs", "feature_feedback"), exist_ok=True)
+    img.save(os.path.join("logs", "feature_feedback", save_image_name + ".png"))
 
     return {"message": "Image saved successfully"}
 
