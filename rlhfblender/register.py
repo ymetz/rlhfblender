@@ -97,7 +97,7 @@ async def register_env(
             env.model_dump(),
         )
         await add_to_project(project=project, env=id)
-        print(f"Registered experiment {args.exp} in project {args.project}")
+        print(f"Registered environment {env_name} in project {project}")
 
     else:
         print(f"Environment with id {id} already exists. Skipping registration.")
@@ -108,6 +108,7 @@ async def register_experiment(
     env_id: Optional[str] = "Cartpole-v1",
     env_kwargs: Optional[Dict] = None,
     path: Optional[str] = "",
+    framework: str = "StableBaselines3",
     exp_kwargs: Optional[Dict] = None,
     project: Optional[str] = "RLHF-Blender",
 ):
@@ -118,11 +119,15 @@ async def register_experiment(
         env_id (str, optional): The environment id. Defaults to "Cartpole-v1".
         env_kwargs (Optional[Dict], optional): The kwargs for the environment class. Defaults to None.
         path (Optional[str], optional): The path to the experiment. Defaults to "".
+        framework (str, optional): The framework used for the experiment. Defaults to "Stable Baselines3".
         exp_kwargs (Optional[Dict], optional): The kwargs for the experiment class. Defaults to None.
         project (Optional[str], optional): The project name. Defaults to "RLHF-Blender".
     """
     env_kwargs = env_kwargs if env_kwargs is not None else {}
-    exp = Experiment(exp_name=exp_name, env_id=env_id, path=path, environment_config=env_kwargs, **exp_kwargs)
+    exp_kwargs = exp_kwargs if exp_kwargs is not None else {}
+    exp = Experiment(
+        exp_name=exp_name, env_id=env_id, path=path, environment_config=env_kwargs, framework=framework, **exp_kwargs
+    )
 
     if not await db_handler.check_if_exists(database, Experiment, key=exp_name, key_column="exp_name"):
         await db_handler.add_entry(
@@ -131,7 +136,7 @@ async def register_experiment(
             exp.model_dump(),
         )
         await add_to_project(project=project, exp=exp_name)
-        print(f"Registered environment {args.env} in project {args.project}")
+        print(f"Registered experiment {exp_name} in project {project}")
 
     else:
         print(f"Experiment with name {exp_name} already exists. Skipping registration.")

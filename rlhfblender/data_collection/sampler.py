@@ -70,13 +70,13 @@ class Sampler:
         self.experiment = experiment
         self.env = env
 
-        env_name = env.env_name if "ALE" not in env.env_name else env.env_name.split("/")[-1]  # Kinda special case but okay
         self.episode_buffer = []
         for checkpoint in self.experiment.checkpoint_list:
             cp_path = os.path.join(
                 self.saved_episode_dir,
-                env_name + "_" + str(self.experiment.id) + "_" + str(checkpoint),
+                env.env_name + "_" + str(self.experiment.id) + "_" + str(checkpoint),
             )
+            print(cp_path)
             if not os.path.exists(cp_path):
                 continue
             for file in os.listdir(cp_path):
@@ -84,7 +84,7 @@ class Sampler:
                     episode_info = EpisodeID(
                         benchmark_id=self.experiment.id,
                         benchmark_type="trained",
-                        env_name=env_name,
+                        env_name=env.env_name,
                         checkpoint_step=checkpoint,
                         episode_num=file.split(".")[0],
                     )

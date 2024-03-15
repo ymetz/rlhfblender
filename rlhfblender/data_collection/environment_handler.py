@@ -129,5 +129,5 @@ def initial_registration(
         description="",
         tags=[],
         env_path="",
-        additional_gym_packages=additional_gym_packages,
+        additional_gym_packages=[] if len(additional_gym_packages) == 0 else additional_gym_packages,
     )

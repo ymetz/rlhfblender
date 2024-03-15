@@ -48,7 +48,7 @@ app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_fi
 app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")
 app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
-database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
+database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'rlhfblender.db')}")
 
 
 @app.on_event("startup")

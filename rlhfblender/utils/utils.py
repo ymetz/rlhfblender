@@ -46,7 +46,7 @@ def flatten_dict_observations(env: gym.Env) -> gym.Env:
         return gym.wrappers.FlattenDictWrapper(env, dict_keys=list(keys))
 
 
-def get_wrapper_class(hyperparams: Dict[str, Any]) -> Optional[Callable[[gym.Env], gym.Env]]:
+def get_wrapper_class(hyperparams: Dict[str, Any], key: str = "env_wrapper") -> Optional[Callable[[gym.Env], gym.Env]]:
     """
     Get one or more Gym environment wrapper class specified as a hyper parameter
     "env_wrapper".
@@ -61,6 +61,7 @@ def get_wrapper_class(hyperparams: Dict[str, Any]) -> Optional[Callable[[gym.Env
 
 
     :param hyperparams:
+    :param key: they requested key to look for in the hyperparams
     :return: maybe a callable to wrap the environment
         with one or multiple gym.Wrapper
     """
@@ -71,8 +72,8 @@ def get_wrapper_class(hyperparams: Dict[str, Any]) -> Optional[Callable[[gym.Env
     def get_class_name(wrapper_name):
         return wrapper_name.split(".")[-1]
 
-    if "env_wrapper" in hyperparams.keys():
-        wrapper_name = hyperparams.get("env_wrapper")
+    if key in hyperparams.keys():
+        wrapper_name = hyperparams.get(key)
 
         if wrapper_name is None:
             return None
