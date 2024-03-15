@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Union
 
@@ -27,7 +26,7 @@ from rlhfblender.data_models.global_models import (
     Experiment,
 )
 
-database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/data")
 

@@ -24,7 +24,7 @@ from rlhfblender.data_models import Environment, Experiment
 DATA_ROOT_DIR = "data"
 BENCHMARK_DIR = "saved_benchmarks"
 
-database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
 def get_custom_thumbnail_creator(env_id: str):

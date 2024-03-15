@@ -11,7 +11,7 @@ import rlhfblender.data_handling.database_handler as db_handler
 from rlhfblender.data_models.global_models import Environment, Experiment, Project
 from rlhfblender.utils.utils import StoreDict
 
-database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'test.db')}")
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
 async def init_db():

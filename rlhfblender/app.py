@@ -48,7 +48,7 @@ app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_fi
 app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")
 app.mount("/logs", StaticFiles(directory="logs"), name="logs")
 
-database = Database(f"sqlite:///./{os.environ.get('RLHFBLENDER_DB_HOST', 'rlhfblender.db')}")
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
 @app.on_event("startup")
@@ -247,12 +247,12 @@ async def retreive_demos():
     # Return list of CSV files from logs directory, zip them and proide download link
     demos = []
     try:
-        for filename in os.listdir(os.path.join("data", "generated_demos")):
+        for filename in os.listdir(os.path.join("logs", "generated_demos")):
             if filename.endswith(".npz"):
                 demos.append(filename)
         with zipfile.ZipFile("logs.zip", "w") as zip:
             for log in demos:
-                zip.write(os.path.join("data", "generated_demos", log))
+                zip.write(os.path.join("logs", "generated_demos", log))
         return FileResponse("demos.zip", media_type="application/zip", filename="demos.zip")
     except FileNotFoundError:
         return {"message": "No demos found."}
@@ -263,12 +263,12 @@ async def retreive_feature_feedback():
     # Return list of CSV files from logs directory, zip them and proide download link
     feedbacks = []
     try:
-        for filename in os.listdir(os.path.join("data", "feature_feedback")):
+        for filename in os.listdir(os.path.join("logs", "feature_feedback")):
             if filename.endswith(".png"):
                 feedbacks.append(filename)
         with zipfile.ZipFile("logs.zip", "w") as zip:
             for log in feedbacks:
-                zip.write(os.path.join("data", "feature_feedback", log))
+                zip.write(os.path.join("logs", "feature_feedback", log))
         return FileResponse(
             "feature_selections.zip",
             media_type="application/zip",
@@ -289,7 +289,7 @@ def main(args):
     )
     parser.add_argument("--ui-config", type=str, default=None, help="Path to UI config file.")
     parser.add_argument("--backend-config", type=str, default=None, help="Path to backend config file.")
-    parser.add_argument("--db-host", type=str, default="test.db", help="Path to database file.")
+    parser.add_argument("--db-host", type=str, default="sqlite:///rlhfblender.db", help="Path to database file.")
 
     args = parser.parse_args(args)
 
