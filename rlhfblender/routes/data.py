@@ -249,8 +249,10 @@ async def get_actions_for_episode(request: DetailRequest):
 
     return episode_benchmark_data["actions"].tolist()
 
+
 class SaveFeatureFeedbackRequest(BaseModel):
     session_id: str
+
 
 @router.post("/save_feature_feedback")
 async def save_feature_feedback(request: Request, image: UploadFile = None):
@@ -263,6 +265,7 @@ async def save_feature_feedback(request: Request, image: UploadFile = None):
     import io
 
     from PIL import Image
+
     contents = await image.read()
 
     contents_str = contents.decode("utf-8")
