@@ -65,8 +65,8 @@ class UnprocessedFeedback(BaseModel):
     demo_preferences: Union[List[int], None] = None
 
     # Descriptive feedback content
-    feature_selection: List[dict] | None = None
-    feature_importance: float | List[float] | None = None
+    feature_selection: List[dict] | None | str = None
+    feature_importance: float | List[float] | None | str = None
     feature_selections_preferences: List[List[dict]] | None = None
     feature_importance_preferences: List[float | List[float]] | None = None
 
@@ -194,8 +194,8 @@ class RelativeInstruction(Instruction):
 
 
 class Description(BaseModel):
-    feature_selection: List[dict] = None
-    feature_importance: Union[float, List[float]] = None
+    feature_selection: List[dict] | str = None # A list of feature selections or a file path as a string
+    feature_importance: Union[float, List[float]] | str = None # A list of feature importances or a file path as a string
 
 
 class RelativeDescription(Description):
