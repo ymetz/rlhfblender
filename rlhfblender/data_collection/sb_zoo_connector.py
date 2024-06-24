@@ -8,6 +8,8 @@ import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
 import torch as th
+from rl_zoo3.exp_manager import ExperimentManager
+from rl_zoo3.utils import ALGOS
 from stable_baselines3.common.utils import set_random_seed
 
 import rlhfblender.data_models.connector as connector
@@ -21,8 +23,6 @@ from rlhfblender.data_models.global_models import (
     Experiment,
     Project,
 )
-from rlhfblender.utils.exp_manager import ExperimentManager
-from rlhfblender.utils.utils import ALGOS
 
 
 class StableBaselines3Agent(TrainedAgent):

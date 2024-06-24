@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import gymnasium as gym
 import numpy as np
 import torch as th
+from rl_zoo3.exp_manager import ExperimentManager as exp_manager
 from stable_baselines3.common.utils import set_random_seed
 
 from rlhfblender.data_handling.database_handler import get_single_entry
@@ -18,7 +19,6 @@ from rlhfblender.data_models.global_models import (
     Experiment,
     Project,
 )
-from rlhfblender.utils.exp_manager import ExperimentManager as exp_manager
 
 from .sb_zoo_connector import StableBaselines3Agent
 

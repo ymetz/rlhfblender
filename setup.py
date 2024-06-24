@@ -32,6 +32,7 @@ setup(
     install_requires=[
         # "safety-gymnasium>=1.0.0",
         "stable-baselines3[extra]>=2.2.1",
+        "rl_zoo3>=2.2.1",
         "minigrid>=2.0.0",
         "highway-env>=1.8.2",
         "sb3-contrib>=2.0.0",

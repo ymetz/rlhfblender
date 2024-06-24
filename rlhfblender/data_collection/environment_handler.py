@@ -3,6 +3,7 @@ import os
 from typing import Optional, Union
 
 import gymnasium as gym
+from rl_zoo3.utils import get_wrapper_class
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -12,7 +13,6 @@ from stable_baselines3.common.vec_env import (
 )
 
 from rlhfblender.data_models.global_models import Environment
-from rlhfblender.utils.utils import get_wrapper_class
 
 
 def get_environment(
