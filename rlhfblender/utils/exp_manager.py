@@ -47,7 +47,6 @@ from rlhfblender.utils.utils import (
     get_wrapper_class,
     linear_schedule,
 )
-from rlhfblender.utils.video_callback import VideoRecorderCallback
 
 
 class ExperimentManager:
@@ -80,8 +79,6 @@ class ExperimentManager:
         sampler: str = "tpe",
         pruner: str = "median",
         optimization_log_path: Optional[str] = None,
-        no_video_callback: bool = False,
-        video_save_freq: int = int(2.5e5),
         use_trained_reward_function: bool = False,
         trained_reward_function_path: str = "",
         norm_logging: bool = False,
@@ -124,9 +121,7 @@ class ExperimentManager:
         self.n_eval_episodes = n_eval_episodes
         self.n_eval_envs = n_eval_envs
 
-        self.no_video_callback = no_video_callback
-        self.video_save_freq = video_save_freq
-
+        # capability to train with reward function
         self.use_trained_reward_function = use_trained_reward_function
         self.trained_reward_function_path = trained_reward_function_path
 
@@ -294,8 +289,6 @@ class ExperimentManager:
             "learning_rate",
             "clip_range",
             "clip_range_vf",
-            "ent_coef",
-            "conf_matrix_k",
         ]:
             if key not in hyperparams:
                 continue
@@ -459,13 +452,6 @@ class ExperimentManager:
             )
 
             self.callbacks.append(eval_callback)
-
-        if not self.no_video_callback:
-            video_save_freq = max(self.video_save_freq // self.n_envs, 1)
-
-            video_recorder_callback = VideoRecorderCallback(self.create_envs(1, eval_env=True), render_freq=video_save_freq)
-
-            self.callbacks.append(video_recorder_callback)
 
     @staticmethod
     def is_atari(env_id: str) -> bool:
