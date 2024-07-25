@@ -68,6 +68,7 @@ class BenchmarkRequestModel(BenchmarkModel):
     reset_state: bool = False
     split_by_episode: bool = False
     record_episode_videos: bool = False
+    
 
 
 class VideoRequestModel(BenchmarkModel):

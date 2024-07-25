@@ -68,13 +68,15 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
     benchmarked_experiments = []
     for benchmark_run in request:
         print(request)
-        if benchmark_run.benchmark_id != "":
+        if benchmark_run.benchmark_id != "" and await db_handler.check_if_exists(
+            database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name"
+        ):
             exp: Experiment = await db_handler.get_single_entry(
                 database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name"
             )
         else:
             # for the experiments, we need to register the environment first (e.g. for annotations, naming of the action space)
-            if not db_handler.check_if_exists(database, Environment, value=benchmark_run.env_id, column="registration_id"):
+            if not db_handler.check_if_exists(database, Environment, key=benchmark_run.env_id, key_column="registration_id"):
                 # We lazily register the environment if it is not registered yet, this is only done once
                 database_env = initial_registration(
                     benchmark_run.env_id,
@@ -83,12 +85,16 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
                     ),
                 )
                 await db_handler.add_entry(database, Environment, database_env.model_dump())
+            else:
+                database_env = await db_handler.get_single_entry(
+                    database, Environment, key=benchmark_run.env_id, key_column="registration_id"
+                )
 
             # create and register a "dummy" experiment
             exp: Experiment = Experiment(
-                exp_name=f"{benchmark_run.env_id}_{benchmark_run.framwork}_{benchmark_run.benchmark_type}_Experiment",
+                exp_name=f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_Experiment",
                 env_id=benchmark_run.env_id,
-                framework=benchmark_run.framework,
+                framework="Random",
                 created_timestamp=int(time.time()),
             )
             await db_handler.add_entry(database, Experiment, exp)
@@ -112,7 +118,7 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
                 n_envs=1,
                 norm_env_path=os.path.join(benchmark_run.path, benchmark_run.env_id),
                 # this is how SB-Zoo does it, so we stick to it for easy cross-compatabily
-                additional_packages=benchmark_run.additional_packages if "additional_packages" in benchmark_run else [],
+                additional_packages=database_env.additional_gym_packages,
             )
             if "BabyAI" not in benchmark_run.env_id
             else gym.make(benchmark_run.env_id, render_mode="rgb_array")
@@ -157,11 +163,11 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
 # Now, create the video/thumbnail/reward data etc.
 def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     """Splits the data into episodes."""
-    episode_ends = np.argwhere(data["dones"]).squeeze()
+    episode_ends = np.argwhere(data["dones"])
     episodes = {}
     for name, data_item in data.items():
         if data_item.shape:
-            episodes[name] = np.split(data_item, episode_ends)
+            episodes[name] = np.split(data_item, episode_ends.flatten() + 1)
         else:
             episodes[name] = data_item
 

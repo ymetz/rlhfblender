@@ -41,11 +41,18 @@ def get_environment(
 
     vec_env_cls = DummyVecEnv
 
+    env_kwargs = environment_config.get("env_kwargs", None)
+    # add render_mode = 'rgb_array' to env_kwargs
+    if env_kwargs is None:
+        env_kwargs = {"render_mode": "rgb_array"}
+    else:
+        env_kwargs["render_mode"] = "rgb_array"
+
     env = make_vec_env(
         env_name,
         n_envs=n_envs,
         wrapper_class=env_wrapper,
-        env_kwargs=environment_config.get("env_kwargs", None),
+        env_kwargs=env_kwargs,
         vec_env_cls=vec_env_cls,
         vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
     )

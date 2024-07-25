@@ -78,7 +78,7 @@ The easiest way to generate the data is to use the ``generate_data.py`` script r
     python -m rlhfblender.generate_data --exp MyExperiment --random
 
     #! generate data for a pre-registered environment and create a new experiment (with a random policy)
-    python -m rlhfblender.generate_data --env MyEnv-v0 --exp MyNewEnvironment --random -n-episodes 10
+    python -m rlhfblender.generate_data --env MyEnv-v0 --exp MyNewEnvironment --random --num-episodes 10
 
     #! generate data for a pre-registered environment and use checkpoints for inference
     python -m rlhfblender.generate_data --env MyEnv-v0 --exp MyNewEnvironment --model-path path/to/checkpoints --checkpoints 100000 200000 300000
