@@ -74,6 +74,10 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
             exp: Experiment = await db_handler.get_single_entry(
                 database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name"
             )
+            database_env = await db_handler.get_single_entry(
+                database, Environment, key=exp.env_id, key_column="registration_id"
+            )
+            benchmark_run.env_id = exp.env_id if "env_id" not in benchmark_run else benchmark_run.env_id
         else:
             # for the experiments, we need to register the environment first (e.g. for annotations, naming of the action space)
             if not db_handler.check_if_exists(database, Environment, key=benchmark_run.env_id, key_column="registration_id"):
@@ -144,10 +148,11 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
 
         save_file_name = f"{benchmark_run.env_id}_{exp.id}_{benchmark_run.checkpoint_step}"
 
-        EpisodeRecorder.record_episodes(
-            agent,
-            benchmark_env,
-            benchmark_run.n_episodes,
+        # Create an instance of EpisodeRecorder with the required parameters
+        recorder = EpisodeRecorder(
+            agent=agent,
+            env=benchmark_env,
+            n_eval_episodes=benchmark_run.n_episodes,
             max_steps=int(2e4),
             save_path=os.path.join("data", "saved_benchmarks", save_file_name),
             overwrite=True,
@@ -155,6 +160,11 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
             deterministic=benchmark_run.deterministic,
             reset_to_initial_state=benchmark_run.reset_state,
         )
+
+        # Call the record_episodes method to start recording
+        recorder.record_episodes()
+
+        # Register benchmarked experiment
         benchmarked_experiments.append(exp.id)
 
     return benchmarked_experiments

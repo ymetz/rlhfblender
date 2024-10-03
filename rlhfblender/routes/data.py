@@ -60,17 +60,6 @@ class BenchmarkModel(BaseModel):
     checkpoint_step: int = -1
 
 
-class BenchmarkRequestModel(BenchmarkModel):
-    n_episodes: int = 1
-    force_overwrite: bool = False
-    render: bool = True
-    deterministic: bool = True
-    reset_state: bool = False
-    split_by_episode: bool = False
-    record_episode_videos: bool = False
-    
-
-
 class VideoRequestModel(BenchmarkModel):
     episode_id: int = -1
 
