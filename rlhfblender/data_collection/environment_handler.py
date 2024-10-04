@@ -124,6 +124,8 @@ def initial_registration(
     if entry_point != "":
         gym.register(id=env_id, entry_point=entry_point)
 
+    if gym_env_kwargs is None:
+        gym_env_kwargs = {}
     env = gym.make(env_id, render_mode="rgb_array", **gym_env_kwargs)
 
     return Environment(
