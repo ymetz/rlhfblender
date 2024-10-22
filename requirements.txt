@@ -2,6 +2,7 @@ fastapi
 databases[sqlite]
 uvicorn
 swig
+numpy>=2.0
 gymnasium[atari,accept-rom-license,mujoco]
 stable-baselines3
 sb3-contrib

@@ -156,7 +156,7 @@ class FeedbackTranslator:
 
         self.feedback_buffer.append(return_feedback)
 
-    def submit(self, session_id: str) -> None:
+    def process(self, session_id: str) -> None:
         """
         Submits the content of the current feedback buffer to the feedback dataset
         :param session_id: The session ID

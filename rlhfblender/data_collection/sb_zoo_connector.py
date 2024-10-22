@@ -4,6 +4,7 @@ import time
 import uuid
 from typing import Dict, List, Optional
 
+
 import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
@@ -23,6 +24,8 @@ from rlhfblender.data_models.global_models import (
     Experiment,
     Project,
 )
+from rlhfblender.utils import process_env_name
+from rlhfblender.utils.read_sb3_configs import read_sb3_configs
 
 
 class StableBaselines3Agent(TrainedAgent):
@@ -42,7 +45,17 @@ class StableBaselines3Agent(TrainedAgent):
         else:
             path = os.path.join(exp.path, f"{exp.env_id}.zip")
 
-        self.model = ALGOS[exp.algorithm].load(path, device=device)
+        # try to infer algorithm from saved model
+        try:
+            config = read_sb3_configs(os.path.join(path, process_env_name(exp.env_id),  "config.yml"))
+            print("Found config file")
+            algo = config["algo"]
+        except Exception:
+            print("Could not read an algorithm from the config file, defaulting to PPO")
+            algo = "ppo"
+        
+        print("MODEL PATH", path)
+        self.model = ALGOS[algo].load(path, device=device)
         self.agent_state = None
         if "deterministic" in kwargs:
             self.deterministic = kwargs["deterministic"]

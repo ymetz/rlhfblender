@@ -10,6 +10,7 @@ import numpy as np
 
 from rlhfblender.data_collection.feedback_model import FeedbackModel
 from rlhfblender.data_models.global_models import Environment, EpisodeID, Experiment
+from rlhfblender.utils import process_env_name
 
 
 class SamplerType(Enum):
@@ -74,7 +75,8 @@ class Sampler:
         for checkpoint in self.experiment.checkpoint_list:
             cp_path = os.path.join(
                 self.saved_episode_dir,
-                env.env_name + "_" + str(self.experiment.id) + "_" + str(checkpoint),
+                process_env_name(env.env_name),
+                process_env_name(env.env_name) + "_" + str(self.experiment.id) + "_" + str(checkpoint),
             )
             print(cp_path)
             if not os.path.exists(cp_path):

@@ -216,6 +216,7 @@ class EpisodeRecorder:
 
     def environment_step(self, actions):
         if not isinstance(self.env, VecEnv):
+            # squeeze for now, as we are not expecting vectorized/batched environments
             self.observations, self.rewards, terminated, truncated, self.infos = self.env.step(actions)
             self.dones = terminated or truncated
             self.observations = np.expand_dims(self.observations, axis=0)

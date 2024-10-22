@@ -5,21 +5,29 @@ These can the be loaded in the user interface for studies
 
 import argparse
 import asyncio
+import os
+import importlib
+import traceback 
 import sys
 
 from rlhfblender.data_collection import framework_selector as framework_selector
 from rlhfblender.utils.data_generation import generate_data, register_env, register_experiment, init_db
+from rlhfblender.utils import process_env_name
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate data for RLHFBlender")
     parser.add_argument("--exp", type=str, help="The experiment name.", default="")
-    parser.add_argument("--env", type=str, help="The environment id.", default="")
+    parser.add_argument("--env", type=str, help="The environment id.", default="", required=True)
     parser.add_argument("--num-episodes", type=int, help="The number of episodes to run.", default=10)
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random", action="store_true", help="Use random agent")
     group.add_argument("--model-path", type=str, default="", help="Path to the trained model")
-
+    group.add_argument("--model-base-path", 
+                       type=str, 
+                       default="rlhfblender_demo_models",
+                       help="Base path to the trained model checkpoints")
+    
     parser.add_argument("--checkpoints", type=str, nargs="+", default=["-1"], help="The checkpoint steps to use.")
 
     parser.add_argument(
@@ -53,8 +61,14 @@ if __name__ == "__main__":
         "--env-kwargs",
         type=str,
         nargs="+",
-        help='Environment Kwargs (e.g. --env-kwargs key1:value1 key2:value2)',
+        help='Environment Kwargs (e.g. --env-kwargs key1:value1 key2:value2), e.g.: "env_wrapper:stable_baselines3.common.atari_wrappers.AtariWrapper frame_stack:4"',
         default=[],
+    )
+    parser.add_argument(
+        "--framework",
+        type=str,
+        help="(Optional) The framework used for training. Defaults to StableBaselines3.",
+        default="StableBaselines3",
     )
     parser.add_argument(
         "--env-description",
@@ -72,9 +86,13 @@ if __name__ == "__main__":
     # Parse env_kwargs
     env_kwargs = {}
     if args.env_kwargs:
-        for item in args.env_kwargs:
-            key, value = item.split(":")
-            env_kwargs[key] = eval(value)
+        if args.exp == "":
+            print("Please specify an experiment name if you want to register environment kwargs.")
+            sys.exit(1)
+        # turn into dict
+        for kwarg in args.env_kwargs:
+            key, value = kwarg.split(":")
+            env_kwargs[key] = value
 
     # Initialize database
     asyncio.run(init_db())
@@ -92,25 +110,30 @@ if __name__ == "__main__":
         )
     )
 
-    # Register experiment if necessary
-    if args.exp == "":
-        args.exp = f"{args.env}_{'Random' if args.random else 'Trained'}_Experiment"
-    asyncio.run(
-        register_experiment(
-            exp_name=args.exp,
-            env_id=args.env,
-            env_kwargs=env_kwargs,
-            path=args.model_path,
-            framework="Random" if args.random else "StableBaselines3",
-            project=args.project,
-        )
-    )
-
     if args.random:
         args.model_path = ""
         checkpoints = ["-1"]
     else:
         checkpoints = args.checkpoints
+
+    if not args.random:
+        model_path = args.model_path if args.model_path != "" else os.path.join(args.model_base_path, process_env_name(args.env))
+    else:
+        model_path = args.model_path # random agent does not need a model path
+
+    # Register experiment if necessary
+    if args.exp != "":
+        args.exp = f"{args.env}_{'random' if args.random else 'trained'}_experiment"
+        asyncio.run(
+            register_experiment(
+                exp_name=args.exp,
+                env_id=args.env,
+                env_kwargs=env_kwargs,
+                path=model_path,
+                framework="random" if args.random else args.framework,
+                project=args.project,
+            )
+        )
 
     benchmark_dicts = [
         {
@@ -119,7 +142,8 @@ if __name__ == "__main__":
             "exp": args.exp,
             "checkpoint_step": checkpoint,
             "n_episodes": args.num_episodes,
-            "path": args.model_path,
+            "path": model_path,
+            "framework": "random" if args.random else args.framework,
         }
         for checkpoint in checkpoints
     ]
@@ -128,5 +152,7 @@ if __name__ == "__main__":
         asyncio.run(generate_data(benchmark_dicts))
     except Exception as e:
         print(f"Error: {e} - Did not generate data.")
+        # print stacktrace
+        traceback.print_exc()
     finally:
         print("Data generation finished.")

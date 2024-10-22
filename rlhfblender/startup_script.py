@@ -6,20 +6,24 @@ This script runs benchmarks with the provided models and then creates video/thum
 import asyncio
 import os
 import traceback
+import glob
 
 from rlhfblender.utils.data_generation import generate_data
 
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
 
+    # look for env variable FORCE_RECREATE_DATA to force data recreation
+    force_recreate_data = os.getenv("RLHFLBENDER_FORCE_RECREATE_DATA", False)
+
     # Run benchmarks for Atari Breakout
     benchmark_dicts = [
         {
             "env": "ALE/Breakout-v5",
-            "benchmark_type": "trained",
+            "benchmark_type": "random",
             "exp": "Atari Breakout",
             "checkpoint_step": i * 1000000,
-            "n_episodes": 1,
+            "n_episodes": 5,
             "path": os.path.join("rlhfblender_demo_models/Atari Breakout"),
             "env_kwargs": {
                 "env_wrapper": "stable_baselines3.common.atari_wrappers.AtariWrapper",
@@ -32,7 +36,11 @@ if __name__ == "__main__":
     ]
 
     try:
-        asyncio.run(generate_data(benchmark_dicts))
+        # if data does not exist, any directory of signature Breakout-v5_** is considered as a valid directory
+        if not glob.glob(os.path.join("data", "episodes", "ALE-Breakout-v5", "ALE-Breakout-v5_*")) or force_recreate_data:
+            asyncio.run(generate_data(benchmark_dicts))
+        else:
+            print("Data already exists for Atari Breakout")
     except Exception as e:
         print(traceback.format_exc())
         print("Error running Atari Breakout benchmarks:", e)
@@ -52,7 +60,11 @@ if __name__ == "__main__":
     ]
 
     try:
-        asyncio.run(generate_data(benchmark_dicts))
+        if not glob.glob(os.path.join("data", "episodes", "BabyAI-MiniBossLevel-v0", "BabyAI-MiniBossLevel-v0_*")) \
+        or force_recreate_data:
+            asyncio.run(generate_data(benchmark_dicts))
+        else:
+            print("Data already exists for BabyAI")
     except Exception as e:
         print(traceback.format_exc())
         print("Error running BabyAI benchmarks:", e)
@@ -61,7 +73,7 @@ if __name__ == "__main__":
     benchmark_dicts = [
         {
             "env": "roundabout-v0",
-            "benchmark_type": "trained",
+            "benchmark_type": "random",
             "exp": "Highway_env",
             "checkpoint_step": (i + 1) * 4000,
             "n_episodes": 10,
@@ -73,7 +85,10 @@ if __name__ == "__main__":
     ]
 
     try:
-        asyncio.run(generate_data(benchmark_dicts))
+        if not glob.glob(os.path.join("data", "episodes", "roundabout-v0", "roundabout-v0_*")) or force_recreate_data:
+            asyncio.run(generate_data(benchmark_dicts))
+        else:
+            print("Data already exists for Highway-Env")
     except Exception as e:
         print(traceback.format_exc())
         print("Error running Highway-Env benchmarks:", e)

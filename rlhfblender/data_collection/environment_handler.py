@@ -76,6 +76,11 @@ def get_environment(
             raise ValueError(f"VecNormalize stats {path_} not found")
 
     n_stack = environment_config.get("frame_stack", 0)
+    try:
+        n_stack = int(n_stack)
+    except ValueError:
+        print(f"Invalid frame stack value: {n_stack}. Make sure to pass an integer.")
+        n_stack = 0
     if n_stack > 0:
         print(f"Stacking {n_stack} frames")
         env = VecFrameStack(env, n_stack)

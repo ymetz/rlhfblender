@@ -3,7 +3,7 @@
     "name": "Default",
     "description": "Default configuration",
     "uiComponents": {
-        "progressBar": false,
+        "progressBar": true,
         "interactiveEpisodeSelect": true,
         "episodePreview": true,
         "episodeItem": true,

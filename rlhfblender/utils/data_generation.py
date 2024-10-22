@@ -1,6 +1,7 @@
 import os
 import time
 from typing import Dict, List, Optional
+import importlib
 
 import cv2
 import gymnasium as gym
@@ -12,6 +13,7 @@ import rlhfblender.data_collection.framework_selector as framework_selector
 import rlhfblender.data_handling.database_handler as db_handler
 from rlhfblender.data_collection.episode_recorder import EpisodeRecorder
 from rlhfblender.data_models.global_models import Environment, Experiment, Project
+from rlhfblender.utils import process_env_name
 
 # Initialize database
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
@@ -159,11 +161,12 @@ async def run_benchmark(requests: List[Dict]) -> List[str]:
                 database, Environment, key=benchmark_run["env"], key_column="registration_id"
             )
             # Create and register a "dummy" experiment
-            exp_name = f"{benchmark_run['env']}_{benchmark_run['benchmark_type']}_Experiment"
+            exp_name = f"{benchmark_run['env']}_{benchmark_run['benchmark_type']}_experiment"
             await register_experiment(
                 exp_name=exp_name,
                 env_id=benchmark_run["env"],
-                framework="Random",
+                path=benchmark_run["path"],
+                framework=benchmark_run.get("framework", "random"),
             )
             exp: Experiment = await db_handler.get_single_entry(
                 database, Experiment, key=exp_name, key_column="exp_name"
@@ -186,7 +189,7 @@ async def run_benchmark(requests: List[Dict]) -> List[str]:
                 exp.env_id,
                 environment_config=exp.environment_config,
                 n_envs=1,
-                norm_env_path=os.path.join(benchmark_run["path"], exp.env_id),
+                norm_env_path=os.path.join(benchmark_run["path"], process_env_name(exp.env_id)),
                 additional_packages=database_env.additional_gym_packages,
             )
             if "BabyAI" not in exp.env_id
@@ -206,7 +209,7 @@ async def run_benchmark(requests: List[Dict]) -> List[str]:
             checkpoint_step=benchmark_run["checkpoint_step"],
         )
 
-        save_file_name = f"{exp.env_id}_{exp.id}_{benchmark_run['checkpoint_step']}"
+        save_file_name = os.path.join(process_env_name(exp.env_id), f"{process_env_name(exp.env_id)}_{exp.id}_{benchmark_run['checkpoint_step']}")
 
         # Create an instance of EpisodeRecorder with the required parameters
         recorder = EpisodeRecorder(
@@ -268,6 +271,7 @@ async def generate_data(benchmark_dicts: List[Dict]):
     for item in benchmark_dicts:
         benchmark_run = item
         save_file_name = os.path.join(
+
             f"{benchmark_run['env']}_{benchmark_run['benchmark_type']}_{benchmark_run['exp']}_{benchmark_run['checkpoint_step']}"
         )
 
@@ -290,7 +294,8 @@ async def generate_data(benchmark_dicts: List[Dict]):
     # Now create the video/thumbnail/reward data etc.
     for benchmark_run, exp_id in zip(requests, benchmarked_experiments):
         # Path to benchmark file
-        save_file_name = os.path.join(f"{benchmark_run['env']}_{exp_id}_{benchmark_run['checkpoint_step']}.npz")
+        save_file_name = os.path.join(process_env_name(benchmark_run['env']), 
+                                      f"{process_env_name(benchmark_run['env'])}_{exp_id}_{benchmark_run['checkpoint_step']}.npz")
         data = np.load(f"data/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
         episode_data = split_data(data)
 

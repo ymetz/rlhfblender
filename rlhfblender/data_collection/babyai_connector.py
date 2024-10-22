@@ -59,7 +59,7 @@ class BabyAIAgent(TrainedAgent):
         """
         act = self.model.act(observation)
         self.current_prediction = act
-        return act["action"]
+        return act["action"][0]
 
     def reset(self):
         """
