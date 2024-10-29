@@ -1,8 +1,8 @@
 import asyncio
+import json
 import os
 import socket
 import sys
-import json
 from multiprocessing import Process
 from typing import List, Union
 
@@ -189,7 +189,7 @@ def demo_perform_step(session_id: str, action: Union[int, List[float]]) -> dict:
     :return:
     """
     # Read the port from the file
-    with open(os.path.join("/tmp", session_id + "-port"), "r") as f:
+    with open(os.path.join("/tmp", session_id + "-port")) as f:
         port = int(f.read())
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -223,7 +223,7 @@ def close_demo_session(session_id: str, pid: int):
     :return:
     """
     # Read the port from the file
-    with open(os.path.join("/tmp", session_id + "-port"), "r") as f:
+    with open(os.path.join("/tmp", session_id + "-port")) as f:
         port = int(f.read())
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -248,7 +248,7 @@ def close_demo_session(session_id: str, pid: int):
 
 def check_socket_connection(session_id: str) -> bool:
     # Read the port from the file
-    with open(os.path.join("/tmp", session_id + "-port"), "r") as f:
+    with open(os.path.join("/tmp", session_id + "-port")) as f:
         port = int(f.read())
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

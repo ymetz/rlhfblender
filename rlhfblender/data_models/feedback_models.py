@@ -18,6 +18,7 @@ class FeedbackType(enum.Enum):
     correction = "corrective"
     goal = "goal"
     featureSelection = "featureSelection"
+    text = "text"
     other = "other"
 
     def __str__(self):

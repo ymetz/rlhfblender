@@ -49,14 +49,14 @@ class EpisodeRecorder:
 
         # Initialize buffers and counters
         self.buffers = {
-            'obs': [],
-            'actions': [],
-            'rewards': [],
-            'dones': [],
-            'infos': [],
-            'features': [],
-            'probs': [],
-            'renders': [],
+            "obs": [],
+            "actions": [],
+            "rewards": [],
+            "dones": [],
+            "infos": [],
+            "features": [],
+            "probs": [],
+            "renders": [],
         }
         self.episode_rewards = []
         self.episode_lengths = []
@@ -147,15 +147,15 @@ class EpisodeRecorder:
                 self.infos[0]["seed"] = seed
 
     def update_buffers(self, actions, additional_outputs):
-        self.buffers['obs'].append(np.squeeze(self.observations))
-        self.buffers['actions'].append(np.squeeze(actions))
-        self.buffers['rewards'].append(np.squeeze(self.rewards))
-        self.buffers['dones'].append(np.squeeze(self.dones))
+        self.buffers["obs"].append(np.squeeze(self.observations))
+        self.buffers["actions"].append(np.squeeze(actions))
+        self.buffers["rewards"].append(np.squeeze(self.rewards))
+        self.buffers["dones"].append(np.squeeze(self.dones))
         if "feature_extractor_output" in additional_outputs:
-            self.buffers['features'].append(np.squeeze(additional_outputs["feature_extractor_output"]))
+            self.buffers["features"].append(np.squeeze(additional_outputs["feature_extractor_output"]))
         if "log_probs" in additional_outputs:
-            self.buffers['probs'].append(additional_outputs["log_probs"])
-        self.buffers['infos'].append(self.process_infos(additional_outputs))
+            self.buffers["probs"].append(additional_outputs["log_probs"])
+        self.buffers["infos"].append(self.process_infos(additional_outputs))
 
     def process_infos(self, additional_outputs):
         infos = []
@@ -212,7 +212,7 @@ class EpisodeRecorder:
     def handle_rendering(self):
         if self.render:
             render_frame = self.env.render()
-            self.buffers['renders'].append(np.squeeze(render_frame))
+            self.buffers["renders"].append(np.squeeze(render_frame))
 
     def environment_step(self, actions):
         if not isinstance(self.env, VecEnv):
@@ -228,20 +228,20 @@ class EpisodeRecorder:
 
     def finalize_buffers(self):
         if self.render:
-            self.buffers['renders'] = np.array(self.buffers['renders'])
+            self.buffers["renders"] = np.array(self.buffers["renders"])
         else:
-            self.buffers['renders'] = np.zeros(1)
+            self.buffers["renders"] = np.zeros(1)
 
-        if len(self.buffers['obs'][0].shape) == 2:
-            self.buffers['obs'] = np.expand_dims(self.buffers['obs'], axis=-1)
+        if len(self.buffers["obs"][0].shape) == 2:
+            self.buffers["obs"] = np.expand_dims(self.buffers["obs"], axis=-1)
         else:
-            self.buffers['obs'] = np.array(self.buffers['obs'])
-        self.buffers['actions'] = np.array(self.buffers['actions'])
-        self.buffers['dones'] = np.array(self.buffers['dones'])
-        self.buffers['rewards'] = np.array(self.buffers['rewards'])
-        self.buffers['features'] = np.array(self.buffers['features'])
-        self.buffers['infos'] = np.array(self.buffers['infos'])
-        self.buffers['probs'] = np.array(self.buffers['probs'])
+            self.buffers["obs"] = np.array(self.buffers["obs"])
+        self.buffers["actions"] = np.array(self.buffers["actions"])
+        self.buffers["dones"] = np.array(self.buffers["dones"])
+        self.buffers["rewards"] = np.array(self.buffers["rewards"])
+        self.buffers["features"] = np.array(self.buffers["features"])
+        self.buffers["infos"] = np.array(self.buffers["infos"])
+        self.buffers["probs"] = np.array(self.buffers["probs"])
 
     def save_episodes(self):
         if not self.overwrite and os.path.isfile(self.save_path + ".npz"):
@@ -254,16 +254,16 @@ class EpisodeRecorder:
         # Recompute metrics
         additional_metrics = process_metrics(
             RecordedEpisodesContainer(
-                obs=self.buffers['obs'],
-                actions=self.buffers['actions'],
-                dones=self.buffers['dones'],
-                rewards=self.buffers['rewards'],
+                obs=self.buffers["obs"],
+                actions=self.buffers["actions"],
+                dones=self.buffers["dones"],
+                rewards=self.buffers["rewards"],
                 episode_rewards=self.episode_rewards,
                 episode_lengths=self.episode_lengths,
-                features=self.buffers['features'],
-                infos=self.buffers['infos'],
-                probs=self.buffers['probs'],
-                renders=self.buffers['renders'],
+                features=self.buffers["features"],
+                infos=self.buffers["infos"],
+                probs=self.buffers["probs"],
+                renders=self.buffers["renders"],
                 additional_metrics={},
             )
         )
@@ -272,14 +272,14 @@ class EpisodeRecorder:
         with open(os.path.join(self.save_path + ".npz"), "wb") as f:
             np.savez(
                 f,
-                obs=self.buffers['obs'],
-                rewards=self.buffers['rewards'],
-                dones=self.buffers['dones'],
-                actions=self.buffers['actions'],
-                renders=self.buffers['renders'],
-                infos=self.buffers['infos'],
-                features=self.buffers['features'],
-                probs=self.buffers['probs'],
+                obs=self.buffers["obs"],
+                rewards=self.buffers["rewards"],
+                dones=self.buffers["dones"],
+                actions=self.buffers["actions"],
+                renders=self.buffers["renders"],
+                infos=self.buffers["infos"],
+                features=self.buffers["features"],
+                probs=self.buffers["probs"],
                 episode_rewards=self.episode_rewards,
                 episode_lengths=self.episode_lengths,
                 additional_metrics=additional_metrics,

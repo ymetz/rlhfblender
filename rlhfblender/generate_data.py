@@ -6,13 +6,12 @@ These can the be loaded in the user interface for studies
 import argparse
 import asyncio
 import os
-import importlib
-import traceback 
 import sys
+import traceback
 
 from rlhfblender.data_collection import framework_selector as framework_selector
-from rlhfblender.utils.data_generation import generate_data, register_env, register_experiment, init_db
 from rlhfblender.utils import process_env_name
+from rlhfblender.utils.data_generation import generate_data, init_db, register_env, register_experiment
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate data for RLHFBlender")
@@ -23,11 +22,10 @@ if __name__ == "__main__":
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random", action="store_true", help="Use random agent")
     group.add_argument("--model-path", type=str, default="", help="Path to the trained model")
-    group.add_argument("--model-base-path", 
-                       type=str, 
-                       default="rlhfblender_demo_models",
-                       help="Base path to the trained model checkpoints")
-    
+    group.add_argument(
+        "--model-base-path", type=str, default="rlhfblender_demo_models", help="Base path to the trained model checkpoints"
+    )
+
     parser.add_argument("--checkpoints", type=str, nargs="+", default=["-1"], help="The checkpoint steps to use.")
 
     parser.add_argument(
@@ -104,7 +102,6 @@ if __name__ == "__main__":
             entry_point=args.env_gym_entrypoint,
             display_name=args.env_display_name,
             additional_gym_packages=args.additional_gym_packages,
-            env_kwargs=env_kwargs,
             env_description=args.env_description,
             project=args.project,
         )
@@ -117,13 +114,14 @@ if __name__ == "__main__":
         checkpoints = args.checkpoints
 
     if not args.random:
-        model_path = args.model_path if args.model_path != "" else os.path.join(args.model_base_path, process_env_name(args.env))
+        model_path = (
+            args.model_path if args.model_path != "" else os.path.join(args.model_base_path, process_env_name(args.env))
+        )
     else:
-        model_path = args.model_path # random agent does not need a model path
+        model_path = args.model_path  # random agent does not need a model path
 
     # Register experiment if necessary
     if args.exp != "":
-        args.exp = f"{args.env}_{'random' if args.random else 'trained'}_experiment"
         asyncio.run(
             register_experiment(
                 exp_name=args.exp,
@@ -143,6 +141,8 @@ if __name__ == "__main__":
             "checkpoint_step": checkpoint,
             "n_episodes": args.num_episodes,
             "path": model_path,
+            "env_kwargs": env_kwargs,
+            "project": args.project,
             "framework": "random" if args.random else args.framework,
         }
         for checkpoint in checkpoints

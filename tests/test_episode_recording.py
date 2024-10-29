@@ -1,18 +1,20 @@
 import os
-import pytest
+
 import gymnasium as gym
 import numpy as np
+import pytest
 
 # Assuming your code is in a module named 'rlhfblender'
 from rlhfblender.data_collection.episode_recorder import EpisodeRecorder, convert_infos
 from rlhfblender.data_models.agent import RandomAgent
+
 
 class TestEpisodeRecorder:
 
     @pytest.fixture(scope="class")
     def env(self):
         # Create the Pendulum-v1 environment
-        env = gym.make('Pendulum-v1')
+        env = gym.make("Pendulum-v1")
         yield env
         env.close()
 
@@ -24,14 +26,14 @@ class TestEpisodeRecorder:
     @pytest.fixture(scope="class")
     def save_path(self):
         # Define the path where episodes will be saved
-        return os.path.join('test_data', 'episode_recording')
+        return os.path.join("test_data", "episode_recording")
 
     @pytest.fixture(scope="class", autouse=True)
     def cleanup(self, save_path):
         # Cleanup code to remove the test file after all tests in the class are done
         yield
-        if os.path.exists(save_path + '.npz'):
-            os.remove(save_path + '.npz')
+        if os.path.exists(save_path + ".npz"):
+            os.remove(save_path + ".npz")
 
     @pytest.mark.dependency()
     def test_record_episodes(self, env, agent, save_path):
@@ -39,27 +41,27 @@ class TestEpisodeRecorder:
         Test recording episodes with the RandomAgent.
         """
         # Remove existing file if it exists
-        if os.path.exists(save_path + '.npz'):
-            os.remove(save_path + '.npz')
-    
+        if os.path.exists(save_path + ".npz"):
+            os.remove(save_path + ".npz")
+
         # Instantiate the EpisodeRecorder
         recorder = EpisodeRecorder(
             agent=agent,
             env=env,
             n_eval_episodes=1,
             max_steps=500,
-            save_path='test_data/episode_recording',
+            save_path="test_data/episode_recording",
             overwrite=True,
             render=False,
             deterministic=False,
             reset_to_initial_state=False,
         )
-        
+
         # Record episodes
         recorder.record_episodes()
-        
+
         # Check if the data was saved
-        assert os.path.exists('test_data/episode_recording.npz')
+        assert os.path.exists("test_data/episode_recording.npz")
 
     @pytest.mark.dependency(depends=["test_record_episodes"])
     def test_load_episodes(self, save_path):
@@ -100,5 +102,5 @@ class TestEpisodeRecorder:
         # Check that infos have been converted properly
         assert isinstance(infos, list)
         assert isinstance(infos[0], dict)
-        assert 'id' in infos[0]
-        assert 'episode step' in infos[0]
+        assert "id" in infos[0]
+        assert "episode step" in infos[0]

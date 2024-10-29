@@ -1,7 +1,6 @@
 import os
 import time
 from typing import Dict, List, Optional
-import importlib
 
 import cv2
 import gymnasium as gym
@@ -25,6 +24,7 @@ async def init_db():
     await db_handler.create_table_from_model(database, Experiment)
     await db_handler.create_table_from_model(database, Environment)
 
+
 def get_custom_thumbnail_creator(env_id: str):
     try:
         if "BabyAI" in env_id:
@@ -35,6 +35,7 @@ def get_custom_thumbnail_creator(env_id: str):
         return None
 
     return None
+
 
 async def add_to_project(project: str = "RLHF-Blender", env: Optional[str] = None, exp: Optional[str] = None):
     """Add an environment or experiment to a project."""
@@ -85,6 +86,7 @@ async def register_env(
     """Register an environment in the database."""
     env_name = display_name if display_name != "" else env_id
     env_kwargs = env_kwargs if env_kwargs is not None else {}
+    print(env_kwargs)
     additional_gym_packages = additional_gym_packages if additional_gym_packages is not None else []
 
     # Check if environment is already registered
@@ -154,7 +156,9 @@ async def run_benchmark(requests: List[Dict]) -> List[str]:
             benchmark_run["env"] = exp.env_id if "env" not in benchmark_run else benchmark_run["env"]
         else:
             # Register experiment and environment if necessary
-            if not await db_handler.check_if_exists(database, Environment, key=benchmark_run["env"], key_column="registration_id"):
+            if not await db_handler.check_if_exists(
+                database, Environment, key=benchmark_run["env"], key_column="registration_id"
+            ):
                 # We lazily register the environment if it is not registered yet, this is only done once
                 await register_env(env_id=benchmark_run["env"])
             database_env = await db_handler.get_single_entry(
@@ -167,10 +171,9 @@ async def run_benchmark(requests: List[Dict]) -> List[str]:
                 env_id=benchmark_run["env"],
                 path=benchmark_run["path"],
                 framework=benchmark_run.get("framework", "random"),
+                env_kwargs=benchmark_run.get("env_kwargs", {}),
             )
-            exp: Experiment = await db_handler.get_single_entry(
-                database, Experiment, key=exp_name, key_column="exp_name"
-            )
+            exp: Experiment = await db_handler.get_single_entry(database, Experiment, key=exp_name, key_column="exp_name")
 
         # Add the current checkpoint to the experiment
         existing_checkpoints = exp.checkpoint_list if exp.checkpoint_list else []
@@ -209,7 +212,9 @@ async def run_benchmark(requests: List[Dict]) -> List[str]:
             checkpoint_step=benchmark_run["checkpoint_step"],
         )
 
-        save_file_name = os.path.join(process_env_name(exp.env_id), f"{process_env_name(exp.env_id)}_{exp.id}_{benchmark_run['checkpoint_step']}")
+        save_file_name = os.path.join(
+            process_env_name(exp.env_id), f"{process_env_name(exp.env_id)}_{exp.id}_{benchmark_run['checkpoint_step']}"
+        )
 
         # Create an instance of EpisodeRecorder with the required parameters
         recorder = EpisodeRecorder(
@@ -248,12 +253,24 @@ def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
 def encode_video(renders: np.ndarray, path: str) -> None:
     """Encodes renders into a .mp4 video and saves it at path."""
     # Create video in H264 format
-    out = cv2.VideoWriter(
-        f"{path}.mp4",
-        cv2.VideoWriter_fourcc(*"avc1"),
-        24,
-        (renders.shape[2], renders.shape[1]),
-    )
+    try:
+        out = cv2.VideoWriter(
+            f"{path}.mp4",
+            cv2.VideoWriter_fourcc(*"avc1"),
+            24,
+            (renders.shape[2], renders.shape[1]),
+        )
+    except Exception as e:
+        print("AVC1 codec not available, using MP4V codec instead.")
+        try:
+            out = cv2.VideoWriter(
+                f"{path}.mp4",
+                cv2.VideoWriter_fourcc(*"mp4v"),
+                24,
+                (renders.shape[2], renders.shape[1]),
+            )
+        except Exception as e:
+            print(f"Error creating video writer: {e}")
     for render in renders:
         # Convert to BGR
         render = cv2.cvtColor(render, cv2.COLOR_RGB2BGR)
@@ -271,7 +288,6 @@ async def generate_data(benchmark_dicts: List[Dict]):
     for item in benchmark_dicts:
         benchmark_run = item
         save_file_name = os.path.join(
-
             f"{benchmark_run['env']}_{benchmark_run['benchmark_type']}_{benchmark_run['exp']}_{benchmark_run['checkpoint_step']}"
         )
 
@@ -294,8 +310,10 @@ async def generate_data(benchmark_dicts: List[Dict]):
     # Now create the video/thumbnail/reward data etc.
     for benchmark_run, exp_id in zip(requests, benchmarked_experiments):
         # Path to benchmark file
-        save_file_name = os.path.join(process_env_name(benchmark_run['env']), 
-                                      f"{process_env_name(benchmark_run['env'])}_{exp_id}_{benchmark_run['checkpoint_step']}.npz")
+        save_file_name = os.path.join(
+            process_env_name(benchmark_run["env"]),
+            f"{process_env_name(benchmark_run['env'])}_{exp_id}_{benchmark_run['checkpoint_step']}.npz",
+        )
         data = np.load(f"data/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
         episode_data = split_data(data)
 

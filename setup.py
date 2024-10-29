@@ -49,7 +49,7 @@ setup(
             "pytest-cov",
             "pytest-env",
             "pytest-xdist",
-            'pytest-dependency',
+            "pytest-dependency",
             # Type check
             "mypy",
             # Lint code and sort imports (flake8 and isort replacement)

@@ -4,7 +4,6 @@ import time
 import uuid
 from typing import Dict, List, Optional
 
-
 import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
@@ -47,13 +46,13 @@ class StableBaselines3Agent(TrainedAgent):
 
         # try to infer algorithm from saved model
         try:
-            config = read_sb3_configs(os.path.join(path, process_env_name(exp.env_id),  "config.yml"))
+            config = read_sb3_configs(os.path.join(path, process_env_name(exp.env_id), "config.yml"))
             print("Found config file")
             algo = config["algo"]
         except Exception:
             print("Could not read an algorithm from the config file, defaulting to PPO")
             algo = "ppo"
-        
+
         print("MODEL PATH", path)
         self.model = ALGOS[algo].load(path, device=device)
         self.agent_state = None

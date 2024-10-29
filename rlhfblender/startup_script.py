@@ -4,9 +4,9 @@ This script runs benchmarks with the provided models and then creates video/thum
 """
 
 import asyncio
+import glob
 import os
 import traceback
-import glob
 
 from rlhfblender.utils.data_generation import generate_data
 
@@ -20,11 +20,11 @@ if __name__ == "__main__":
     benchmark_dicts = [
         {
             "env": "ALE/Breakout-v5",
-            "benchmark_type": "random",
-            "exp": "Atari Breakout",
+            "benchmark_type": "trained",
+            "exp": "ALE/Breakout-v5_trained",
             "checkpoint_step": i * 1000000,
             "n_episodes": 5,
-            "path": os.path.join("rlhfblender_demo_models/Atari Breakout"),
+            "path": os.path.join("rlhfblender_demo_models/ALE-Breakout-v5"),
             "env_kwargs": {
                 "env_wrapper": "stable_baselines3.common.atari_wrappers.AtariWrapper",
                 "frame_stack": 4,
@@ -49,8 +49,8 @@ if __name__ == "__main__":
     benchmark_dicts = [
         {
             "env": "BabyAI-MiniBossLevel-v0",
-            "benchmark_type": "trained",
-            "exp": "BabyAI",
+            "benchmark_type": "random", # need to re-train with minigrid
+            "exp": "BabyAI-MiniBossLevel-v0_random",
             "checkpoint_step": 10000000,
             "n_episodes": 20,
             "path": os.path.join("rlhfblender_demo_models/BabyAI"),
@@ -60,8 +60,10 @@ if __name__ == "__main__":
     ]
 
     try:
-        if not glob.glob(os.path.join("data", "episodes", "BabyAI-MiniBossLevel-v0", "BabyAI-MiniBossLevel-v0_*")) \
-        or force_recreate_data:
+        if (
+            not glob.glob(os.path.join("data", "episodes", "BabyAI-MiniBossLevel-v0", "BabyAI-MiniBossLevel-v0_*"))
+            or force_recreate_data
+        ):
             asyncio.run(generate_data(benchmark_dicts))
         else:
             print("Data already exists for BabyAI")
@@ -73,15 +75,15 @@ if __name__ == "__main__":
     benchmark_dicts = [
         {
             "env": "roundabout-v0",
-            "benchmark_type": "random",
-            "exp": "Highway_env",
-            "checkpoint_step": (i + 1) * 4000,
+            "benchmark_type": "trained",
+            "exp": "roundabout-v0_trained",
+            "checkpoint_step": (i + 1) * 100000,
             "n_episodes": 10,
-            "path": os.path.join("rlhfblender_demo_models/Highway_env"),
+            "path": os.path.join("rlhfblender_demo_models/roundabout-v0"),
             "framework": "StableBaselines3",
             "project": "RLHF-Blender",
         }
-        for i in range(3)
+        for i in range(5)
     ]
 
     try:

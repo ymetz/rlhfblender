@@ -221,10 +221,10 @@ async def get_single_step_details(request: SingleStepDetailRequest):
 
     return {
         "action_distribution": action_distribution.tolist(),
-        "action": action.item() if isinstance(action, np.int64) else action.tolist(),
+        "action": action.item() if np.isscalar(action) else action.tolist(),
         "reward": reward.item(),
         "info": info.item(),
-        "action_space": action_space,
+        "action_space": {},
     }
 
 
@@ -351,7 +351,7 @@ async def give_feedback(request: Request):
     ui_feedback = await request.json()
     if not ui_feedback:
         return "Empty feedback"
-    
+
     for feedback in ui_feedback:
         feedback = UnprocessedFeedback(**feedback)
         request.app.state.feedback_translator.give_feedback(feedback.session_id, feedback)

@@ -1,8 +1,8 @@
 from typing import List
 
 # for eval() we might have to import numpy, add ignore for linting
-import numpy as np  # pylint: disable=unused-import
 from pydantic import BaseModel, field_validator
+import numpy as np
 
 """
     Main Data Models
@@ -56,8 +56,8 @@ class Experiment(BaseModel):
     checkpoint_list: list = []
     episodes_per_eval: int = -1
     parallel_envs: int = -1
-    observation_space_info: dict = {}
-    action_space_info: dict = {}
+    observation_space_info: dict | str = ""
+    action_space_info: dict | str = ""
     exp_tags: list = []
     exp_comment: str = ""
     wandb_tracking: bool = False
@@ -71,14 +71,12 @@ class Experiment(BaseModel):
         "exp_tags",
         "environment_config",
         "hyperparams",
-        "observation_space_info",
-        "action_space_info",
         mode="before",
     )
     def process_(cls, in_value):
         if isinstance(in_value, list) or isinstance(in_value, dict):
             return in_value
-        return eval(in_value)
+        return eval(in_value, {"np": np})
 
 
 class Environment(BaseModel):
@@ -86,8 +84,8 @@ class Environment(BaseModel):
     env_name: str = ""
     registered: int = 0
     registration_id: str = ""
-    observation_space_info: dict = {}
-    action_space_info: dict = {}
+    observation_space_info: dict | str = ""
+    action_space_info: dict | str = ""
     has_state_loading: int = 0
     description: str = ""
     tags: list = []
@@ -97,14 +95,14 @@ class Environment(BaseModel):
     @field_validator(
         "tags",
         "additional_gym_packages",
-        "observation_space_info",
+        # "observation_space_info", not used currently, so keep as string
         "action_space_info",
         mode="before",
     )
     def process_(cls, in_value):
         if isinstance(in_value, list) or isinstance(in_value, dict):
             return in_value
-        return eval(in_value)
+        return eval(in_value, {"np": np})
 
 
 class Dataset(BaseModel):
