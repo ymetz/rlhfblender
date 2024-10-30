@@ -33,7 +33,7 @@ class BabyAIAgent(TrainedAgent):
         device="auto",
         **kwargs,
     ):
-        super().__init__(observation_space, action_space, exp.path, device=device)
+        super().__init__(observation_space, action_space, env, exp.path, device=device)
 
         # If checkpoint step is provided, load the model from the checkpoint instead of the fully trained model
         if "checkpoint_step" in kwargs:

@@ -3,12 +3,14 @@ from typing import Dict, Optional
 
 import gymnasium as gym
 import numpy as np
+from stable_baselines3.common.vec_env import VecEnv
 
 
 class BaseAgent:
-    def __init__(self, observation_space, action_space, **kwargs):
+    def __init__(self, observation_space, action_space, env, **kwargs):
         self.observation_space = observation_space
         self.action_space = action_space
+        self.is_vec_env = isinstance(env, VecEnv)
 
     def act(self, observation):
         raise NotImplementedError
@@ -21,8 +23,8 @@ class BaseAgent:
 
 
 class TrainedAgent(BaseAgent, ABC):
-    def __init__(self, observation_space, action_space, path, device="auto", **kwargs):
-        super().__init__(observation_space, action_space)
+    def __init__(self, observation_space, action_space, path, env, device="auto", **kwargs):
+        super().__init__(observation_space, action_space, env, **kwargs)
         self.path = path
         self.device = device
 
@@ -42,11 +44,14 @@ class TrainedAgent(BaseAgent, ABC):
 
 
 class RandomAgent(BaseAgent):
-    def __init__(self, observation_space: gym.spaces.Space, action_space: gym.spaces.Space, **kwargs):
-        super().__init__(observation_space, action_space, **kwargs)
+    def __init__(self, observation_space: gym.spaces.Space, action_space: gym.spaces.Space, env, **kwargs):
+        super().__init__(observation_space, action_space, env, **kwargs)
 
     def act(self, observation: np.ndarray):
-        return [self.action_space.sample() for _ in range(observation.shape[0])]
+        if self.is_vec_env:
+            return np.array([self.action_space.sample() for _ in range(observation.shape[0])])
+        else:
+            return self.action_space.sample()
 
     def reset(self):
         pass

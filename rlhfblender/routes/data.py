@@ -25,7 +25,7 @@ from rlhfblender.data_models.global_models import (
     EpisodeID,
     Experiment,
 )
-from rlhfblender.utils import process_env_name
+from rlhfblender.utils import process_env_name, convert_to_serializable
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -223,8 +223,8 @@ async def get_single_step_details(request: SingleStepDetailRequest):
         "action_distribution": action_distribution.tolist(),
         "action": action.item() if np.isscalar(action) else action.tolist(),
         "reward": reward.item(),
-        "info": info.item(),
-        "action_space": {},
+        "info": convert_to_serializable(info),
+        "action_space": action_space,
     }
 
 

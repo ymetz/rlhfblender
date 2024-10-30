@@ -13,11 +13,13 @@ from rlhfblender.data_models.feedback_models import (
     Instruction,
     Intention,
     Relation,
+    RelativeDescription,
     RelativeEvaluation,
     RelativeFeedback,
     RelativeInstruction,
     StandardizedFeedback,
     StandardizedFeedbackType,
+    Text,
     UnprocessedFeedback,
     get_granularity,
     get_target,
@@ -148,6 +150,38 @@ class FeedbackTranslator:
                 ),
                 target=get_target(feedback.targets[0], feedback.granularity),
                 content=Description(feature_selection=feedback.feature_selection),
+            )
+        elif feedback.feedback_type == FeedbackType.descriptivePreferences:
+            return_feedback = RelativeFeedback(
+                feedback_id=self.feedback_id,
+                feedback_timestamp=feedback.timestamp,
+                feedback_type=StandardizedFeedbackType(
+                    intention=Intention.describe,
+                    actuality=Actuality.observed,
+                    relation=Relation.relative,
+                    content=Content.instance,
+                    granularity=Granularity.entire,
+                ),
+                target=[get_target(target, feedback.granularity) for target in feedback.targets],  # is a list in this case
+                content=RelativeDescription(
+                    feature_selections_preferences=feedback.feature_selections_preferences,
+                    feature_importance_preferences=feedback.feature_importance_preferences,
+                ),
+            )
+        elif feedback.feedback_type == FeedbackType.text:
+            # More comprenhesive logic will follow
+            return_feedback = AbsoluteFeedback(
+                feedback_id=self.feedback_id,
+                feedback_timestamp=feedback.timestamp,
+                feedback_type=StandardizedFeedbackType(
+                    intention=Intention.describe,
+                    actuality=Actuality.observed,
+                    relation=Relation.absolute,
+                    content=Content.instance,
+                    granularity=Granularity.entire,
+                ),
+                target=get_target(feedback.targets[0], feedback.granularity),
+                content=Text(text=feedback.text_feedback),
             )
 
         self.feedback_id += 1

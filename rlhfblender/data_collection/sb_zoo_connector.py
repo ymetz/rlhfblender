@@ -32,11 +32,12 @@ class StableBaselines3Agent(TrainedAgent):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
+        env: gym.Env,
         exp: Experiment,
         device="auto",
         **kwargs,
     ):
-        super().__init__(observation_space, action_space, exp.path, device=device)
+        super().__init__(observation_space, action_space, env, exp.path, device=device)
 
         # If checkpoint step is provided, load the model from the checkpoint instead of the fully trained model
         if "checkpoint_step" in kwargs:

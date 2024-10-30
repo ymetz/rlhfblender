@@ -18,6 +18,7 @@ class FeedbackType(enum.Enum):
     correction = "corrective"
     goal = "goal"
     featureSelection = "featureSelection"
+    descriptivePreferences = "descriptivePreferences"
     text = "text"
     other = "other"
 
@@ -198,6 +199,9 @@ class Description(BaseModel):
     feature_selection: List[dict] | str = None  # A list of feature selections or a file path as a string
     feature_importance: Union[float, List[float]] | str = None  # A list of feature importances or a file path as a string
 
+class Text(BaseModel):
+    text: str = ""
+
 
 class RelativeDescription(Description):
     # A relative description is a preference over feature selections, importances, or rankings
@@ -213,7 +217,7 @@ class StandardizedFeedback(BaseModel):
 
 class AbsoluteFeedback(StandardizedFeedback):
     target: Target = None
-    content: Union[Evaluation, Instruction, Description] = None
+    content: Union[Evaluation, Instruction, Description, Text] = None
 
 
 class RelativeFeedback(StandardizedFeedback):
