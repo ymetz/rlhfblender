@@ -25,7 +25,7 @@ from rlhfblender.data_models.global_models import (
     EpisodeID,
     Experiment,
 )
-from rlhfblender.utils import process_env_name, convert_to_serializable
+from rlhfblender.utils import convert_to_serializable, process_env_name
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 

@@ -226,16 +226,18 @@ async def delete_backend_config(req: DeleteBackendConfigRequest):
     os.remove(os.path.join("configs/backend_configs", req.backend_config_name + ".json"))
     return {"message": "OK"}
 
+
 class SaveSetupRequest(BaseModel):
     project: dict
     experiment: dict
     ui_config: dict
     backend_config: dict
 
+
 @app.post("/save_setup", tags=["SETUP"])
 async def save_setup(req: SaveSetupRequest):
     """
-        Save to file in configs/setups, generate a unique ID and return it
+    Save to file in configs/setups, generate a unique ID and return it
     """
     # Save setup to configs/setups directory
     setup = {
@@ -249,13 +251,15 @@ async def save_setup(req: SaveSetupRequest):
         json.dump(setup, f)
     return {"study_code": setup_id}
 
+
 class LoadSetupRequest(BaseModel):
     study_code: str
+
 
 @app.post("/load_setup", tags=["SETUP"])
 async def load_setup(req: LoadSetupRequest):
     """
-        Load setup from file in configs/setups
+    Load setup from file in configs/setups
     """
     study_code = req.study_code
     try:

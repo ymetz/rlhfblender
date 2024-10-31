@@ -260,7 +260,7 @@ def encode_video(renders: np.ndarray, path: str) -> None:
             24,
             (renders.shape[2], renders.shape[1]),
         )
-    except Exception as e:
+    except Exception:
         print("AVC1 codec not available, using MP4V codec instead.")
         try:
             out = cv2.VideoWriter(

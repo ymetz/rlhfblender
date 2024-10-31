@@ -199,6 +199,7 @@ class Description(BaseModel):
     feature_selection: List[dict] | str = None  # A list of feature selections or a file path as a string
     feature_importance: Union[float, List[float]] | str = None  # A list of feature importances or a file path as a string
 
+
 class Text(BaseModel):
     text: str = ""
 

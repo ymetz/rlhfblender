@@ -21,7 +21,7 @@ class TestEpisodeRecorder:
     @pytest.fixture(scope="class")
     def agent(self, env):
         # Instantiate the RandomAgent with the environment's spaces
-        return RandomAgent(observation_space=env.observation_space, action_space=env.action_space)
+        return RandomAgent(observation_space=env.observation_space, action_space=env.action_space, env=env)
 
     @pytest.fixture(scope="class")
     def save_path(self):

@@ -1,8 +1,9 @@
 from typing import List
 
+import numpy as np
+
 # for eval() we might have to import numpy, add ignore for linting
 from pydantic import BaseModel, field_validator
-import numpy as np
 
 """
     Main Data Models

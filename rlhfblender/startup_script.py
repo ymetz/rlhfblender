@@ -49,7 +49,7 @@ if __name__ == "__main__":
     benchmark_dicts = [
         {
             "env": "BabyAI-MiniBossLevel-v0",
-            "benchmark_type": "random", # need to re-train with minigrid
+            "benchmark_type": "random",  # need to re-train with minigrid
             "exp": "BabyAI-MiniBossLevel-v0_random",
             "checkpoint_step": 10000000,
             "n_episodes": 20,

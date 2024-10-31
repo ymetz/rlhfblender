@@ -59,7 +59,8 @@ if __name__ == "__main__":
         "--env-kwargs",
         type=str,
         nargs="+",
-        help='Environment Kwargs (e.g. --env-kwargs key1:value1 key2:value2), e.g.: "env_wrapper:stable_baselines3.common.atari_wrappers.AtariWrapper frame_stack:4"',
+        help='Environment Kwargs (e.g. --env-kwargs key1:value1 key2:value2), e.g.: \
+            "env_wrapper:stable_baselines3.common.atari_wrappers.AtariWrapper frame_stack:4"',
         default=[],
     )
     parser.add_argument(
