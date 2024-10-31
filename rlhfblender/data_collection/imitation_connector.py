@@ -3,7 +3,7 @@ import importlib
 import os
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -56,7 +56,7 @@ class ImitationConnector(connector.Connector):
         experiment: Experiment,
         project: Project,
         continue_training: bool = False,
-        sweep_config: Optional[dict] = None,
+        sweep_config: dict | None = None,
     ) -> None:
         """
         Runs the training of the experiment.
@@ -146,7 +146,7 @@ class ImitationConnector(connector.Connector):
                 exp_manager.learn(model)
                 exp_manager.save_trained_model(model)
 
-    def _combine_experiments(self, experiments: List[Experiment]) -> Tuple[Dict[str, Any], List[Dict]]:
+    def _combine_experiments(self, experiments: list[Experiment]) -> tuple[dict[str, Any], list[dict]]:
         """
         Combines multiple experiment configurations into one.
         Keep shared settings, and create parameter configs
@@ -188,9 +188,9 @@ class ImitationConnector(connector.Connector):
 
     def start_evaluation_sweep(
         self,
-        experiments: List[Experiment],
+        experiments: list[Experiment],
         project: Project,
-        evaluation_configs: List[EvaluationConfig],
+        evaluation_configs: list[EvaluationConfig],
     ):
         """
         Starts evaluation of multiple experiments.
@@ -202,7 +202,7 @@ class ImitationConnector(connector.Connector):
         pass
 
     @staticmethod
-    def get_algorithms() -> List[str]:
+    def get_algorithms() -> list[str]:
         """
         Returns all available algorithms.
         :return: List of algorithms

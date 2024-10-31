@@ -2,7 +2,6 @@ import difflib
 import os
 import time
 import uuid
-from typing import Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -72,7 +71,7 @@ class StableBaselines3Agent(TrainedAgent):
     def reset(self):
         pass
 
-    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> dict | None:
         """
         If the model has additional outputs, they can be accessed here.
         :param observation:
@@ -127,7 +126,7 @@ class StableBaselines3ZooConnector(connector.Connector):
     def continue_training(self, experiment: Experiment, project: Project):
         self._run_training(experiment, project, continue_training=True)
 
-    def start_training_sweep(self, experiments: List[Experiment], project: Project):
+    def start_training_sweep(self, experiments: list[Experiment], project: Project):
         # Combine experiments into one, create hyperparameter sweep
         # and run training
         sweep_experiment = self._combine_experiments(experiments)
@@ -139,7 +138,7 @@ class StableBaselines3ZooConnector(connector.Connector):
         experiment: Experiment,
         project: Project,
         continue_training: bool = False,
-        sweep_config: Optional[dict] = None,
+        sweep_config: dict | None = None,
     ):
         """
 
@@ -246,7 +245,7 @@ class StableBaselines3ZooConnector(connector.Connector):
                 exp_manager.learn(model)
                 exp_manager.save_trained_model(model)
 
-    def _combine_experiments(self, experiments: List[Experiment]):
+    def _combine_experiments(self, experiments: list[Experiment]):
         """
         Combines multiple experiment configurations into one.
         Keep shared settings, and create parameter configs
@@ -285,9 +284,9 @@ class StableBaselines3ZooConnector(connector.Connector):
 
     def start_evaluation_sweep(
         self,
-        experiments: List[Experiment],
+        experiments: list[Experiment],
         project: Project,
-        evaluation_configs: List[EvaluationConfig],
+        evaluation_configs: list[EvaluationConfig],
     ):
         """
         Starts evaluation of multiple experiments.
@@ -298,7 +297,7 @@ class StableBaselines3ZooConnector(connector.Connector):
         """
 
     @staticmethod
-    def get_algorithms() -> List[str]:
+    def get_algorithms() -> list[str]:
         """
         Returns all available algorithms.
         :return:

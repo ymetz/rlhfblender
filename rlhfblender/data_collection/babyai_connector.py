@@ -1,5 +1,4 @@
 import os
-from typing import Dict, Optional
 
 import gymnasium
 import numpy as np
@@ -68,7 +67,7 @@ class BabyAIAgent(TrainedAgent):
         """
         pass
 
-    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> dict | None:
         """
         If the model has additional outputs, they can be accessed here. Containts the current outputs for the previous act().
         :param observation: The observation from the environment

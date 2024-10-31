@@ -1,10 +1,11 @@
 import asyncio
-from typing import List
 
 from rlhfblender.data_handling import database_handler
 from rlhfblender.data_models import StandardizedFeedback, UnprocessedFeedback
 
 from .logger import Logger
+
+background_tasks = set()
 
 
 class SQLLogger(Logger):
@@ -44,6 +45,7 @@ class SQLLogger(Logger):
         """
         self.feedback.append(feedback)
         _task = asyncio.create_task(self.dump())
+        background_tasks.add(_task)
 
     def log_raw(self, feedback: UnprocessedFeedback) -> None:
         """
@@ -53,6 +55,7 @@ class SQLLogger(Logger):
         """
         self.raw_feedback.append(feedback)
         _task = asyncio.create_task(self.dump_raw())
+        background_tasks.add(_task)
 
     async def dump(self) -> None:
         """
@@ -74,14 +77,14 @@ class SQLLogger(Logger):
             await database_handler.add_entry(self.db, UnprocessedFeedback, feedback)
         self.raw_feedback = []
 
-    async def read(self) -> List[StandardizedFeedback]:
+    async def read(self) -> list[StandardizedFeedback]:
         """
         Reads the processed feedback from the logger
         :return: The feedback
         """
         return await database_handler.get_all(self.db, StandardizedFeedback, self.sql_table)
 
-    async def read_raw(self) -> List[UnprocessedFeedback]:
+    async def read_raw(self) -> list[UnprocessedFeedback]:
         """
         Reads the raw feedback from the logger
         :return: The raw feedback

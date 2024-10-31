@@ -1,7 +1,8 @@
 import os
 import random
+from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -15,8 +16,8 @@ from rlhfblender.data_models.agent import BaseAgent
 
 class BenchmarkSummary(BaseModel):
     benchmark_steps: int = 0
-    episode_lengths: List[int] = []
-    episode_rewards: List[float] = []
+    episode_lengths: list[int] = []
+    episode_rewards: list[float] = []
     additional_metrics: dict
 
 
@@ -24,7 +25,7 @@ class EpisodeRecorder:
     def __init__(
         self,
         agent: BaseAgent,
-        env: Union[gym.Env, VecEnv],
+        env: gym.Env | VecEnv,
         n_eval_episodes: int = 2,
         max_steps: int = int(1e4),
         save_path: str = "",
@@ -32,8 +33,8 @@ class EpisodeRecorder:
         deterministic: bool = False,
         render: bool = True,
         reset_to_initial_state: bool = True,
-        additional_out_attributes: Optional[Dict[str, Any]] = None,
-        callback: Optional[Callable[[Dict[str, Any], Dict[str, Any]], None]] = None,
+        additional_out_attributes: dict[str, Any] | None = None,
+        callback: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
     ):
         self.agent = agent
         self.env = env

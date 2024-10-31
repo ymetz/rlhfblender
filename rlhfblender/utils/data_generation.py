@@ -1,6 +1,5 @@
 import os
 import time
-from typing import Dict, List, Optional
 
 import cv2
 import gymnasium as gym
@@ -37,7 +36,7 @@ def get_custom_thumbnail_creator(env_id: str):
     return None
 
 
-async def add_to_project(project: str = "RLHF-Blender", env: Optional[str] = None, exp: Optional[str] = None):
+async def add_to_project(project: str = "RLHF-Blender", env: str | None = None, exp: str | None = None):
     """Add an environment or experiment to a project."""
     # Check if project exists
     if not await db_handler.check_if_exists(database, Project, key=project, key_column="project_name"):
@@ -76,10 +75,10 @@ async def add_to_project(project: str = "RLHF-Blender", env: Optional[str] = Non
 
 async def register_env(
     env_id: str,
-    entry_point: Optional[str] = "",
+    entry_point: str | None = "",
     display_name: str = "",
-    additional_gym_packages: Optional[List[str]] = None,
-    env_kwargs: Optional[Dict] = None,
+    additional_gym_packages: list[str] | None = None,
+    env_kwargs: dict | None = None,
     env_description: str = "",
     project: str = "RLHF-Blender",
 ):
@@ -112,11 +111,11 @@ async def register_env(
 async def register_experiment(
     exp_name: str,
     env_id: str,
-    env_kwargs: Optional[Dict] = None,
-    path: Optional[str] = "",
+    env_kwargs: dict | None = None,
+    path: str | None = "",
     framework: str = "StableBaselines3",
-    exp_kwargs: Optional[Dict] = None,
-    project: Optional[str] = "RLHF-Blender",
+    exp_kwargs: dict | None = None,
+    project: str | None = "RLHF-Blender",
 ):
     """Register an experiment in the database."""
     env_kwargs = env_kwargs if env_kwargs is not None else {}
@@ -139,7 +138,7 @@ async def register_experiment(
         print(f"Experiment with name {exp_name} already exists. Skipping registration.")
 
 
-async def run_benchmark(requests: List[Dict]) -> List[str]:
+async def run_benchmark(requests: list[dict]) -> list[str]:
     """Run benchmarks and generate data."""
     benchmarked_experiments = []
     for benchmark_run in requests:
@@ -238,7 +237,7 @@ async def run_benchmark(requests: List[Dict]) -> List[str]:
     return benchmarked_experiments
 
 
-def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def split_data(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     """Splits the data into episodes."""
     episode_ends = np.argwhere(data["dones"])
     episodes = {}
@@ -278,7 +277,7 @@ def encode_video(renders: np.ndarray, path: str) -> None:
     out.release()
 
 
-async def generate_data(benchmark_dicts: List[Dict]):
+async def generate_data(benchmark_dicts: list[dict]):
     """Main async method to generate data."""
     DATA_ROOT_DIR = "data"
     BENCHMARK_DIR = "saved_benchmarks"
@@ -308,7 +307,7 @@ async def generate_data(benchmark_dicts: List[Dict]):
     benchmarked_experiments = await run_benchmark(requests)
 
     # Now create the video/thumbnail/reward data etc.
-    for benchmark_run, exp_id in zip(requests, benchmarked_experiments):
+    for benchmark_run, exp_id in zip(requests, benchmarked_experiments, strict=False):
         # Path to benchmark file
         save_file_name = os.path.join(
             process_env_name(benchmark_run["env"]),

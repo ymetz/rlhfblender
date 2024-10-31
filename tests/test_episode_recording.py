@@ -35,7 +35,7 @@ class TestEpisodeRecorder:
         if os.path.exists(save_path + ".npz"):
             os.remove(save_path + ".npz")
 
-    @pytest.mark.dependency()
+    @pytest.mark.dependency(name="test_record_episodes")
     def test_record_episodes(self, env, agent, save_path):
         """
         Test recording episodes with the RandomAgent.

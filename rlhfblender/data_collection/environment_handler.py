@@ -1,6 +1,5 @@
 import importlib
 import os
-from typing import Optional, Union
 
 import gymnasium as gym
 from rl_zoo3.utils import get_wrapper_class
@@ -18,8 +17,8 @@ from rlhfblender.data_models.global_models import Environment
 def get_environment(
     env_name: str = "CartPole-v0",
     n_envs: int = 1,
-    environment_config: Optional[dict] = None,
-    norm_env_path: Union[str, None] = None,
+    environment_config: dict | None = None,
+    norm_env_path: str | None = None,
     additional_packages: list = (),
 ) -> VecEnv:
     """
@@ -111,9 +110,9 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
 
 def initial_registration(
     env_id: str = "CartPole-v0",
-    entry_point: Optional[str] = "",
-    additional_gym_packages: Optional[list] = (),
-    gym_env_kwargs: Optional[dict] = None,
+    entry_point: str | None = "",
+    additional_gym_packages: list | None = (),
+    gym_env_kwargs: dict | None = None,
 ) -> Environment:
     """
     Register the environment with the database.

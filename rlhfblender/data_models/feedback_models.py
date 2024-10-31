@@ -1,5 +1,4 @@
 import enum
-from typing import List, Union
 
 from pydantic import BaseModel
 
@@ -47,30 +46,30 @@ class UnprocessedFeedback(BaseModel):
     session_id: str = ""
     feedback_type: FeedbackType = FeedbackType.rating
 
-    targets: List[dict] = []
+    targets: list[dict] = []
     granularity: str = "episode"
     timestamp: int = -1
     text_feedback: str = ""  # e.g.: "The agent is doing well in the beginning, but then it fails to collect the key."
 
     # Evaluative feedback content
     score: float | None = 0.0  # e.g.: 0.5
-    preferences: List[int] | None = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
+    preferences: list[int] | None = []  # e.g.: [1, 1, 2, 3, 4] for a partial ordering
 
     # Instructional feedback content
-    action: int | List[float] | None = None
+    action: int | list[float] | None = None
     state: dict | None = None
-    action_preferences: List[int] | List[List[float]] | None = None
-    state_preferences: List[dict] | None = None
+    action_preferences: list[int] | list[list[float]] | None = None
+    state_preferences: list[dict] | None = None
 
     # Demo feedback is handled separately
     is_demo: bool = False
-    demo_preferences: Union[List[int], None] = None
+    demo_preferences: list[int] | None = None
 
     # Descriptive feedback content
-    feature_selection: List[dict] | None | str = None
-    feature_importance: float | List[float] | None | str = None
-    feature_selections_preferences: List[List[dict]] | None = None
-    feature_importance_preferences: List[float | List[float]] | None = None
+    feature_selection: list[dict] | None | str = None
+    feature_importance: float | list[float] | None | str = None
+    feature_selections_preferences: list[list[dict]] | None = None
+    feature_importance_preferences: list[float | list[float]] | None = None
 
     # Meta information
     user_id: int = -1
@@ -180,24 +179,24 @@ class Evaluation(BaseModel):
 class RelativeEvaluation(BaseModel):
     # An array of preference values (gives as a ranking), needs to match the list of targets,
     # we assume a consistent partial ordering
-    preferences: List[float] = None
+    preferences: list[float] = None
 
 
 class Instruction(BaseModel):
     # An instruction might either be an action or a goal
-    action: Union[int, List[float]] = None
+    action: int | list[float] = None
     goal: dict = None
 
 
 class RelativeInstruction(Instruction):
     # A relative instruction is a preference over actions or goals
-    action_preferences: List[int] = None
-    goal_preferences: List[dict] = None
+    action_preferences: list[int] = None
+    goal_preferences: list[dict] = None
 
 
 class Description(BaseModel):
-    feature_selection: List[dict] | str = None  # A list of feature selections or a file path as a string
-    feature_importance: Union[float, List[float]] | str = None  # A list of feature importances or a file path as a string
+    feature_selection: list[dict] | str = None  # A list of feature selections or a file path as a string
+    feature_importance: float | list[float] | str = None  # A list of feature importances or a file path as a string
 
 
 class Text(BaseModel):
@@ -206,8 +205,8 @@ class Text(BaseModel):
 
 class RelativeDescription(Description):
     # A relative description is a preference over feature selections, importances, or rankings
-    feature_selections_preferences: List[List[dict]] = None
-    feature_importance_preferences: List[Union[float, List[float]]] = None
+    feature_selections_preferences: list[list[dict]] = None
+    feature_importance_preferences: list[float | list[float]] = None
 
 
 class StandardizedFeedback(BaseModel):
@@ -218,12 +217,12 @@ class StandardizedFeedback(BaseModel):
 
 class AbsoluteFeedback(StandardizedFeedback):
     target: Target = None
-    content: Union[Evaluation, Instruction, Description, Text] = None
+    content: Evaluation | Instruction | Description | Text = None
 
 
 class RelativeFeedback(StandardizedFeedback):
-    target: List[Target] = None
-    content: Union[RelativeEvaluation, RelativeInstruction, RelativeDescription] = None
+    target: list[Target] = None
+    content: RelativeEvaluation | RelativeInstruction | RelativeDescription = None
 
 
 def get_target(target: dict, granularity: str) -> Target | None:

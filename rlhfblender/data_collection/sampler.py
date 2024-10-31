@@ -4,7 +4,6 @@ A sampler for episodes for HITL experiments
 
 import os
 from enum import Enum
-from typing import List, Optional
 
 import numpy as np
 
@@ -39,7 +38,7 @@ class Sampler:
         saved_episode_dir: str,
         max_episode_count: int = 1000,
         sampler_type: SamplerType = SamplerType.sequential,
-        sample_model: Optional[FeedbackModel] = None,
+        sample_model: FeedbackModel | None = None,
     ):
         self.experiment = experiment
         self.env = env
@@ -49,7 +48,7 @@ class Sampler:
         self.sample_model = sample_model
 
         self.episode_count = None
-        self.episode_buffer: List[EpisodeID] = []
+        self.episode_buffer: list[EpisodeID] = []
         self.episode_pointer = 0
 
         if experiment is not None and env is not None:
@@ -107,7 +106,7 @@ class Sampler:
 
         self.reset()
 
-    def get_full_episode_list(self) -> List[EpisodeID]:
+    def get_full_episode_list(self) -> list[EpisodeID]:
         """
         Return the full episode list
         :return: The full episode list
@@ -141,7 +140,7 @@ class Sampler:
         if self.sample_model is not None:
             self.sample_model.reset()
 
-    def sample(self, batch_size: int = 1) -> List[EpisodeID]:
+    def sample(self, batch_size: int = 1) -> list[EpisodeID]:
         """
         Return a list of episodes
         :param batch_size: The batch size to sample

@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional, Type
-
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -150,7 +148,7 @@ class BabyAIFeaturesExtractor(BaseFeaturesExtractor):
             else:
                 return final_states.transpose(0, 1).reshape(final_states.shape[1], -1)
 
-    def forward(self, observations: Dict[str, th.Tensor]) -> th.Tensor:
+    def forward(self, observations: dict[str, th.Tensor]) -> th.Tensor:
         x = observations["image"]
         x = x.transpose(1, 3).transpose(2, 3)  # Convert to BCHW format
 
@@ -188,8 +186,8 @@ class BabyAIRecurrentPolicy(RecurrentActorCriticPolicy):
         use_instr: bool = True,
         lang_model: str = "gru",
         arch: str = "bow_endpool_res",
-        net_arch: Optional[List[int]] = None,
-        activation_fn: Type[nn.Module] = nn.Tanh,
+        net_arch: list[int] | None = None,
+        activation_fn: type[nn.Module] = nn.Tanh,
         *args,
         **kwargs
     ):

@@ -16,7 +16,7 @@ def convert_to_serializable(obj: Any) -> Any:
     if isinstance(obj, np.ndarray) and obj.size == 1:
         # dict must be recursively serializable
         obj = obj.item()
-        if not isinstance(obj, (int, float, str)):
+        if not isinstance(obj, int | float | str):
             return convert_to_serializable(obj)
         return obj
     elif isinstance(obj, np.ndarray):

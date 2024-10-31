@@ -4,7 +4,6 @@ import os
 import socket
 import sys
 from multiprocessing import Process
-from typing import List, Union
 
 import cv2
 import gymnasium as gym
@@ -30,7 +29,7 @@ def find_available_port(start_port=65432, max_attempts=100):
     raise RuntimeError("No available ports found.")
 
 
-async def create_new_session(session_id: str, gym_env: str, seed: Union[str, int]):
+async def create_new_session(session_id: str, gym_env: str, seed: str | int):
     """
     Create a new session as a asynchronous process. In the process, initialize a gym environment and
     wait for commands via a pipe.
@@ -59,7 +58,7 @@ async def create_new_session(session_id: str, gym_env: str, seed: Union[str, int
     return p.pid, demo_number
 
 
-def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union[str, int]):
+def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: str | int):
     """
     Blocking loop that initializes a gym environment and waits for commands via a socket.
     :param session_id: (str) The unique id of the session (used for the socket port
@@ -172,7 +171,7 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
                         # Close the socket
                         conn.sendall(b"closed")
                         break
-            except socket.timeout:
+            except TimeoutError:
                 print("Connection timed out. No response from user for 30 seconds.")
                 env.close()
                 break
@@ -181,7 +180,7 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: Union
     sys.exit(0)
 
 
-def demo_perform_step(session_id: str, action: Union[int, List[float]]) -> dict:
+def demo_perform_step(session_id: str, action: int | list[float]) -> dict:
     """
     Send a step command via the socket to the environment and return the results
     :param session_id: The unique id of the session
@@ -207,7 +206,7 @@ def demo_perform_step(session_id: str, action: Union[int, List[float]]) -> dict:
             data = json.loads(data)
 
             return data
-        except socket.timeout:
+        except TimeoutError:
             print("Connection timed out while attempting to send step command.")
             return {}
         except ConnectionRefusedError:
@@ -242,7 +241,7 @@ def close_demo_session(session_id: str, pid: int):
 
             # Remove the port file
             os.remove(os.path.join("/tmp", session_id + "-port"))
-        except (socket.timeout, ConnectionRefusedError):
+        except (TimeoutError, ConnectionRefusedError):
             print("Failed to connect to close the session. The session might already be closed.")
 
 

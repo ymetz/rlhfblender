@@ -1,5 +1,4 @@
 from abc import ABC
-from typing import Dict, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -18,7 +17,7 @@ class BaseAgent:
     def reset(self):
         raise NotImplementedError
 
-    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> dict | None:
         raise NotImplementedError
 
 
@@ -38,8 +37,8 @@ class TrainedAgent(BaseAgent, ABC):
         raise NotImplementedError
 
     def additional_outputs(
-        self, observation: np.ndarray, action: np.ndarray, output_list: Optional[list[str]] = None
-    ) -> Optional[Dict]:
+        self, observation: np.ndarray, action: np.ndarray, output_list: list[str] | None = None
+    ) -> dict | None:
         raise NotImplementedError
 
 
@@ -57,6 +56,6 @@ class RandomAgent(BaseAgent):
         pass
 
     def additional_outputs(
-        self, observation: np.ndarray, action: np.ndarray, output_list: Optional[list[str]] = None
-    ) -> Optional[Dict]:
+        self, observation: np.ndarray, action: np.ndarray, output_list: list[str] | None = None
+    ) -> dict | None:
         return {"log_probs": np.zeros_like(action), "value": np.array([1.0]), "entropy": np.array([1.0])}

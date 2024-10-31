@@ -1,5 +1,3 @@
-from typing import List
-
 import numpy as np
 
 # for eval() we might have to import numpy, add ignore for linting
@@ -45,7 +43,7 @@ class Experiment(BaseModel):
     run_timestamp: int = -1
     last_modified: int = -1
     pid: int = -1
-    status: List[str] = []
+    status: list[str] = []
     env_id: str = "Cartpole-v1"
     environment_config: dict = {}
     framework: str = ""
@@ -75,7 +73,7 @@ class Experiment(BaseModel):
         mode="before",
     )
     def process_(cls, in_value):
-        if isinstance(in_value, list) or isinstance(in_value, dict):
+        if isinstance(in_value, list | dict):
             return in_value
         return eval(in_value, {"np": np})
 
@@ -91,18 +89,20 @@ class Environment(BaseModel):
     description: str = ""
     tags: list = []
     env_path: str = ""
-    additional_gym_packages: List[str] = []
+    additional_gym_packages: list[str] = []
 
     @field_validator(
         "tags",
         "additional_gym_packages",
-        # "observation_space_info", not used currently, so keep as string
+        "observation_space_info",
         "action_space_info",
         mode="before",
     )
     def process_(cls, in_value):
-        if isinstance(in_value, list) or isinstance(in_value, dict):
+        if isinstance(in_value, list | dict):
             return in_value
+        if in_value == "":
+            return ""
         return eval(in_value, {"np": np})
 
 

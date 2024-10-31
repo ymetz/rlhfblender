@@ -1,6 +1,6 @@
 import os
 from enum import Enum
-from typing import Any, Dict, List, Union
+from typing import Any
 
 import numpy as np
 from databases import Database
@@ -32,7 +32,7 @@ database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender
 router = APIRouter(prefix="/data")
 
 
-@router.get("/get_available_frameworks", response_model=List[str])
+@router.get("/get_available_frameworks", response_model=list[str])
 def get_available_frameworks():
     """
     Return a list of all available frameworks
@@ -41,7 +41,7 @@ def get_available_frameworks():
     return framework_selector.get_framework_list()
 
 
-@router.get("/get_algorithms", response_model=List[str])
+@router.get("/get_algorithms", response_model=list[str])
 def get_algorithms(selected_framework: str):
     """
     Return a list of all available algorithms for the given framework
@@ -67,7 +67,7 @@ class VideoRequestModel(BenchmarkModel):
 
 class BenchmarkResponseModel(BaseModel):
     n_steps: int
-    models: List[BenchmarkSummary]
+    models: list[BenchmarkSummary]
     env_space_info: dict
 
 
@@ -83,12 +83,12 @@ class FeedbackType(str, Enum):
 
 class FeedbackModel(BenchmarkModel):
     episode_id: int = -1
-    feedback: Union[dict, None] = None
+    feedback: dict | None = None
     feedback_type: FeedbackType = FeedbackType.rating
     feedback_time: float = -1.0
 
 
-@router.get("/get_rewards", response_model=List, tags=["DATA"])
+@router.get("/get_rewards", response_model=list, tags=["DATA"])
 async def get_rewards(
     env_name: str,
     benchmark_id: int,
@@ -110,7 +110,7 @@ async def get_rewards(
     return rewards.tolist()
 
 
-@router.get("/get_uncertainty", response_model=List, tags=["DATA"])
+@router.get("/get_uncertainty", response_model=list, tags=["DATA"])
 async def get_uncertainty(
     env_name: str,
     benchmark_id: int,
@@ -186,7 +186,7 @@ class SingleStepDetailRequest(DetailRequest):
     step: int
 
 
-@router.post("/get_single_step_details", response_model=Dict[str, Any], tags=["DATA"])
+@router.post("/get_single_step_details", response_model=dict[str, Any], tags=["DATA"])
 async def get_single_step_details(request: SingleStepDetailRequest):
     """
     Returns a dictionary containing all the data for a single step: the action distribution, the action, the reward,
@@ -228,7 +228,7 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     }
 
 
-@router.post("/get_actions_for_episode", response_model=List[int | float | List[float]], tags=["DATA"])
+@router.post("/get_actions_for_episode", response_model=list[int | float | list[float]], tags=["DATA"])
 async def get_actions_for_episode(request: DetailRequest):
     """
     Returns a list of all actions for a given episode
@@ -282,7 +282,7 @@ class ActionLabelRequest(BaseModel):
     envId: str
 
 
-@router.post("/get_action_label_urls", response_model=List[str])
+@router.post("/get_action_label_urls", response_model=list[str])
 async def get_action_label_urls(request: ActionLabelRequest):
     """
     Returns a list of urls for the action labels of the given environment
@@ -323,7 +323,7 @@ async def reset_sampler(request: Request):
     }
 
 
-@router.get("/get_all_episodes", response_model=List[EpisodeID])
+@router.get("/get_all_episodes", response_model=list[EpisodeID])
 async def get_all_episodes(request: Request):
     """
     Returns all episodes for the current configuration of the sampler
@@ -333,7 +333,7 @@ async def get_all_episodes(request: Request):
     return request.app.state.sampler.get_full_episode_list()
 
 
-@router.get("/sample_episodes", response_model=List[EpisodeID])
+@router.get("/sample_episodes", response_model=list[EpisodeID])
 async def sample_episodes(request: Request):
     """
     Samples episodes from the database
