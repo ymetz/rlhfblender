@@ -5,7 +5,7 @@ channels:
 dependencies:
   - cpuonly=1.0=0
   - pip=22.3.1
-  - python=3.8
+  - python=3.10
   - pytorch=1.13.0=py3.10_cpu_0
   - pip:
     - gymnasium
