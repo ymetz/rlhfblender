@@ -4,7 +4,6 @@ Logging component for feedback logging
 
 from abc import abstractmethod
 from datetime import datetime
-from typing import List
 
 from rlhfblender.data_models.feedback_models import (
     StandardizedFeedback,
@@ -57,14 +56,14 @@ class Logger:
         """
 
     @abstractmethod
-    def read(self) -> List[StandardizedFeedback]:
+    def read(self) -> list[StandardizedFeedback]:
         """
         Reads all feedback from the logger
         :return: The processed feedback
         """
 
     @abstractmethod
-    def read_raw(self) -> List[UnprocessedFeedback]:
+    def read_raw(self) -> list[UnprocessedFeedback]:
         """
         Reads all feedback from the logger
         :return: The unprocessed feedback

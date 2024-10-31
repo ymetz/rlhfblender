@@ -124,8 +124,3 @@ def test_retreive_logs(client):
 def test_retreive_demos(client):
     response = client.get("/retreive_demos")
     assert response.status_code == 200
-
-
-def test_retreive_feature_feedback(client):
-    response = client.get("/retreive_feature_feedback")
-    assert response.status_code == 200

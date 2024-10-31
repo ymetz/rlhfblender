@@ -2,6 +2,7 @@ fastapi
 databases[sqlite]
 uvicorn
 swig
+numpy
 gymnasium[atari,accept-rom-license,mujoco]
 stable-baselines3
 sb3-contrib
@@ -9,3 +10,4 @@ imitation
 matplotlib
 seaborn
 opencv-python-headless
+minigrid

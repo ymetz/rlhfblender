@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+import uuid
 import zipfile
 
 import uvicorn
@@ -224,6 +225,49 @@ async def delete_backend_config(req: DeleteBackendConfigRequest):
     # Delete backend config from configs/backend_configs directory
     os.remove(os.path.join("configs/backend_configs", req.backend_config_name + ".json"))
     return {"message": "OK"}
+
+
+class SaveSetupRequest(BaseModel):
+    project: dict
+    experiment: dict
+    ui_config: dict
+    backend_config: dict
+
+
+@app.post("/save_setup", tags=["SETUP"])
+async def save_setup(req: SaveSetupRequest):
+    """
+    Save to file in configs/setups, generate a unique ID and return it
+    """
+    # Save setup to configs/setups directory
+    setup = {
+        "project": req.project,
+        "experiment": req.experiment,
+        "ui_config": req.ui_config,
+        "backend_config": req.backend_config,
+    }
+    setup_id = uuid.uuid4().hex[:8]
+    with open(os.path.join("configs/setups", f"{setup_id}.json"), "w") as f:
+        json.dump(setup, f)
+    return {"study_code": setup_id}
+
+
+class LoadSetupRequest(BaseModel):
+    study_code: str
+
+
+@app.post("/load_setup", tags=["SETUP"])
+async def load_setup(req: LoadSetupRequest):
+    """
+    Load setup from file in configs/setups
+    """
+    study_code = req.study_code
+    try:
+        with open(os.path.join("configs/setups", f"{study_code}.json")) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # return error message and status code
+        return {"message": "Setup not found."}, 404
 
 
 @app.get("/retreive_logs", tags=["LOGS"])

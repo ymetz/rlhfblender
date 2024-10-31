@@ -12,8 +12,8 @@ def process_metrics(benchmark_results: RecordedEpisodesContainer) -> dict:
 
     avg_reward = np.mean(benchmark_results.episode_rewards)
     avg_length = np.mean(benchmark_results.episode_lengths)
-    avg_entropy = np.mean([info.get("entropy", 0.0) for info in benchmark_results.infos])
-    avg_value = np.mean([info.get("value", 0.0) for info in benchmark_results.infos])
+    avg_entropy = np.mean([info.item().get("entropy", 0.0) for info in benchmark_results.infos])
+    avg_value = np.mean([info.item().get("value", 0.0) for info in benchmark_results.infos])
     avg_action_prob = (
         1.0 if len(benchmark_results.probs.shape) == 1 else np.mean(np.max(benchmark_results.probs, axis=1)).astype(float)
     )

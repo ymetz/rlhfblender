@@ -1,30 +1,27 @@
-"""
-Make sure that the data for the demo is available, run at application startup.
-Expects pre-trained models in the experimentation directory. First runs benchmarks with the provided
-models, then creates video/thumbnail/reward data etc.
-"""
-
 import os
 import time
-from types import SimpleNamespace as sn
-from typing import Dict, List
 
 import cv2
 import gymnasium as gym
 import numpy as np
 from databases import Database
-from pydantic import BaseModel
 
-from rlhfblender.data_collection import framework_selector as framework_selector
-from rlhfblender.data_collection.environment_handler import get_environment, initial_registration
+import rlhfblender.data_collection.environment_handler as environment_handler
+import rlhfblender.data_collection.framework_selector as framework_selector
+import rlhfblender.data_handling.database_handler as db_handler
 from rlhfblender.data_collection.episode_recorder import EpisodeRecorder
-from rlhfblender.data_handling import database_handler as db_handler
-from rlhfblender.data_models import Environment, Experiment
+from rlhfblender.data_models.global_models import Environment, Experiment, Project
+from rlhfblender.utils import process_env_name
 
-DATA_ROOT_DIR = "data"
-BENCHMARK_DIR = "saved_benchmarks"
-
+# Initialize database
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
+
+
+async def init_db():
+    # Make sure all database tables exist
+    await db_handler.create_table_from_model(database, Project)
+    await db_handler.create_table_from_model(database, Experiment)
+    await db_handler.create_table_from_model(database, Environment)
 
 
 def get_custom_thumbnail_creator(env_id: str):
@@ -39,70 +36,148 @@ def get_custom_thumbnail_creator(env_id: str):
     return None
 
 
-class BenchmarkRequestModel(BaseModel):
-    """
-    A request model for a single benchmark run
-    """
+async def add_to_project(project: str = "RLHF-Blender", env: str | None = None, exp: str | None = None):
+    """Add an environment or experiment to a project."""
+    # Check if project exists
+    if not await db_handler.check_if_exists(database, Project, key=project, key_column="project_name"):
+        # Register new project
+        await db_handler.add_entry(
+            database,
+            Project,
+            Project(project_name=project, created_timestamp=int(time.time())).model_dump(),
+        )
+        existing_envs = []
+        existing_exps = []
+    else:
+        # Get the project and existing envs and exps
+        project_obj: Project = await db_handler.get_single_entry(database, Project, key=project, key_column="project_name")
+        existing_envs = project_obj.project_environments
+        existing_exps = project_obj.project_experiments
 
-    env_id: str = ""
-    path: str = ""
-    benchmark_type: str = "random"
-    benchmark_id: str = ""
-    checkpoint_step: int = -1
-    n_episodes: int = 1
-    force_overwrite: bool = False
-    render: bool = True
-    deterministic: bool = False
-    reset_state: bool = False
-    split_by_episode: bool = False
+    # Now add env or exp to project
+    if env is not None and env not in existing_envs:
+        await db_handler.update_entry(
+            database,
+            Project,
+            key=project,
+            key_column="project_name",
+            data={"project_environments": [*existing_envs, env]},
+        )
+    if exp is not None and exp not in existing_exps:
+        await db_handler.update_entry(
+            database,
+            Project,
+            key=project,
+            key_column="project_name",
+            data={"project_experiments": [*existing_exps, exp]},
+        )
 
 
-# Run benchmarks with the provided models
-async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment]:
-    """
-    Run an agent in the provided environment with the given parameters. The experiment id only has to provided
-    if benchmark_type trained is used.
-    :param request (
-    :return:
-    """
+async def register_env(
+    env_id: str,
+    entry_point: str | None = "",
+    display_name: str = "",
+    additional_gym_packages: list[str] | None = None,
+    env_kwargs: dict | None = None,
+    env_description: str = "",
+    project: str = "RLHF-Blender",
+):
+    """Register an environment in the database."""
+    env_name = display_name if display_name != "" else env_id
+    env_kwargs = env_kwargs if env_kwargs is not None else {}
+    print(env_kwargs)
+    additional_gym_packages = additional_gym_packages if additional_gym_packages is not None else []
+
+    # Check if environment is already registered
+    if not await db_handler.check_if_exists(database, Environment, key=env_id, key_column="registration_id"):
+        # Register the environment
+        env: Environment = environment_handler.initial_registration(
+            env_id=env_id,
+            entry_point=entry_point,
+            additional_gym_packages=additional_gym_packages,
+            gym_env_kwargs=env_kwargs,
+        )
+
+        env.env_name = env_name
+        env.description = env_description
+
+        await db_handler.add_entry(database, Environment, env.model_dump())
+        await add_to_project(project=project, env=env_id)
+        print(f"Registered environment {env_name} in project {project}")
+    else:
+        print(f"Environment with id {env_id} already exists. Skipping registration.")
+
+
+async def register_experiment(
+    exp_name: str,
+    env_id: str,
+    env_kwargs: dict | None = None,
+    path: str | None = "",
+    framework: str = "StableBaselines3",
+    exp_kwargs: dict | None = None,
+    project: str | None = "RLHF-Blender",
+):
+    """Register an experiment in the database."""
+    env_kwargs = env_kwargs if env_kwargs is not None else {}
+    exp_kwargs = exp_kwargs if exp_kwargs is not None else {}
+
+    # Check if experiment is already registered
+    if not await db_handler.check_if_exists(database, Experiment, key=exp_name, key_column="exp_name"):
+        exp = Experiment(
+            exp_name=exp_name,
+            env_id=env_id,
+            path=path,
+            environment_config=env_kwargs,
+            framework=framework,
+            **exp_kwargs,
+        )
+        await db_handler.add_entry(database, Experiment, exp.model_dump())
+        await add_to_project(project=project, exp=exp_name)
+        print(f"Registered experiment {exp_name} in project {project}")
+    else:
+        print(f"Experiment with name {exp_name} already exists. Skipping registration.")
+
+
+async def run_benchmark(requests: list[dict]) -> list[str]:
+    """Run benchmarks and generate data."""
     benchmarked_experiments = []
-    for benchmark_run in request:
-        print(request)
-        if benchmark_run.benchmark_id != "" and await db_handler.check_if_exists(
-            database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name"
+    for benchmark_run in requests:
+        # Check if experiment exists
+        if benchmark_run["exp"] != "" and await db_handler.check_if_exists(
+            database, Experiment, key=benchmark_run["exp"], key_column="exp_name"
         ):
             exp: Experiment = await db_handler.get_single_entry(
-                database, Experiment, key=benchmark_run.benchmark_id, key_column="exp_name"
+                database, Experiment, key=benchmark_run["exp"], key_column="exp_name"
             )
+            database_env = await db_handler.get_single_entry(
+                database, Environment, key=exp.env_id, key_column="registration_id"
+            )
+            benchmark_run["env"] = exp.env_id if "env" not in benchmark_run else benchmark_run["env"]
         else:
-            # for the experiments, we need to register the environment first (e.g. for annotations, naming of the action space)
-            if not db_handler.check_if_exists(database, Environment, key=benchmark_run.env_id, key_column="registration_id"):
+            # Register experiment and environment if necessary
+            if not await db_handler.check_if_exists(
+                database, Environment, key=benchmark_run["env"], key_column="registration_id"
+            ):
                 # We lazily register the environment if it is not registered yet, this is only done once
-                database_env = initial_registration(
-                    benchmark_run.env_id,
-                    additional_gym_packages=(
-                        benchmark_run.additional_packages if "additional_packages" in benchmark_run else []
-                    ),
-                )
-                await db_handler.add_entry(database, Environment, database_env.model_dump())
-            else:
-                database_env = await db_handler.get_single_entry(
-                    database, Environment, key=benchmark_run.env_id, key_column="registration_id"
-                )
-
-            # create and register a "dummy" experiment
-            exp: Experiment = Experiment(
-                exp_name=f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_Experiment",
-                env_id=benchmark_run.env_id,
-                framework="Random",
-                created_timestamp=int(time.time()),
+                await register_env(env_id=benchmark_run["env"])
+            database_env = await db_handler.get_single_entry(
+                database, Environment, key=benchmark_run["env"], key_column="registration_id"
             )
-            await db_handler.add_entry(database, Experiment, exp)
+            # Create and register a "dummy" experiment
+            exp_name = f"{benchmark_run['env']}_{benchmark_run['benchmark_type']}_experiment"
+            await register_experiment(
+                exp_name=exp_name,
+                env_id=benchmark_run["env"],
+                path=benchmark_run["path"],
+                framework=benchmark_run.get("framework", "random"),
+                env_kwargs=benchmark_run.get("env_kwargs", {}),
+            )
+            exp: Experiment = await db_handler.get_single_entry(database, Experiment, key=exp_name, key_column="exp_name")
 
-        # add the current checkpoint to the experiment
-        existing_checkpoints = exp.checkpoint_list if "checkpoint_list" in exp else []
-        if benchmark_run.checkpoint_step not in existing_checkpoints:
-            existing_checkpoints.append(benchmark_run.checkpoint_step)
+        # Add the current checkpoint to the experiment
+        existing_checkpoints = exp.checkpoint_list if exp.checkpoint_list else []
+        if benchmark_run["checkpoint_step"] not in existing_checkpoints:
+            existing_checkpoints.append(benchmark_run["checkpoint_step"])
             exp.checkpoint_list = existing_checkpoints
             await db_handler.update_entry(
                 database,
@@ -112,56 +187,57 @@ async def run_benchmark(request: List[BenchmarkRequestModel]) -> list[Experiment
             )
 
         benchmark_env = (
-            get_environment(
-                benchmark_run.env_id,
+            environment_handler.get_environment(
+                exp.env_id,
                 environment_config=exp.environment_config,
                 n_envs=1,
-                norm_env_path=os.path.join(benchmark_run.path, benchmark_run.env_id),
-                # this is how SB-Zoo does it, so we stick to it for easy cross-compatabily
+                norm_env_path=os.path.join(benchmark_run["path"], process_env_name(exp.env_id)),
                 additional_packages=database_env.additional_gym_packages,
             )
-            if "BabyAI" not in benchmark_run.env_id
-            else gym.make(benchmark_run.env_id, render_mode="rgb_array")
+            if "BabyAI" not in exp.env_id
+            else gym.make(exp.env_id, render_mode="rgb_array")
         )
+
         framework = exp.framework
-        print(exp, framework)
-        if benchmark_run.benchmark_type == "random":
+        if benchmark_run["benchmark_type"] == "random":
             framework = "Random"
+
         agent = framework_selector.get_agent(framework=framework)(
             observation_space=benchmark_env.observation_space,
             action_space=benchmark_env.action_space,
-            exp=sn(
-                **{
-                    "algorithm": "ppo",
-                    "env_id": benchmark_run.env_id,
-                    "path": benchmark_run.path,
-                }
-            ),
+            exp=exp,
             env=benchmark_env,
             device="auto",
-            checkpoint_step=benchmark_run.checkpoint_step,
+            checkpoint_step=benchmark_run["checkpoint_step"],
         )
 
-        save_file_name = f"{benchmark_run.env_id}_{exp.id}_{benchmark_run.checkpoint_step}"
+        save_file_name = os.path.join(
+            process_env_name(exp.env_id), f"{process_env_name(exp.env_id)}_{exp.id}_{benchmark_run['checkpoint_step']}"
+        )
 
-        EpisodeRecorder.record_episodes(
-            agent,
-            benchmark_env,
-            benchmark_run.n_episodes,
+        # Create an instance of EpisodeRecorder with the required parameters
+        recorder = EpisodeRecorder(
+            agent=agent,
+            env=benchmark_env,
+            n_eval_episodes=benchmark_run["n_episodes"],
             max_steps=int(2e4),
             save_path=os.path.join("data", "saved_benchmarks", save_file_name),
             overwrite=True,
-            render=benchmark_run.render,
-            deterministic=benchmark_run.deterministic,
-            reset_to_initial_state=benchmark_run.reset_state,
+            render=True,
+            deterministic=False,
+            reset_to_initial_state=False,
         )
+
+        # Call the record_episodes method to start recording
+        recorder.record_episodes()
+
+        # Register benchmarked experiment
         benchmarked_experiments.append(exp.id)
 
     return benchmarked_experiments
 
 
-# Now, create the video/thumbnail/reward data etc.
-def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def split_data(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     """Splits the data into episodes."""
     episode_ends = np.argwhere(data["dones"])
     episodes = {}
@@ -170,22 +246,30 @@ def split_data(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             episodes[name] = np.split(data_item, episode_ends.flatten() + 1)
         else:
             episodes[name] = data_item
-
     return episodes
 
 
 def encode_video(renders: np.ndarray, path: str) -> None:
-    """
-    Encodes renders of shape [n_frames, height, width, 3] into a .mp4 video and
-    saves it at path.
-    """
+    """Encodes renders into a .mp4 video and saves it at path."""
     # Create video in H264 format
-    out = cv2.VideoWriter(
-        f"{path}.mp4",
-        cv2.VideoWriter_fourcc(*"avc1"),
-        24,
-        (renders.shape[2], renders.shape[1]),
-    )
+    try:
+        out = cv2.VideoWriter(
+            f"{path}.mp4",
+            cv2.VideoWriter_fourcc(*"avc1"),
+            24,
+            (renders.shape[2], renders.shape[1]),
+        )
+    except Exception:
+        print("AVC1 codec not available, using MP4V codec instead.")
+        try:
+            out = cv2.VideoWriter(
+                f"{path}.mp4",
+                cv2.VideoWriter_fourcc(*"mp4v"),
+                24,
+                (renders.shape[2], renders.shape[1]),
+            )
+        except Exception as e:
+            print(f"Error creating video writer: {e}")
     for render in renders:
         # Convert to BGR
         render = cv2.cvtColor(render, cv2.COLOR_RGB2BGR)
@@ -193,22 +277,20 @@ def encode_video(renders: np.ndarray, path: str) -> None:
     out.release()
 
 
-async def generate_data(benchmark_dicts: List[Dict]):
-    """
-    Main async method, do all your calls that need to be awaited here.
-    :param benchmark_dicts:
-    :return:
-    """
-    requests = []
+async def generate_data(benchmark_dicts: list[dict]):
+    """Main async method to generate data."""
+    DATA_ROOT_DIR = "data"
+    BENCHMARK_DIR = "saved_benchmarks"
 
+    requests = []
     skipped = 0
     for item in benchmark_dicts:
-        benchmark_run = BenchmarkRequestModel(**item)
+        benchmark_run = item
         save_file_name = os.path.join(
-            f"{benchmark_run.env_id}_{benchmark_run.benchmark_type}_{benchmark_run.benchmark_id}_{benchmark_run.checkpoint_step}"
+            f"{benchmark_run['env']}_{benchmark_run['benchmark_type']}_{benchmark_run['exp']}_{benchmark_run['checkpoint_step']}"
         )
 
-        # Skip processing
+        # Skip processing if data already exists
         if os.path.isdir(f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"):
             skipped += 1
             continue
@@ -225,14 +307,17 @@ async def generate_data(benchmark_dicts: List[Dict]):
     benchmarked_experiments = await run_benchmark(requests)
 
     # Now create the video/thumbnail/reward data etc.
-    for benchmark_run, exp_id in zip(requests, benchmarked_experiments):
+    for benchmark_run, exp_id in zip(requests, benchmarked_experiments, strict=False):
         # Path to benchmark file
-        save_file_name = os.path.join(f"{benchmark_run.env_id}_{exp_id}_{benchmark_run.checkpoint_step}.npz")
-        data = np.load(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
+        save_file_name = os.path.join(
+            process_env_name(benchmark_run["env"]),
+            f"{process_env_name(benchmark_run['env'])}_{exp_id}_{benchmark_run['checkpoint_step']}.npz",
+        )
+        data = np.load(f"data/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
         episode_data = split_data(data)
 
         for episode_idx, _ in enumerate(episode_data["dones"]):
-            dir_name = f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"
+            dir_name = f"data/episodes/{os.path.splitext(save_file_name)[0]}"
             save_episode = {}
             for name, _ in episode_data.items():
                 if name == "additional_metrics" or name == "renders":
@@ -241,62 +326,64 @@ async def generate_data(benchmark_dicts: List[Dict]):
             os.makedirs(dir_name, exist_ok=True)
             np.savez(f"{dir_name}/benchmark_{episode_idx}.npz", **save_episode)
             os.makedirs(
-                f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}",
+                f"data/rewards/{os.path.splitext(save_file_name)[0]}",
                 exist_ok=True,
             )
             np.save(
-                f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{episode_idx}.npy",
+                f"data/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{episode_idx}.npy",
                 np.cumsum(episode_data["rewards"][episode_idx]),
             )
 
-            # Save uncertainty data if available (for now, just use entropy from info dict)
+            # Save uncertainty data if available
             if "infos" in episode_data:
                 os.makedirs(
-                    f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}",
+                    f"data/uncertainty/{os.path.splitext(save_file_name)[0]}",
                     exist_ok=True,
                 )
                 np.save(
-                    f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{episode_idx}.npy",
-                    np.array([info["entropy"] for info in episode_data["infos"][episode_idx]]),
+                    f"data/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{episode_idx}.npy",
+                    np.array([info.item()["entropy"] for info in episode_data["infos"][episode_idx]]),
                 )
 
         # Create video
         for episode_idx, renders in enumerate(episode_data["renders"]):
-            dir_name = f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}"
+            dir_name = f"data/renders/{os.path.splitext(save_file_name)[0]}"
             if not os.path.isdir(dir_name):
                 os.makedirs(dir_name)
             encode_video(renders, f"{dir_name}/{episode_idx}")
 
-            dir_name = f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}"
+            dir_name = f"data/thumbnails/{os.path.splitext(save_file_name)[0]}"
             if not os.path.isdir(dir_name):
                 os.makedirs(dir_name)
 
             # Check if custom thumbnail creator exists
-            custom_thumbnail_creator = get_custom_thumbnail_creator(benchmark_run.env_id)
+            custom_thumbnail_creator = get_custom_thumbnail_creator(benchmark_run["env"])
             if custom_thumbnail_creator is not None:
-                # Create custom thumbnail with env id and seed (info the info dict)
+                # Create custom thumbnail
                 save_image = custom_thumbnail_creator(
-                    benchmark_run.env_id,
+                    benchmark_run["env"],
                     episode_data["infos"][episode_idx][0].get("seed", None),
                     episode_data["actions"][episode_idx],
                 )
             else:
-                save_image = renders[0]
-                # Save first frame of the episode, first convert to BGR
+                if renders is not None and len(renders.shape) == 4 and renders.shape[0] > 0:
+                    save_image = renders[0]
+                else:
+                    save_image = np.zeros((128, 128, 3), dtype=np.uint8)  # Placeholder image
+                # Save first frame of the episode
             save_image = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
-
             cv2.imwrite(f"{dir_name}/{episode_idx}.jpg", save_image)
 
-        # delete original save_file, not needed anymore
-        os.remove(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}")
+        # Delete original save file
+        os.remove(f"data/{BENCHMARK_DIR}/{save_file_name}")
 
-        # Delete the last episode, as it is not complete (TODO: Fix this)
+        # Delete the last episode if incomplete
         episode_idx = len(episode_data["dones"]) - 1
-        episode_dir = f"{DATA_ROOT_DIR}/episodes/{os.path.splitext(save_file_name)[0]}"
-        rewards_dir = f"{DATA_ROOT_DIR}/rewards/{os.path.splitext(save_file_name)[0]}"
-        uncertainty_dir = f"{DATA_ROOT_DIR}/uncertainty/{os.path.splitext(save_file_name)[0]}"
-        renders_dir = f"{DATA_ROOT_DIR}/renders/{os.path.splitext(save_file_name)[0]}"
-        thumbnails_dir = f"{DATA_ROOT_DIR}/thumbnails/{os.path.splitext(save_file_name)[0]}"
+        episode_dir = f"data/episodes/{os.path.splitext(save_file_name)[0]}"
+        rewards_dir = f"data/rewards/{os.path.splitext(save_file_name)[0]}"
+        uncertainty_dir = f"data/uncertainty/{os.path.splitext(save_file_name)[0]}"
+        renders_dir = f"data/renders/{os.path.splitext(save_file_name)[0]}"
+        thumbnails_dir = f"data/thumbnails/{os.path.splitext(save_file_name)[0]}"
 
         episode_file = f"{episode_dir}/benchmark_{episode_idx}.npz"
         rewards_file = f"{rewards_dir}/rewards_{episode_idx}.npy"
@@ -304,7 +391,7 @@ async def generate_data(benchmark_dicts: List[Dict]):
         renders_file = f"{renders_dir}/{episode_idx}.mp4"
         thumbnails_file = f"{thumbnails_dir}/{episode_idx}.jpg"
 
-        print(f"Deleting last episode of {episode_idx}")
+        print(f"Deleting last episode {episode_idx} if incomplete")
         os.remove(episode_file)
         os.remove(rewards_file)
         if "infos" in episode_data:

@@ -1,5 +1,4 @@
 import os
-from typing import Dict, Optional
 
 import gymnasium
 import numpy as np
@@ -33,7 +32,7 @@ class BabyAIAgent(TrainedAgent):
         device="auto",
         **kwargs,
     ):
-        super().__init__(observation_space, action_space, exp.path, device=device)
+        super().__init__(observation_space, action_space, env, exp.path, device=device)
 
         # If checkpoint step is provided, load the model from the checkpoint instead of the fully trained model
         if "checkpoint_step" in kwargs:
@@ -59,7 +58,7 @@ class BabyAIAgent(TrainedAgent):
         """
         act = self.model.act(observation)
         self.current_prediction = act
-        return act["action"]
+        return act["action"][0]
 
     def reset(self):
         """
@@ -68,7 +67,7 @@ class BabyAIAgent(TrainedAgent):
         """
         pass
 
-    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> dict | None:
         """
         If the model has additional outputs, they can be accessed here. Containts the current outputs for the previous act().
         :param observation: The observation from the environment

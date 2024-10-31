@@ -1,6 +1,6 @@
-from typing import List
-import numpy as np # for eval() we might have to import numpy
+import numpy as np
 
+# for eval() we might have to import numpy, add ignore for linting
 from pydantic import BaseModel, field_validator
 
 """
@@ -43,7 +43,7 @@ class Experiment(BaseModel):
     run_timestamp: int = -1
     last_modified: int = -1
     pid: int = -1
-    status: List[str] = []
+    status: list[str] = []
     env_id: str = "Cartpole-v1"
     environment_config: dict = {}
     framework: str = ""
@@ -55,8 +55,8 @@ class Experiment(BaseModel):
     checkpoint_list: list = []
     episodes_per_eval: int = -1
     parallel_envs: int = -1
-    observation_space_info: dict = {}
-    action_space_info: dict = {}
+    observation_space_info: dict | str = ""
+    action_space_info: dict | str = ""
     exp_tags: list = []
     exp_comment: str = ""
     wandb_tracking: bool = False
@@ -70,14 +70,12 @@ class Experiment(BaseModel):
         "exp_tags",
         "environment_config",
         "hyperparams",
-        "observation_space_info",
-        "action_space_info",
         mode="before",
     )
     def process_(cls, in_value):
-        if isinstance(in_value, list) or isinstance(in_value, dict):
+        if isinstance(in_value, list | dict):
             return in_value
-        return eval(in_value)
+        return eval(in_value, {"np": np})
 
 
 class Environment(BaseModel):
@@ -85,13 +83,13 @@ class Environment(BaseModel):
     env_name: str = ""
     registered: int = 0
     registration_id: str = ""
-    observation_space_info: dict = {}
-    action_space_info: dict = {}
+    observation_space_info: dict | str = ""
+    action_space_info: dict | str = ""
     has_state_loading: int = 0
     description: str = ""
     tags: list = []
     env_path: str = ""
-    additional_gym_packages: List[str] = []
+    additional_gym_packages: list[str] = []
 
     @field_validator(
         "tags",
@@ -101,9 +99,11 @@ class Environment(BaseModel):
         mode="before",
     )
     def process_(cls, in_value):
-        if isinstance(in_value, list) or isinstance(in_value, dict):
+        if isinstance(in_value, list | dict):
             return in_value
-        return eval(in_value)
+        if in_value == "":
+            return ""
+        return eval(in_value, {"np": np})
 
 
 class Dataset(BaseModel):

@@ -1,6 +1,6 @@
 import os
 from enum import Enum
-from typing import Any, Dict, List, Union
+from typing import Any
 
 import numpy as np
 from databases import Database
@@ -25,13 +25,14 @@ from rlhfblender.data_models.global_models import (
     EpisodeID,
     Experiment,
 )
+from rlhfblender.utils import convert_to_serializable, process_env_name
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/data")
 
 
-@router.get("/get_available_frameworks", response_model=List[str])
+@router.get("/get_available_frameworks", response_model=list[str])
 def get_available_frameworks():
     """
     Return a list of all available frameworks
@@ -40,7 +41,7 @@ def get_available_frameworks():
     return framework_selector.get_framework_list()
 
 
-@router.get("/get_algorithms", response_model=List[str])
+@router.get("/get_algorithms", response_model=list[str])
 def get_algorithms(selected_framework: str):
     """
     Return a list of all available algorithms for the given framework
@@ -60,24 +61,13 @@ class BenchmarkModel(BaseModel):
     checkpoint_step: int = -1
 
 
-class BenchmarkRequestModel(BenchmarkModel):
-    n_episodes: int = 1
-    force_overwrite: bool = False
-    render: bool = True
-    deterministic: bool = True
-    reset_state: bool = False
-    split_by_episode: bool = False
-    record_episode_videos: bool = False
-    
-
-
 class VideoRequestModel(BenchmarkModel):
     episode_id: int = -1
 
 
 class BenchmarkResponseModel(BaseModel):
     n_steps: int
-    models: List[BenchmarkSummary]
+    models: list[BenchmarkSummary]
     env_space_info: dict
 
 
@@ -87,17 +77,18 @@ class FeedbackType(str, Enum):
     ranking = "ranking"
     demonstration = "demonstration"
     correction = "correction"
+    description = "description"
     text = "text"
 
 
 class FeedbackModel(BenchmarkModel):
     episode_id: int = -1
-    feedback: Union[dict, None] = None
+    feedback: dict | None = None
     feedback_type: FeedbackType = FeedbackType.rating
     feedback_time: float = -1.0
 
 
-@router.get("/get_rewards", response_model=List, tags=["DATA"])
+@router.get("/get_rewards", response_model=list, tags=["DATA"])
 async def get_rewards(
     env_name: str,
     benchmark_id: int,
@@ -110,7 +101,8 @@ async def get_rewards(
         os.path.join(
             "data",
             "rewards",
-            f"{env_name}_{benchmark_id}_{checkpoint_step}",
+            process_env_name(env_name),
+            f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
             f"rewards_{episode_num}.npy",
         ),
     )
@@ -118,7 +110,7 @@ async def get_rewards(
     return rewards.tolist()
 
 
-@router.get("/get_uncertainty", response_model=List, tags=["DATA"])
+@router.get("/get_uncertainty", response_model=list, tags=["DATA"])
 async def get_uncertainty(
     env_name: str,
     benchmark_id: int,
@@ -131,7 +123,8 @@ async def get_uncertainty(
         os.path.join(
             "data",
             "uncertainty",
-            f"{env_name}_{benchmark_id}_{checkpoint_step}",
+            process_env_name(env_name),
+            f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
             f"uncertainty_{episode_num}.npy",
         ),
     )
@@ -151,7 +144,8 @@ async def get_video(
         os.path.join(
             "data",
             "renders",
-            f"{env_name}_{benchmark_id}_{checkpoint_step}",
+            process_env_name(env_name),
+            f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
             f"{episode_num}.mp4",
         ),
         media_type="video/mp4",
@@ -173,7 +167,8 @@ async def get_thumbnail(
         os.path.join(
             "data",
             "thumbnails",
-            f"{env_name}_{benchmark_id}_{checkpoint_step}",
+            process_env_name(env_name),
+            f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
             f"{episode_num}.jpg",
         ),
         media_type="image/jpg",
@@ -191,7 +186,7 @@ class SingleStepDetailRequest(DetailRequest):
     step: int
 
 
-@router.post("/get_single_step_details", response_model=Dict[str, Any], tags=["DATA"])
+@router.post("/get_single_step_details", response_model=dict[str, Any], tags=["DATA"])
 async def get_single_step_details(request: SingleStepDetailRequest):
     """
     Returns a dictionary containing all the data for a single step: the action distribution, the action, the reward,
@@ -212,7 +207,8 @@ async def get_single_step_details(request: SingleStepDetailRequest):
         os.path.join(
             "data",
             "episodes",
-            f"{request.env_name}_{request.benchmark_id}_{request.checkpoint_step}",
+            process_env_name(request.env_name),
+            f"{process_env_name(request.env_name)}_{request.benchmark_id}_{request.checkpoint_step}",
             f"benchmark_{request.episode_num}.npz",
         ),
         allow_pickle=True,
@@ -225,14 +221,14 @@ async def get_single_step_details(request: SingleStepDetailRequest):
 
     return {
         "action_distribution": action_distribution.tolist(),
-        "action": action.item(),
+        "action": action.item() if np.isscalar(action) else action.tolist(),
         "reward": reward.item(),
-        "info": info,
+        "info": convert_to_serializable(info),
         "action_space": action_space,
     }
 
 
-@router.post("/get_actions_for_episode", response_model=List[int], tags=["DATA"])
+@router.post("/get_actions_for_episode", response_model=list[int | float | list[float]], tags=["DATA"])
 async def get_actions_for_episode(request: DetailRequest):
     """
     Returns a list of all actions for a given episode
@@ -241,7 +237,8 @@ async def get_actions_for_episode(request: DetailRequest):
         os.path.join(
             "data",
             "episodes",
-            f"{request.env_name}_{request.benchmark_id}_{request.checkpoint_step}",
+            process_env_name(request.env_name),
+            f"{process_env_name(request.env_name)}_{request.benchmark_id}_{request.checkpoint_step}",
             f"benchmark_{request.episode_num}.npz",
         ),
         allow_pickle=True,
@@ -258,7 +255,6 @@ class SaveFeatureFeedbackRequest(BaseModel):
 async def save_feature_feedback(request: Request, image: UploadFile = None):
 
     save_image_name = request.query_params.get("save_image_name", None)
-    print("Save Image Name: ", save_image_name)
 
     image = image or File(...)
     import base64
@@ -286,7 +282,7 @@ class ActionLabelRequest(BaseModel):
     envId: str
 
 
-@router.post("/get_action_label_urls", response_model=List[str])
+@router.post("/get_action_label_urls", response_model=list[str])
 async def get_action_label_urls(request: ActionLabelRequest):
     """
     Returns a list of urls for the action labels of the given environment
@@ -294,7 +290,7 @@ async def get_action_label_urls(request: ActionLabelRequest):
     db_env = await db_handler.get_single_entry(database, Environment, key=request.envId, key_column="registration_id")
     if db_env is None:
         return []
-    db_env_name = db_env.env_name
+    db_env_name = process_env_name(db_env.env_name)
 
     # Check in data/action_labels/<env_name> for all files
     action_label_dir = os.path.join("data", "action_labels", db_env_name)
@@ -327,7 +323,7 @@ async def reset_sampler(request: Request):
     }
 
 
-@router.get("/get_all_episodes", response_model=List[EpisodeID])
+@router.get("/get_all_episodes", response_model=list[EpisodeID])
 async def get_all_episodes(request: Request):
     """
     Returns all episodes for the current configuration of the sampler
@@ -337,7 +333,7 @@ async def get_all_episodes(request: Request):
     return request.app.state.sampler.get_full_episode_list()
 
 
-@router.get("/sample_episodes", response_model=List[EpisodeID])
+@router.get("/sample_episodes", response_model=list[EpisodeID])
 async def sample_episodes(request: Request):
     """
     Samples episodes from the database
@@ -352,14 +348,18 @@ async def give_feedback(request: Request):
     """
     Provides feedback for a given episode
     """
-    feedback = UnprocessedFeedback(**await request.json())
+    ui_feedback = await request.json()
+    if not ui_feedback:
+        return "Empty feedback"
 
-    print("UNPROCESSED FEEDBACK: ", feedback)
+    for feedback in ui_feedback:
+        feedback = UnprocessedFeedback(**feedback)
+        request.app.state.feedback_translator.give_feedback(feedback.session_id, feedback)
 
-    request.app.state.feedback_translator.give_feedback(feedback.session_id, feedback)
+    return "Feedback received"
 
 
-@router.post("/submit_current_feedback")
+@router.post("/submit_session")
 async def submit_current_feedback(request: Request):
     """
     Submits the current feedback to the database
@@ -367,7 +367,7 @@ async def submit_current_feedback(request: Request):
     session_id = request.query_params.get("session_id", None)
     if session_id is None:
         return "No session id given"
-    request.app.state.feedback_translator.submit(session_id)
+    request.app.state.feedback_translator.process(session_id)
     return "Feedback submitted"
 
 

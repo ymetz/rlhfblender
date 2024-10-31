@@ -1,10 +1,11 @@
 import asyncio
 import json
-from typing import List
 
 from rlhfblender.data_models.feedback_models import StandardizedFeedback, UnprocessedFeedback
 
 from .logger import Logger
+
+background_tasks = set()
 
 
 class JSONLogger(Logger):
@@ -57,8 +58,9 @@ class JSONLogger(Logger):
         """
         self.feedback.append(feedback)
         _task = asyncio.create_task(self.dump())
+        background_tasks.add(_task)
 
-    def read(self) -> List[StandardizedFeedback]:
+    def read(self) -> list[StandardizedFeedback]:
         """
         Reads the feedback from the logger
         :return: The feedback
@@ -73,8 +75,9 @@ class JSONLogger(Logger):
         """
         self.raw_feedback.append(feedback)
         _task = asyncio.create_task(self.dump_raw())
+        background_tasks.add(_task)
 
-    def read_raw(self) -> List[UnprocessedFeedback]:
+    def read_raw(self) -> list[UnprocessedFeedback]:
         """
         Reads the raw feedback from the logger
         :return: The raw feedback

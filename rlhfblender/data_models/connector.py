@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from typing import List
 
 from databases import Database
 
@@ -29,7 +28,7 @@ class Connector:
         """
 
     @abstractmethod
-    def start_training_sweep(self, experiments: List[Experiment], project: Project):
+    def start_training_sweep(self, experiments: list[Experiment], project: Project):
         """
         Starts training of the experiment.
         :param experiments: List of Experiment object
@@ -64,9 +63,9 @@ class Connector:
     @abstractmethod
     def start_evaluation_sweep(
         self,
-        experiments: List[Experiment],
+        experiments: list[Experiment],
         project: Project,
-        evaluation_configs: List[EvaluationConfig],
+        evaluation_configs: list[EvaluationConfig],
     ):
         """
         Starts evaluation of multiple experiments.
@@ -77,7 +76,7 @@ class Connector:
         """
 
     @abstractmethod
-    def get_algorithms(self) -> List[str]:
+    def get_algorithms(self) -> list[str]:
         """
         Returns all available algorithms.
         :return:

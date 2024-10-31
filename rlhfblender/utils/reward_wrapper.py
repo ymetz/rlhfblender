@@ -1,7 +1,7 @@
 """Common wrapper for adding custom reward values to an environment."""
 
 import collections
-from typing import Callable, Deque
+from collections.abc import Callable
 
 import numpy as np
 import torch as th
@@ -12,7 +12,7 @@ from stable_baselines3.common.utils import get_device
 class WrappedRewardCallback(callbacks.BaseCallback):
     """Logs mean wrapped reward as part of RL (or other) training."""
 
-    def __init__(self, episode_rewards: Deque[float], *args, **kwargs):
+    def __init__(self, episode_rewards: collections.Deque[float], *args, **kwargs):
         """Builds WrappedRewardCallback.
 
         Args:
@@ -90,7 +90,7 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
         # encounter a `done`, in which case the last observation corresponding to
         # the `done` is dropped. We're going to pull it back out of the info dict!
         obs_fixed = []
-        for single_obs, single_done, single_infos in zip(obs, dones, infos):
+        for single_obs, single_done, single_infos in zip(obs, dones, infos, strict=False):
             if single_done:
                 single_obs = single_infos["terminal_observation"]
 
@@ -107,7 +107,7 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
 
         # Update statistics
         self._cumulative_rew += rews
-        for single_done, single_ep_rew in zip(dones, self._cumulative_rew):
+        for single_done, single_ep_rew in zip(dones, self._cumulative_rew, strict=False):
             if single_done:
                 self.episode_rewards.append(single_ep_rew)
         self._cumulative_rew[done_mask] = 0
@@ -116,7 +116,7 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
         # after a reset we DO want to access the first observation of the new
         # trajectory, not the last observation of the old trajectory
         self._old_obs = obs
-        for info_dict, old_rew in zip(infos, old_rews):
+        for info_dict, old_rew in zip(infos, old_rews, strict=False):
             info_dict["wrapped_env_rew"] = old_rew
             # info_dict["disc_saliency_map"] = discriminator_saliency_maps[i]
         return obs, rews, dones, infos

@@ -1,5 +1,3 @@
-from typing import List
-
 import gymnasium as gym
 import numpy as np
 import torch as th
@@ -89,8 +87,8 @@ class FeedbackModel:
         self.env = env
         self.model = None
 
-        self.selected_episodes: List[str] = []
-        self.selected_episodes_feedback: List[StandardizedFeedback] = []
+        self.selected_episodes: list[str] = []
+        self.selected_episodes_feedback: list[StandardizedFeedback] = []
 
     def train(self, epochs: int = 10):
         """

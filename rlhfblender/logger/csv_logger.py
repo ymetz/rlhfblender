@@ -1,13 +1,14 @@
 import asyncio
 import csv
 import os
-from typing import List
 
 from pydantic import BaseModel
 
 from rlhfblender.data_models import StandardizedFeedback, UnprocessedFeedback
 
 from .logger import Logger
+
+background_tasks = set()
 
 
 class CSVLogger(Logger):
@@ -21,8 +22,8 @@ class CSVLogger(Logger):
 
     def __init__(self, exp, env, suffix):
         super().__init__(exp, env, suffix)
-        self.raw_feedback: List[UnprocessedFeedback] = []
-        self.feedback: List[StandardizedFeedback] = []
+        self.raw_feedback: list[UnprocessedFeedback] = []
+        self.feedback: list[StandardizedFeedback] = []
 
         self.logger_csv_path = "logs/" + self.logger_id + ".csv"
         self.raw_logger_csv_path = "logs/" + self.logger_id + "_raw.csv"
@@ -44,8 +45,9 @@ class CSVLogger(Logger):
         """
         self.feedback.append(feedback)
         _task = asyncio.create_task(self.dump())
+        background_tasks.add(_task)
 
-    def read(self) -> List[StandardizedFeedback]:
+    def read(self) -> list[StandardizedFeedback]:
         """
         Reads the feedback from the logger
         :return: The feedback
@@ -60,8 +62,9 @@ class CSVLogger(Logger):
         """
         self.raw_feedback.append(feedback)
         _task = asyncio.create_task(self.dump_raw())
+        background_tasks.add(_task)
 
-    def read_raw(self) -> List[UnprocessedFeedback]:
+    def read_raw(self) -> list[UnprocessedFeedback]:
         """
         Reads the raw feedback from the logger
         :return: The raw feedback

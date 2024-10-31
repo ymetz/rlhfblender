@@ -2,12 +2,13 @@ import difflib
 import os
 import time
 import uuid
-from typing import Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
 import torch as th
+from rl_zoo3.exp_manager import ExperimentManager
+from rl_zoo3.utils import ALGOS
 from stable_baselines3.common.utils import set_random_seed
 
 import rlhfblender.data_models.connector as connector
@@ -21,8 +22,8 @@ from rlhfblender.data_models.global_models import (
     Experiment,
     Project,
 )
-from rlhfblender.utils.exp_manager import ExperimentManager
-from rlhfblender.utils.utils import ALGOS
+from rlhfblender.utils import process_env_name
+from rlhfblender.utils.read_sb3_configs import read_sb3_configs
 
 
 class StableBaselines3Agent(TrainedAgent):
@@ -30,11 +31,12 @@ class StableBaselines3Agent(TrainedAgent):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
+        env: gym.Env,
         exp: Experiment,
         device="auto",
         **kwargs,
     ):
-        super().__init__(observation_space, action_space, exp.path, device=device)
+        super().__init__(observation_space, action_space, env, exp.path, device=device)
 
         # If checkpoint step is provided, load the model from the checkpoint instead of the fully trained model
         if "checkpoint_step" in kwargs:
@@ -42,7 +44,17 @@ class StableBaselines3Agent(TrainedAgent):
         else:
             path = os.path.join(exp.path, f"{exp.env_id}.zip")
 
-        self.model = ALGOS[exp.algorithm].load(path, device=device)
+        # try to infer algorithm from saved model
+        try:
+            config = read_sb3_configs(os.path.join(path, process_env_name(exp.env_id), "config.yml"))
+            print("Found config file")
+            algo = config["algo"]
+        except Exception:
+            print("Could not read an algorithm from the config file, defaulting to PPO")
+            algo = "ppo"
+
+        print("MODEL PATH", path)
+        self.model = ALGOS[algo].load(path, device=device)
         self.agent_state = None
         if "deterministic" in kwargs:
             self.deterministic = kwargs["deterministic"]
@@ -59,7 +71,7 @@ class StableBaselines3Agent(TrainedAgent):
     def reset(self):
         pass
 
-    def additional_outputs(self, observation, action, output_list=None) -> Optional[Dict]:
+    def additional_outputs(self, observation, action, output_list=None) -> dict | None:
         """
         If the model has additional outputs, they can be accessed here.
         :param observation:
@@ -114,7 +126,7 @@ class StableBaselines3ZooConnector(connector.Connector):
     def continue_training(self, experiment: Experiment, project: Project):
         self._run_training(experiment, project, continue_training=True)
 
-    def start_training_sweep(self, experiments: List[Experiment], project: Project):
+    def start_training_sweep(self, experiments: list[Experiment], project: Project):
         # Combine experiments into one, create hyperparameter sweep
         # and run training
         sweep_experiment = self._combine_experiments(experiments)
@@ -126,7 +138,7 @@ class StableBaselines3ZooConnector(connector.Connector):
         experiment: Experiment,
         project: Project,
         continue_training: bool = False,
-        sweep_config: Optional[dict] = None,
+        sweep_config: dict | None = None,
     ):
         """
 
@@ -233,7 +245,7 @@ class StableBaselines3ZooConnector(connector.Connector):
                 exp_manager.learn(model)
                 exp_manager.save_trained_model(model)
 
-    def _combine_experiments(self, experiments: List[Experiment]):
+    def _combine_experiments(self, experiments: list[Experiment]):
         """
         Combines multiple experiment configurations into one.
         Keep shared settings, and create parameter configs
@@ -272,9 +284,9 @@ class StableBaselines3ZooConnector(connector.Connector):
 
     def start_evaluation_sweep(
         self,
-        experiments: List[Experiment],
+        experiments: list[Experiment],
         project: Project,
-        evaluation_configs: List[EvaluationConfig],
+        evaluation_configs: list[EvaluationConfig],
     ):
         """
         Starts evaluation of multiple experiments.
@@ -285,7 +297,7 @@ class StableBaselines3ZooConnector(connector.Connector):
         """
 
     @staticmethod
-    def get_algorithms() -> List[str]:
+    def get_algorithms() -> list[str]:
         """
         Returns all available algorithms.
         :return:

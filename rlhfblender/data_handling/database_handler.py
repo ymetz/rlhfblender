@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Type, TypeVar
+from typing import TypeVar
 
 from databases import Database
 from pydantic import BaseModel
@@ -13,14 +13,14 @@ from pydantic import BaseModel
 T = TypeVar("T", BaseModel, str)
 
 
-def dict_factory(crs, row) -> Dict:
+def dict_factory(crs, row) -> dict:
     d = {}
     for idx, col in enumerate(crs.description):
         d[col[0]] = row[idx]
     return d
 
 
-async def create_table_from_model(cursor: Database, model: Type[BaseModel], table_name: Optional[str] = None) -> None:
+async def create_table_from_model(cursor: Database, model: type[BaseModel], table_name: str | None = None) -> None:
     """
     Creates a new project table in the database dynamically based on the Project DataModel
     :param cursor: sqlite3.Cursor
@@ -35,7 +35,7 @@ async def create_table_from_model(cursor: Database, model: Type[BaseModel], tabl
             query += "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         else:
             # If int type is not specified, default to TEXT
-            if model.__annotations__[field] == int:
+            if model.__annotations__[field] is int:
                 query += field + " INTEGER,"
             else:
                 query += field + " TEXT,"
@@ -43,7 +43,7 @@ async def create_table_from_model(cursor: Database, model: Type[BaseModel], tabl
     return await cursor.execute(query)
 
 
-async def get_columns_names(cursor: Database, model: Type[BaseModel], table_name: Optional[str] = None) -> List[str]:
+async def get_columns_names(cursor: Database, model: type[BaseModel], table_name: str | None = None) -> list[str]:
     """
     Returns all column nmaes from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -57,7 +57,7 @@ async def get_columns_names(cursor: Database, model: Type[BaseModel], table_name
     return [row[1] for row in rows]
 
 
-async def get_all(cursor: Database, model: Type[T], table_name: Optional[str] = None) -> List[T]:
+async def get_all(cursor: Database, model: type[T], table_name: str | None = None) -> list[T]:
     """
     Returns all rows from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -72,7 +72,7 @@ async def get_all(cursor: Database, model: Type[T], table_name: Optional[str] = 
 
 
 async def get_single_entry(
-    cursor: Database, model: Type[T], key: int, key_column: Optional[str] = "id", table_name: Optional[str] = None
+    cursor: Database, model: type[T], key: int, key_column: str | None = "id", table_name: str | None = None
 ) -> T:
     """
     Returns a single entry from a table with a given model
@@ -91,7 +91,7 @@ async def get_single_entry(
 
 
 async def check_if_exists(
-    cursor: Database, model: Type[T], key: any, key_column: Optional[str] = "id", table_name: Optional[str] = None
+    cursor: Database, model: type[T], key: any, key_column: str | None = "id", table_name: str | None = None
 ) -> bool:
     """
     Checks if an entry exists in a table with a given model. If no key_column is specified, the id is used, otherwise
@@ -112,9 +112,9 @@ async def check_if_exists(
 
 async def add_entry(
     cursor: Database,
-    model: Type[BaseModel],
+    model: type[BaseModel],
     data: dict,
-    table_name: Optional[str] = None,
+    table_name: str | None = None,
 ) -> None:
     """
     Adds a single entry to a table with a given model
@@ -138,11 +138,11 @@ async def add_entry(
             continue
         data_field = data[field] if field in data else default_model.__getattribute__(field)
 
-        if model.__annotations__[field] == int:
+        if model.__annotations__[field] is int:
             query += str(data_field) + ","
-        elif model.__annotations__[field] == dict:
+        elif model.__annotations__[field] is dict:
             query += '"' + str(data_field) + '",'
-        elif model.__annotations__[field] == list:
+        elif model.__annotations__[field] is list:
             query += '"' + str(data_field) + '",'
         else:
             query += '"' + str(data_field) + '",'
@@ -153,11 +153,11 @@ async def add_entry(
 
 async def update_entry(
     cursor: Database,
-    model: Type[BaseModel],
+    model: type[BaseModel],
     key: int,
-    key_column: Optional[str] = "id",
-    data: Optional[dict] = None,
-    table_name: Optional[str] = None,
+    key_column: str | None = "id",
+    data: dict | None = None,
+    table_name: str | None = None,
 ) -> None:
     """
     Updates a single entry from a table with a given model
@@ -177,11 +177,11 @@ async def update_entry(
     for field in data:
         data_field = data[field]
 
-        if model.__annotations__[field] == int:
+        if model.__annotations__[field] is int:
             query += field + "=" + str(data_field) + ","
-        elif model.__annotations__[field] == dict:
+        elif model.__annotations__[field] is dict:
             query += field + "=" + '"' + str(data_field) + '",'
-        elif model.__annotations__[field] == list:
+        elif model.__annotations__[field] is list:
             query += field + "=" + '"' + str(data_field) + '",'
         else:
             query += field + "=" + '"' + str(data_field) + '",'
@@ -192,10 +192,10 @@ async def update_entry(
 
 async def delete_entry(
     cursor: Database,
-    model: Type[BaseModel],
+    model: type[BaseModel],
     key: int,
-    key_column: Optional[str] = "id",
-    table_name: Optional[str] = None,
+    key_column: str | None = "id",
+    table_name: str | None = None,
 ) -> None:
     """
     Deletes a single entry from a table with a given model

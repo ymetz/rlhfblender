@@ -1,6 +1,7 @@
-from typing import Type
-
-from rlhfblender.data_collection.babyai_connector import BabyAIAgent
+try:
+    from rlhfblender.data_collection.babyai_connector import BabyAIAgent
+except ImportError:
+    print("BabyAI not loaded")
 from rlhfblender.data_collection.sb_zoo_connector import (
     StableBaselines3Agent,
     StableBaselines3ZooConnector,
@@ -11,7 +12,7 @@ from rlhfblender.data_models.connector import Connector
 SUPPORTED_FRAMEWORK_LIST = ["StableBaselines3", "BabyAI", "Random"]
 
 
-def get_connector(framework: str) -> Type[Connector]:
+def get_connector(framework: str) -> type[Connector]:
     """
     Get the connector for the given framework.
     :param framework: The framework
@@ -24,7 +25,7 @@ def get_connector(framework: str) -> Type[Connector]:
         raise ValueError("Framework not supported.")
 
 
-def get_agent(framework: str) -> Type[TrainedAgent]:
+def get_agent(framework: str) -> type[TrainedAgent]:
     """
     Get the agent for the given framework.
     :param framework: The framework

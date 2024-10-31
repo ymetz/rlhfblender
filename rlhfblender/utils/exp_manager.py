@@ -1,8 +1,9 @@
 import argparse
 import os
 from collections import OrderedDict
+from collections.abc import Callable
 from pprint import pprint
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -68,17 +69,17 @@ class ExperimentManager:
         eval_freq: int = 10000,
         n_eval_episodes: int = 5,
         save_freq: int = -1,
-        hyperparams: Optional[Dict[str, Any]] = None,
-        env_kwargs: Optional[Dict[str, Any]] = None,
+        hyperparams: dict[str, Any] | None = None,
+        env_kwargs: dict[str, Any] | None = None,
         trained_agent: str = "",
         optimize_hyperparameters: bool = False,
-        storage: Optional[str] = None,
-        study_name: Optional[str] = None,
+        storage: str | None = None,
+        study_name: str | None = None,
         n_trials: int = 1,
         n_jobs: int = 1,
         sampler: str = "tpe",
         pruner: str = "median",
-        optimization_log_path: Optional[str] = None,
+        optimization_log_path: str | None = None,
         use_trained_reward_function: bool = False,
         trained_reward_function_path: str = "",
         norm_logging: bool = False,
@@ -166,7 +167,7 @@ class ExperimentManager:
         )
         self.params_path = f"{self.save_path}/{self.env_id}"
 
-    def setup_experiment(self) -> Optional[BaseAlgorithm]:
+    def setup_experiment(self) -> BaseAlgorithm | None:
         """
         Read hyperparameters, pre-process them (create schedules, wrappers, callbacks, action noise objects)
         create the environment and possibly the model.
@@ -241,7 +242,7 @@ class ExperimentManager:
             # Important: save the running average, for testing the agent we need that normalization
             model.get_vec_normalize_env().save(os.path.join(self.params_path, "vecnormalize.pkl"))
 
-    def _save_config(self, saved_hyperparams: Dict[str, Any]) -> None:
+    def _save_config(self, saved_hyperparams: dict[str, Any]) -> None:
         """
         Save unprocessed hyperparameters, this can be use later
         to reproduce an experiment.
@@ -259,7 +260,7 @@ class ExperimentManager:
 
         print(f"Log path: {self.save_path}")
 
-    def read_hyperparameters(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def read_hyperparameters(self) -> tuple[dict[str, Any], dict[str, Any]]:
         # Load hyperparameters from yaml file
         with open(f"hyperparams/{self.algo}.yml") as f:
             hyperparams_dict = yaml.safe_load(f)
@@ -283,7 +284,7 @@ class ExperimentManager:
         return hyperparams, saved_hyperparams
 
     @staticmethod
-    def _preprocess_schedules(hyperparams: Dict[str, Any]) -> Dict[str, Any]:
+    def _preprocess_schedules(hyperparams: dict[str, Any]) -> dict[str, Any]:
         # Create schedules
         for key in [
             "learning_rate",
@@ -295,7 +296,7 @@ class ExperimentManager:
             if isinstance(hyperparams[key], str):
                 schedule, initial_value = hyperparams[key].split("_")
                 hyperparams[key] = linear_schedule(initial_value)
-            elif isinstance(hyperparams[key], (float, int)):
+            elif isinstance(hyperparams[key], float | int):
                 # Negative value: ignore (ex: for clipping)
                 if hyperparams[key] < 0:
                     continue
@@ -304,7 +305,7 @@ class ExperimentManager:
                 raise ValueError(f"Invalid value for {key}: {hyperparams[key]}")
         return hyperparams
 
-    def _preprocess_normalization(self, hyperparams: Dict[str, Any]) -> Dict[str, Any]:
+    def _preprocess_normalization(self, hyperparams: dict[str, Any]) -> dict[str, Any]:
         if "normalize" in hyperparams.keys():
             self.normalize = hyperparams["normalize"]
 
@@ -325,8 +326,8 @@ class ExperimentManager:
         return hyperparams
 
     def _preprocess_hyperparams(
-        self, hyperparams: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], Optional[Callable], List[BaseCallback]]:
+        self, hyperparams: dict[str, Any]
+    ) -> tuple[dict[str, Any], Callable | None, list[BaseCallback]]:
         self.n_envs = hyperparams.get("n_envs", 1)
 
         if self.verbose > 0:
@@ -383,10 +384,10 @@ class ExperimentManager:
 
     def _preprocess_action_noise(
         self,
-        hyperparams: Dict[str, Any],
-        saved_hyperparams: Dict[str, Any],
+        hyperparams: dict[str, Any],
+        saved_hyperparams: dict[str, Any],
         env: VecEnv,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         # Parse noise string
         # Note: only off-policy algorithms are supported
         if hyperparams.get("noise_type") is not None:
@@ -577,7 +578,7 @@ class ExperimentManager:
 
         return env
 
-    def _load_pretrained_agent(self, hyperparams: Dict[str, Any], env: VecEnv) -> BaseAlgorithm:
+    def _load_pretrained_agent(self, hyperparams: dict[str, Any], env: VecEnv) -> BaseAlgorithm:
         # Continue training
         print("Loading pretrained agent")
         # Policy should not be changed

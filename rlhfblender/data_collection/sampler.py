@@ -4,12 +4,12 @@ A sampler for episodes for HITL experiments
 
 import os
 from enum import Enum
-from typing import List, Optional
 
 import numpy as np
 
 from rlhfblender.data_collection.feedback_model import FeedbackModel
 from rlhfblender.data_models.global_models import Environment, EpisodeID, Experiment
+from rlhfblender.utils import process_env_name
 
 
 class SamplerType(Enum):
@@ -38,7 +38,7 @@ class Sampler:
         saved_episode_dir: str,
         max_episode_count: int = 1000,
         sampler_type: SamplerType = SamplerType.sequential,
-        sample_model: Optional[FeedbackModel] = None,
+        sample_model: FeedbackModel | None = None,
     ):
         self.experiment = experiment
         self.env = env
@@ -48,7 +48,7 @@ class Sampler:
         self.sample_model = sample_model
 
         self.episode_count = None
-        self.episode_buffer: List[EpisodeID] = []
+        self.episode_buffer: list[EpisodeID] = []
         self.episode_pointer = 0
 
         if experiment is not None and env is not None:
@@ -74,7 +74,8 @@ class Sampler:
         for checkpoint in self.experiment.checkpoint_list:
             cp_path = os.path.join(
                 self.saved_episode_dir,
-                env.env_name + "_" + str(self.experiment.id) + "_" + str(checkpoint),
+                process_env_name(env.env_name),
+                process_env_name(env.env_name) + "_" + str(self.experiment.id) + "_" + str(checkpoint),
             )
             print(cp_path)
             if not os.path.exists(cp_path):
@@ -105,7 +106,7 @@ class Sampler:
 
         self.reset()
 
-    def get_full_episode_list(self) -> List[EpisodeID]:
+    def get_full_episode_list(self) -> list[EpisodeID]:
         """
         Return the full episode list
         :return: The full episode list
@@ -139,7 +140,7 @@ class Sampler:
         if self.sample_model is not None:
             self.sample_model.reset()
 
-    def sample(self, batch_size: int = 1) -> List[EpisodeID]:
+    def sample(self, batch_size: int = 1) -> list[EpisodeID]:
         """
         Return a list of episodes
         :param batch_size: The batch size to sample

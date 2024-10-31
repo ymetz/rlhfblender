@@ -1,87 +1,144 @@
 .. _add_new_experiment:
 
 ========================================
-Customization and adding new environments
+Generate Data and Add New Experiments
 ========================================
 
 
-Adding new environments/experiments
------------------------------------
+Generate Data
+----------------------
 
-To add a new environment, you need to register it to the internal env registry (handled via a sqlite database).
+To generate data for your experiments and environments, you can use the ``generate_data.py`` script. This script handles both the registration of environments and experiments (if they are not already registered) and the data generation process.
 
-.. code-block:: python
+Usage:
 
-    from rlhfblender.register import register_env, register_experiment
-
-    # register a pre-existing gymnasium environment
-    register(
-        id='CartPole-v1',
-    )
-    
-    # register a custom environment with a local entry point
-    register_env(
-        id='MyEnv-v0',
-        entry_point='rlhfblender.envs:MyEnv',
-        display_name='My Environment', # optional display name, by default it is the id
-        ..gym kwargs..
-    )
-
-    register_experiment(
-        exp_name='MyExperiment',
-        pre_generated_data=True,
-        project_name='MyProject', # optional project name, by default it is "Multi Feedback Experiments", can be used to group experiments
-        env_id='MyEnv-v0', # the id of the environment you registered above/ or any already registered environment
-        ..other kwargs..
-    )
-
-or via the command line:
+You can run the script using the following command-line options:
 
 .. code-block:: bash
 
-    #! register a pre-existing gymnasium environment
-    python -m rlhfblender.register --env Cartpole-v1
+    # Generate data for a new environment with a random policy
+    python generate_data.py --env MyEnv-v0 --random --num-episodes 10
 
-    #! register a custom environment with a local entry point & additional packages to load
-    python -m rlhfblender.register --env MyEnv-v0 --env-gym-entrypoint rlhfblender.envs:MyEnv --additional-gym-packages package1 package2
+    # Generate data using a trained model and specific checkpoints
+    python generate_data.py --env MyEnv-v0 --exp MyExperiment --model-path path/to/checkpoints --checkpoints 100000 200000 300000
 
-    #! register an environment and an experiment simultaneously
-    python -m rlhfblender.register --env MyEnv-v0 --exp MyExperiment --project MyProject --exp-kwargs framework: StableBaselines3 algorithm: PPO ... --env-kwargs truncate: True max_episode_steps: 1000 ...
+    # Generate data for a pre-registered experiment and environment with a random policy
+    python generate_data.py --exp MyExperiment --random --num-episodes 10
 
-    #! register a new experiment with an already registered environment (and different environment kwargs)
-    python -m rlhfblender.register --exp MyExperiment --project MyProject --exp_env MyEnv-v0 --exp-kwargs framework: StableBaselines3 algorithm: PPO ... --env-kwargs truncate: False max_episode_steps: 500 ...
+Command-line Arguments:
 
-To create customized environments, check the `StableBaselines3 documentation <https://stable-baselines3.readthedocs.io/en/master/guide/custom_env.html>`_. 
+    - ``--env``: The Gym environment ID (e.g., CartPole-v1). If the environment is not registered, it will be automatically registered.
+    - ``--exp``: The experiment name. If not provided, a default experiment name will be created based on the environment ID and benchmark type.
+    - ``--num-episodes``: The number of episodes to run for data generation. Default is 10.
+    - ``--random``: Use a random agent for data generation.
+    - ``--model-path``: The path to the trained model for inference. Required if not using --random.
+    - ``--checkpoints``: The checkpoint steps to use from the trained model. Default is ``-1`` (latest checkpoint).
+    - ``--project``: (Optional) The project name. Defaults to RLHF-Blender.
 
-The following arguments are necessary for live training and inference. Otherwise, we can train with pre-generated data (see below).
-    - ``framework``: Optional - The framework used for the experiment, by default it is "StableBaselines3" (necessary for live training and inference)
-    - ``algorithm``: Optional - The algorithm used for the experiment, by default it is "PPO" (necessary for training and inference)
-    - ``path``: Optional - The path to the experiment folder, by default it is ``èxp_name`` "experiments"
-    - ``hyperparams``: Optional - The hyperparameters used for the experiment, by default the default algorithm parameters are used
-    - ``parallel_envs``: Optional - The number of parallel environments used for the experiment, by default it is 1
-    - ``seed``: Optional - The seed used for the experiment, by default it is -1
+Optional Arguments for Environment Registration:
 
-If you have registered an environment and experiment, you should be able to see it in the configuration page of the UI.
-Depending on your choice, you can either generate data and use it for analysis or passive reward model training.
+    - ``--env-gym-entrypoint``: The Gym entry point for the environment. Useful for custom environments.
+    - ``--env-display-name``: The display name for the environment.
+    - ``--additional-gym-packages``: Additional Gym packages to import for custom environments.
+    - ``--env-kwargs``: Environment keyword arguments in the format key:value. For example: ``--env-kwargs max_episode_steps:1000``.
 
-Alternatively, if you have provided the necessary arguments for live training and inference, you can configure live-training in the UI.
-
-
-Generate data 
--------------
-
-The easiest way to generate the data is to use the ``generate_data.py`` script running inference with a trained model. You can run it with the following command:
+Example Usage:
 
 .. code-block:: bash
 
-    #! generate data for a pre-registered experiment and environment (with a random policy)
-    python -m rlhfblender.generate_data --exp MyExperiment --random
+    # Generate data for a custom environment with specific environment arguments
+    python generate_data.py --env MyCustomEnv-v0
+        --env-gym-entrypoint my_package.envs:MyCustomEnv
+        --additional-gym-packages my_package
+        --env-kwargs max_episode_steps:1000
+        --random
+        --num-episodes 10
 
-    #! generate data for a pre-registered environment and create a new experiment (with a random policy)
-    python -m rlhfblender.generate_data --env MyEnv-v0 --exp MyNewEnvironment --random --num-episodes 10
+Notes:
 
-    #! generate data for a pre-registered environment and use checkpoints for inference
-    python -m rlhfblender.generate_data --env MyEnv-v0 --exp MyNewEnvironment --model-path path/to/checkpoints --checkpoints 100000 200000 300000
+    If the specified environment or experiment is not registered in the internal registry (handled via a SQLite database), the script will automatically register them.
+    The data generated will be stored in the data directory, organized into subdirectories for episodes, rewards, renders, and thumbnails.
+    The script supports both random agents and trained agents for data generation.
+
+Generating Data with a Trained Model:
+
+To generate data using a trained model, specify the --model-path to your trained model directory and provide the checkpoints you wish to use.
+
+.. code-block:: bash
+
+    python generate_data.py --env MyEnv-v0
+        --exp MyExperiment
+        --model-path path/to/model
+        --checkpoints 100000 200000
+        --num-episodes 10
+
+Environment Keyword Arguments:
+
+When using ``--env-kwargs``, you can pass environment-specific arguments that will be used during environment registration and data generation.
+
+Example:
+
+.. code-block:: bash
+
+    python generate_data.py --env MyEnv-v0 
+        --env-kwargs max_episode_steps:1000 reward_threshold:200 
+        --random 
+        --num-episodes 10
+
+Custom Environments:
+
+For custom environments, you may need to specify the entry point and any additional packages required.
+
+Example:
+
+.. code-block:: bash
+
+    python generate_data.py --env MyCustomEnv-v0 
+        --env-gym-entrypoint my_package.envs:MyCustomEnv 
+        --additional-gym-packages my_package 
+        --random 
+        --num-episodes 10
+
+Accessing the Generated Data:
+
+After running the script, the generated data will be available in the data directory:
+
+    - ``data/episodes``: Contains the episode data saved as .npz files.
+    - ``data/rewards``: Contains cumulative reward data for each episode.
+    - ``data/renders``: Contains rendered videos of the episodes.
+    - ``data/thumbnails``: Contains thumbnail images for each episode.
+
+This data is used by the RLHF-Blender UI to display episode information, rewards, and visualizations.
+
+
+Example with All Arguments:
+
+.. code-block:: bash
+
+    python generate_data.py --env MyCustomEnv-v0 
+        --exp MyExperiment 
+        --project MyProject 
+        --env-gym-entrypoint my_package.envs:MyCustomEnv 
+        --additional-gym-packages my_package 
+        --env-display-name "My Custom Environment" 
+        --env-kwargs max_episode_steps:1000 difficulty:"'hard'" 
+        --model-path path/to/model 
+        --checkpoints 50000 100000 
+        --num-episodes 20
+
+In this example:
+
+    A custom environment MyCustomEnv-v0 is registered with the specified entry point and additional packages.
+    Environment keyword arguments max_episode_steps and difficulty are set.
+    A new experiment MyExperiment under the project MyProject is registered.
+    Data is generated using the trained model at path/to/model using checkpoints at steps 50000 and 100000.
+    A total of 20 episodes are generated for each checkpoint.
+
+Troubleshooting:
+
+    Environment Registration Errors: Ensure that custom environments are correctly installed and accessible. The ``--env-gym-entrypoint`` should point to the correct module and class.
+    Model Loading Issues: Verify that the model path and checkpoints are correct and that the model files are not corrupted.
+    Additional Packages: When using custom environments that require additional packages, make sure those packages are installed in your environment and listed using ``--additional-gym-packages``.
 
 
 Using pre-generated data
