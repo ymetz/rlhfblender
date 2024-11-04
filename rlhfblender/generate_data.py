@@ -75,6 +75,13 @@ if __name__ == "__main__":
         help="(Optional) A description for the environment.",
         default="",
     )
+    parser.add_argument(
+        "--action-names",
+        type=str,
+        nargs="+",
+        help="(Optional) Names for the actions in the environment. Should match length of available action dims",
+        default=[],
+    )
 
     args = parser.parse_args()
 
@@ -105,6 +112,7 @@ if __name__ == "__main__":
             additional_gym_packages=args.additional_gym_packages,
             env_description=args.env_description,
             project=args.project,
+            action_names=args.action_names,
         )
     )
 

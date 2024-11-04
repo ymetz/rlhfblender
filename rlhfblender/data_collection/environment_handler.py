@@ -2,6 +2,7 @@ import importlib
 import os
 
 import gymnasium as gym
+import numpy as np
 from rl_zoo3.utils import get_wrapper_class
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (
@@ -12,6 +13,55 @@ from stable_baselines3.common.vec_env import (
 )
 
 from rlhfblender.data_models.global_models import Environment
+
+
+def numpy_to_python(obj):
+    """
+    Converts a NumPy object to native Python types, handling special cases.
+
+    Args:
+        obj: Any NumPy object or native Python object
+
+    Returns:
+        A native Python object equivalent
+
+    Examples:
+        >>> numpy_to_python(np.array([1, 2, 3]))
+        [1, 2, 3]
+        >>> numpy_to_python(np.inf)
+        float('inf')
+        >>> numpy_to_python(np.nan)
+        float('nan')
+    """
+    # Handle None
+    if obj is None:
+        return None
+
+    # Handle NumPy scalars
+    if isinstance(obj, np.generic):
+        if np.isnan(obj):
+            return float("nan")
+        elif np.isinf(obj):
+            # return float('inf') if obj > 0 else float('-inf')
+            # just use very large number instead of float('inf') - not ideal
+            return 1e9 if obj > 0 else -1e9
+        else:
+            return obj.item()
+
+    # Handle NumPy arrays
+    elif isinstance(obj, np.ndarray):
+        return [numpy_to_python(x) for x in obj]
+
+    # Handle lists and tuples recursively
+    elif isinstance(obj, list | tuple):
+        return type(obj)(numpy_to_python(x) for x in obj)
+
+    # Handle dictionaries recursively
+    elif isinstance(obj, dict):
+        return {numpy_to_python(k): numpy_to_python(v) for k, v in obj.items()}
+
+    # Return other types as-is
+    return obj
 
 
 def get_environment(
@@ -87,7 +137,7 @@ def get_environment(
     return env
 
 
-def initial_space_info(space: gym.spaces.Space) -> dict:
+def initial_space_info(space: gym.spaces.Space, save_low_high=False, action_names: list[str] | None = None) -> dict:
     """
     Get the initial space info for the environment, in particular the tag dict which is used for the
     the naming of the observation and action space in the user interface.
@@ -98,14 +148,26 @@ def initial_space_info(space: gym.spaces.Space) -> dict:
 
     tag_dict = {}
     if shape is not None:
-        tag_dict = {f"{i}": i for i in range(shape[-1])}
+        if action_names is not None:
+            assert len(action_names) == shape[-1], "Action names must match the number of actions"
+            tag_dict = {f"{i}": action_names[i] for i in range(shape[-1])}
+        else:
+            tag_dict = {f"{i}": i for i in range(shape[-1])}
 
-    return {
+    return_dict = {
         "label": f"{space.__class__.__name__}({shape!s})",
         "shape": shape,
         "dtype": str(space.dtype),
         "labels": tag_dict,
     }
+
+    if save_low_high:
+        if hasattr(space, "low"):
+            return_dict["low"] = numpy_to_python(space.low)
+        if hasattr(space, "high"):
+            return_dict["high"] = numpy_to_python(space.high)
+
+    return return_dict
 
 
 def initial_registration(
@@ -113,6 +175,7 @@ def initial_registration(
     entry_point: str | None = "",
     additional_gym_packages: list | None = (),
     gym_env_kwargs: dict | None = None,
+    action_names: list[str] | None = None,
 ) -> Environment:
     """
     Register the environment with the database.
@@ -137,7 +200,7 @@ def initial_registration(
         registered=1,
         registration_id=env_id,
         observation_space_info=initial_space_info(env.observation_space),
-        action_space_info=initial_space_info(env.action_space),
+        action_space_info=initial_space_info(env.action_space, save_low_high=True, action_names=action_names),
         has_state_loading=0,
         description="",
         tags=[],

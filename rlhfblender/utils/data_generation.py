@@ -79,13 +79,13 @@ async def register_env(
     display_name: str = "",
     additional_gym_packages: list[str] | None = None,
     env_kwargs: dict | None = None,
+    action_names: list[str] | None = None,
     env_description: str = "",
     project: str = "RLHF-Blender",
 ):
     """Register an environment in the database."""
     env_name = display_name if display_name != "" else env_id
     env_kwargs = env_kwargs if env_kwargs is not None else {}
-    print(env_kwargs)
     additional_gym_packages = additional_gym_packages if additional_gym_packages is not None else []
 
     # Check if environment is already registered
@@ -96,6 +96,7 @@ async def register_env(
             entry_point=entry_point,
             additional_gym_packages=additional_gym_packages,
             gym_env_kwargs=env_kwargs,
+            action_names=action_names,
         )
 
         env.env_name = env_name

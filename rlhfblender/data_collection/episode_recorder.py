@@ -73,6 +73,7 @@ class EpisodeRecorder:
         self.states = None  # For RNN policies
         self.initial_states = None
         self.reset_obs = None
+        self.reset_info = None
 
     def check_monitor_wrapped(self):
         # Avoid circular import
@@ -144,8 +145,7 @@ class EpisodeRecorder:
             seed = random.randint(0, 1000000)
             self.observations, _ = self.env.reset(seed=seed)
             if isinstance(self.env.observation_space, gym.spaces.Dict) and "mission" in self.observations.keys():
-                self.infos[0]["mission"] = self.observations["mission"]
-                self.infos[0]["seed"] = seed
+                self.reset_info = {"mission": self.observations["mission"], "seed": seed}
 
     def update_buffers(self, actions, additional_outputs):
         self.buffers["obs"].append(np.squeeze(self.observations))
@@ -224,6 +224,10 @@ class EpisodeRecorder:
             self.rewards = np.expand_dims(self.rewards, axis=0)
             self.dones = np.expand_dims(self.dones, axis=0)
             self.infos = [self.infos]
+            if self.reset_info is not None:
+                self.infos[0]["mission"] = self.reset_info["mission"]
+                self.infos[0]["seed"] = self.reset_info["seed"]
+                self.reset_info = None
         else:
             self.observations, self.rewards, self.dones, self.infos = self.env.step(actions)
 
