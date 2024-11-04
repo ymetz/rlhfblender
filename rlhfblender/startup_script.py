@@ -24,7 +24,7 @@ if __name__ == "__main__":
             "exp": "ALE/Breakout-v5_trained",
             "checkpoint_step": i * 1000000,
             "n_episodes": 5,
-            "path": os.path.join("rlhfblender_demo_models/ALE-Breakout-v5"),
+            "path": os.path.join("rlhfblender_model/ALE-Breakout-v5"),
             "env_kwargs": {
                 "env_wrapper": "stable_baselines3.common.atari_wrappers.AtariWrapper",
                 "frame_stack": 4,
@@ -53,7 +53,7 @@ if __name__ == "__main__":
             "exp": "BabyAI-MiniBossLevel-v0_random",
             "checkpoint_step": 10000000,
             "n_episodes": 20,
-            "path": os.path.join("rlhfblender_demo_models/BabyAI"),
+            "path": os.path.join("rlhfblender_model/BabyAI"),
             "framework": "BabyAI",
             "project": "RLHF-Blender",
         }
@@ -79,7 +79,7 @@ if __name__ == "__main__":
             "exp": "roundabout-v0_trained",
             "checkpoint_step": (i + 1) * 100000,
             "n_episodes": 10,
-            "path": os.path.join("rlhfblender_demo_models/roundabout-v0"),
+            "path": os.path.join("rlhfblender_model/roundabout-v0"),
             "framework": "StableBaselines3",
             "project": "RLHF-Blender",
         }

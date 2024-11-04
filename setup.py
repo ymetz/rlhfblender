@@ -85,7 +85,7 @@ setup(
         "Documentation": "https://rlhfblender.readthedocs.io",
         "Changelog": "https://rlhfblender.readthedocs.io/en/main/misc/changelog.html",
         "RLHF-Blender UI": "https://github.com/ymetz/rlhfblender-ui",
-        "RLHF-Blender Models": "https://github.com/ymetz/rlhfblender_demo_models",
+        "RLHF-Blender Models": "https://github.com/ymetz/rlhfblender_model",
     },
     classifiers=[
         "Programming Language :: Python :: 3.10",

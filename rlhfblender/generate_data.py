@@ -23,7 +23,7 @@ if __name__ == "__main__":
     group.add_argument("--random", action="store_true", help="Use random agent")
     group.add_argument("--model-path", type=str, default="", help="Path to the trained model")
     group.add_argument(
-        "--model-base-path", type=str, default="rlhfblender_demo_models", help="Base path to the trained model checkpoints"
+        "--model-base-path", type=str, default="rlhfblender_model", help="Base path to the trained model checkpoints"
     )
 
     parser.add_argument("--checkpoints", type=str, nargs="+", default=["-1"], help="The checkpoint steps to use.")

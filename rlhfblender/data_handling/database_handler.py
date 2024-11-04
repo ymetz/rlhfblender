@@ -86,9 +86,7 @@ async def get_single_entry(
     column = "id" if key_column is None else key_column
     formatted_key = str(key) if isinstance(key, int) else '"' + str(key) + '"'
     query = "SELECT * FROM " + table_name + " WHERE " + column + " = " + formatted_key
-    print(query)
     row = await cursor.fetch_one(query)
-    print(row)
     return model(**{**row})
 
 

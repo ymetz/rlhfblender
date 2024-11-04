@@ -77,7 +77,6 @@ class Sampler:
                 process_env_name(env.env_name),
                 process_env_name(env.env_name) + "_" + str(self.experiment.id) + "_" + str(checkpoint),
             )
-            print(cp_path)
             if not os.path.exists(cp_path):
                 continue
             for file in os.listdir(cp_path):
