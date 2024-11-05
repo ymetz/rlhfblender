@@ -3,4 +3,4 @@
 	url = https://github.com/ymetz/rlhfblender-ui
 [submodule "rlhfblender_model"]
 	path = rlhfblender_model
-	url = ./rlhfblender_model
+	url = https://github.com/ymetz/rlhfblender_model
