@@ -83,7 +83,6 @@ if __name__ == "__main__":
             print(traceback.format_exc())
             print("Error running BabyAI benchmarks:", e)
 
-    
     if gen_data["roundabout-v0"]:
 
         # Run benchmarks for Highway-Env
