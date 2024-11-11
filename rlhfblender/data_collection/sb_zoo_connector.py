@@ -53,8 +53,8 @@ class StableBaselines3Agent(TrainedAgent):
             print("Could not read an algorithm from the config file, defaulting to PPO")
             algo = "ppo"
 
-        # for some models, learning_rate is a schedule, as we don't need it, we set it to 0
-        self.model = ALGOS[algo].load(path, device=device, custom_objects={"learning_rate": 0.0})
+        # for some models, we use schedules for training, but we don't need them here for inference, we set it to 0
+        self.model = ALGOS[algo].load(path, device=device, custom_objects={"learning_rate": 0.0, 'clip_range': 0.0})
         self.agent_state = None
         if "deterministic" in kwargs:
             self.deterministic = kwargs["deterministic"]
