@@ -193,12 +193,7 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     the info dict, and action space.
     """
     action_space = {}
-    db_env = next(
-        filter(
-            lambda env: env.env_name == request.env_name,
-            await db_handler.get_all(database, Environment),
-        )
-    )
+    db_env = await db_handler.get_single_entry(database, Environment, key=request.env_name, key_column="env_name")
     if db_env is not None:
         action_space = db_env.action_space_info
 
@@ -218,6 +213,16 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     action = episode_benchmark_data["actions"][request.step]
     reward = episode_benchmark_data["rewards"][request.step]
     info = episode_benchmark_data["infos"][request.step]
+
+    print("THIS IS RETURNED"
+        {
+            "action_distribution": action_distribution,
+            "action": action,
+            "reward": reward,
+            "info": info,
+            "action_space": action_space,
+        }
+    )
 
     return convert_to_serializable(
         {
