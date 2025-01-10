@@ -214,17 +214,6 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     reward = episode_benchmark_data["rewards"][request.step]
     info = episode_benchmark_data["infos"][request.step]
 
-    print(
-        "THIS IS RETURNED",
-        {
-            "action_distribution": action_distribution,
-            "action": action,
-            "reward": reward,
-            "info": info,
-            "action_space": action_space,
-        },
-    )
-
     return convert_to_serializable(
         {
             "action_distribution": action_distribution,

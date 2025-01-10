@@ -4,6 +4,10 @@
     "description": "Default configuration",
     "samplingStrategy": "sequential",
     "loggerMode": "local",
+
+    "selectedUiConfigs": [],
+    "uiConfigMode": "sequential",
+
     "feedbackModelTrainingEnabled": false,
     "feedbackModelType": "feedbackModelConfig",
     "feedbackModelConfig": {}

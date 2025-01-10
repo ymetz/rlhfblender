@@ -141,10 +141,14 @@ class Sampler:
 
     def sample(self, batch_size: int = 1) -> list[EpisodeID]:
         """
-        Return a list of episodes
+        Return a list of episodes. If batch_size is -1, return all episodes in random order
         :param batch_size: The batch size to sample
         :return: The list of episodes of length batch_size
         """
+
+        if batch_size == -1:
+            return  [self.episode_buffer[i] for i in np.random.permutation(len(self.episode_buffer))]
+
         if self.sampler_type == SamplerType.sequential:
             sampled_batch = self.episode_buffer[self.episode_pointer : self.episode_pointer + batch_size]
             self.episode_pointer += batch_size
