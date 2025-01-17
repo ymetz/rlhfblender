@@ -4,6 +4,7 @@ import os
 import sys
 import uuid
 import zipfile
+from datetime import datetime
 
 import uvicorn
 from databases import Database
@@ -172,7 +173,7 @@ async def ui_configs():
         if filename.endswith(".json"):
             with open(os.path.join("configs/ui_configs", filename)) as f:
                 ui_confs.append(json.load(f))
-    ui_confs.sort(key=lambda x: x["id"])
+    ui_confs.sort(key=lambda x: datetime.strptime(x["created_at"], "%Y-%m-%d %H:%M:%S"), reverse=True)
     # Check if there
     return ui_confs
 
@@ -180,7 +181,10 @@ async def ui_configs():
 @app.post("/save_ui_config", tags=["UI"])
 async def save_ui_config(ui_config: dict):
     # Save UI config to configs/ui_configs directory
-    with open(os.path.join("configs/ui_configs", ui_config["name"] + ".json"), "w") as f:
+    ui_config_id = uuid.uuid4().hex[:8]
+    ui_config["id"] = ui_config_id
+    ui_config["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(os.path.join("configs/ui_configs", f"{ui_config_id}.json"), "w") as f:
         json.dump(ui_config, f)
     return {"message": "OK"}
 
@@ -204,14 +208,18 @@ async def backend_configs():
         if filename.endswith(".json"):
             with open(os.path.join("configs/backend_configs", filename)) as f:
                 backend_confs.append(json.load(f))
-    backend_confs.sort(key=lambda x: x["id"])
+    # sort by date (created_at)
+    backend_confs.sort(key=lambda x: datetime.strptime(x["created_at"], "%Y-%m-%d %H:%M:%S"), reverse=True)
     return backend_confs
 
 
 @app.post("/save_backend_config", tags=["BACKEND"])
 async def save_backend_config(backend_config: dict):
     # Save backend config to configs/backend_configs directory
-    with open(os.path.join("configs/backend_configs", backend_config["name"] + ".json"), "w") as f:
+    backend_config_id = uuid.uuid4().hex[:8]
+    backend_config["id"] = backend_config_id
+    backend_config["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(os.path.join("configs/backend_configs", f"{backend_config_id}.json"), "w") as f:
         json.dump(backend_config, f)
     return {"message": "OK"}
 
@@ -240,13 +248,14 @@ async def save_setup(req: SaveSetupRequest):
     Save to file in configs/setups, generate a unique ID and return it
     """
     # Save setup to configs/setups directory
+    setup_id = uuid.uuid4().hex[:8]
     setup = {
+        "id": setup_id,
         "project": req.project,
         "experiment": req.experiment,
         "ui_config": req.ui_config,
         "backend_config": req.backend_config,
     }
-    setup_id = uuid.uuid4().hex[:8]
     with open(os.path.join("configs/setups", f"{setup_id}.json"), "w") as f:
         json.dump(setup, f)
     return {"study_code": setup_id}

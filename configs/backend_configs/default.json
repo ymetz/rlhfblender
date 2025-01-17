@@ -1,5 +1,6 @@
 {
-    "id": 0,
+    "id": "default",
+    "created_at": "2025-01-01 00:00:00",
     "name": "Default",
     "description": "Default configuration",
     "samplingStrategy": "sequential",
