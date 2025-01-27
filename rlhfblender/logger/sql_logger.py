@@ -2,6 +2,7 @@ import asyncio
 
 from rlhfblender.data_handling import database_handler
 from rlhfblender.data_models import StandardizedFeedback, UnprocessedFeedback
+from rlhfblender.data_models.global_models import Environment, Experiment
 
 from .logger import Logger
 
@@ -25,17 +26,19 @@ class SQLLogger(Logger):
         self.sql_table = self.logger_id
         self.db = db
 
-    def reset(self):
+    def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
         """
         Resets the logger
         :return: None
         """
-        super().reset()
+        super().reset(exp, env, suffix)
 
         self.sql_table = self.logger_id
 
         database_handler.create_table_from_model(self.db, StandardizedFeedback, self.sql_table)
         database_handler.create_table_from_model(self.db, UnprocessedFeedback, self.sql_table + "_raw")
+
+        return self.logger_id
 
     def log(self, feedback: StandardizedFeedback) -> None:
         """

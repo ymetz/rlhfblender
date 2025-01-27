@@ -106,13 +106,18 @@ def test_ui_configs(client):
 
 def test_save_ui_config(client):
     test_ui_config = {"test": "test", "name": "test_ui_config", "id": 0}
+    import os
+
+    # print working directory
+    print("Current working directory: ", os.listdir("configs"))
     response = client.post("/save_ui_config", json=test_ui_config)
+    config_id = response.json()["id"]
     assert response.status_code == 200
 
     response = client.get("/ui_configs")
     assert response.status_code == 200
 
-    response = client.post("/delete_ui_config", json={"ui_config_name": "test_ui_config"})
+    response = client.post("/delete_ui_config", json={"ui_config_id": config_id})
     assert response.status_code == 200
 
 
