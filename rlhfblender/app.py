@@ -181,7 +181,7 @@ async def ui_configs():
     ui_confs = []
     for filename in os.listdir("configs/ui_configs"):
         if filename.endswith(".json"):
-            with open(os.path.join("configs/ui_configs", filename)) as f:
+            with open(os.path.join("configs", "ui_configs", filename)) as f:
                 ui_confs.append(json.load(f))
     ui_confs.sort(key=lambda x: datetime.strptime(x["created_at"], "%Y-%m-%d %H:%M:%S"), reverse=True)
     # Check if there
@@ -194,19 +194,19 @@ async def save_ui_config(ui_config: dict):
     ui_config_id = uuid.uuid4().hex[:8]
     ui_config["id"] = ui_config_id
     ui_config["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(os.path.join("configs/ui_configs", f"{ui_config_id}.json"), "w") as f:
+    with open(os.path.join("configs", "ui_configs", f"{ui_config_id}.json"), "w") as f:
         json.dump(ui_config, f)
-    return {"message": "OK"}
+    return {"message": "OK", "id": ui_config_id}
 
 
 class DeleteUIConfigRequest(BaseModel):
-    ui_config_name: str
+    ui_config_id: str
 
 
 @app.post("/delete_ui_config", tags=["UI"])
 async def delete_ui_config(req: DeleteUIConfigRequest):
     # Delete UI config from configs/ui_configs directory
-    os.remove(os.path.join("configs/ui_configs", req.ui_config_name + ".json"))
+    os.remove(os.path.join("configs", "ui_configs", req.ui_config_id + ".json"))
     return {"message": "OK"}
 
 
@@ -216,7 +216,7 @@ async def backend_configs():
     backend_confs = []
     for filename in os.listdir("configs/backend_configs"):
         if filename.endswith(".json"):
-            with open(os.path.join("configs/backend_configs", filename)) as f:
+            with open(os.path.join("configs", "backend_configs", filename)) as f:
                 backend_confs.append(json.load(f))
     # sort by date (created_at)
     backend_confs.sort(key=lambda x: datetime.strptime(x["created_at"], "%Y-%m-%d %H:%M:%S"), reverse=True)
@@ -229,7 +229,7 @@ async def save_backend_config(backend_config: dict):
     backend_config_id = uuid.uuid4().hex[:8]
     backend_config["id"] = backend_config_id
     backend_config["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(os.path.join("configs/backend_configs", f"{backend_config_id}.json"), "w") as f:
+    with open(os.path.join("configs", "backend_configs", f"{backend_config_id}.json"), "w") as f:
         json.dump(backend_config, f)
     return {"message": "OK"}
 
@@ -241,7 +241,7 @@ class DeleteBackendConfigRequest(BaseModel):
 @app.post("/delete_backend_config", tags=["BACKEND"])
 async def delete_backend_config(req: DeleteBackendConfigRequest):
     # Delete backend config from configs/backend_configs directory
-    os.remove(os.path.join("configs/backend_configs", req.backend_config_name + ".json"))
+    os.remove(os.path.join("configs", "backend_configs", req.backend_config_name + ".json"))
     return {"message": "OK"}
 
 
@@ -266,7 +266,7 @@ async def save_setup(req: SaveSetupRequest):
         "ui_config": req.ui_config,
         "backend_config": req.backend_config,
     }
-    with open(os.path.join("configs/setups", f"{setup_id}.json"), "w") as f:
+    with open(os.path.join("configs", "setups", f"{setup_id}.json"), "w") as f:
         json.dump(setup, f)
     return {"study_code": setup_id}
 
