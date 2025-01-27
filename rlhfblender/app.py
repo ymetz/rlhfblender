@@ -4,6 +4,7 @@ import os
 import sys
 import uuid
 import zipfile
+from datetime import datetime
 
 import uvicorn
 from databases import Database
@@ -24,6 +25,7 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
+from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
 from rlhfblender.routes import data
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend
@@ -61,9 +63,18 @@ async def startup():
     await db_handler.create_table_from_model(database, Dataset)
     await db_handler.create_table_from_model(database, TrackingItem)
 
+    # initialize logger
+    logger_type = os.environ.get("RLHFBLENDER_LOGGER_TYPE", "csv")
+    if logger_type == "sql":
+        app.state.logger = SQLLogger(None, None, os.path.join("logs"))
+    elif logger_type == "json":
+        app.state.logger = JSONLogger(None, None, os.path.join("logs"))
+    else:
+        app.state.logger = CSVLogger(None, None, os.path.join("logs"))
+
     # add sampler and feedback model to app state
-    app.state.sampler = Sampler(None, None, os.path.join("data", "renders"))
-    app.state.feedback_translator = FeedbackTranslator(None, None)
+    app.state.sampler = Sampler(None, None, os.path.join("data", "renders"), logger=app.state.logger)
+    app.state.feedback_translator = FeedbackTranslator(None, None, logger=app.state.logger)
 
     # Run the startup script as a separate process
     startup_script_path = os.path.join("rlhfblender", "startup_script.py")
@@ -170,9 +181,9 @@ async def ui_configs():
     ui_confs = []
     for filename in os.listdir("configs/ui_configs"):
         if filename.endswith(".json"):
-            with open(os.path.join("configs/ui_configs", filename)) as f:
+            with open(os.path.join("configs", "ui_configs", filename)) as f:
                 ui_confs.append(json.load(f))
-    ui_confs.sort(key=lambda x: x["id"])
+    ui_confs.sort(key=lambda x: datetime.strptime(x["created_at"], "%Y-%m-%d %H:%M:%S"), reverse=True)
     # Check if there
     return ui_confs
 
@@ -180,19 +191,22 @@ async def ui_configs():
 @app.post("/save_ui_config", tags=["UI"])
 async def save_ui_config(ui_config: dict):
     # Save UI config to configs/ui_configs directory
-    with open(os.path.join("configs/ui_configs", ui_config["name"] + ".json"), "w") as f:
+    ui_config_id = uuid.uuid4().hex[:8]
+    ui_config["id"] = ui_config_id
+    ui_config["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(os.path.join("configs", "ui_configs", f"{ui_config_id}.json"), "w") as f:
         json.dump(ui_config, f)
-    return {"message": "OK"}
+    return {"message": "OK", "id": ui_config_id}
 
 
 class DeleteUIConfigRequest(BaseModel):
-    ui_config_name: str
+    ui_config_id: str
 
 
 @app.post("/delete_ui_config", tags=["UI"])
 async def delete_ui_config(req: DeleteUIConfigRequest):
     # Delete UI config from configs/ui_configs directory
-    os.remove(os.path.join("configs/ui_configs", req.ui_config_name + ".json"))
+    os.remove(os.path.join("configs", "ui_configs", req.ui_config_id + ".json"))
     return {"message": "OK"}
 
 
@@ -202,16 +216,20 @@ async def backend_configs():
     backend_confs = []
     for filename in os.listdir("configs/backend_configs"):
         if filename.endswith(".json"):
-            with open(os.path.join("configs/backend_configs", filename)) as f:
+            with open(os.path.join("configs", "backend_configs", filename)) as f:
                 backend_confs.append(json.load(f))
-    backend_confs.sort(key=lambda x: x["id"])
+    # sort by date (created_at)
+    backend_confs.sort(key=lambda x: datetime.strptime(x["created_at"], "%Y-%m-%d %H:%M:%S"), reverse=True)
     return backend_confs
 
 
 @app.post("/save_backend_config", tags=["BACKEND"])
 async def save_backend_config(backend_config: dict):
     # Save backend config to configs/backend_configs directory
-    with open(os.path.join("configs/backend_configs", backend_config["name"] + ".json"), "w") as f:
+    backend_config_id = uuid.uuid4().hex[:8]
+    backend_config["id"] = backend_config_id
+    backend_config["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(os.path.join("configs", "backend_configs", f"{backend_config_id}.json"), "w") as f:
         json.dump(backend_config, f)
     return {"message": "OK"}
 
@@ -223,7 +241,7 @@ class DeleteBackendConfigRequest(BaseModel):
 @app.post("/delete_backend_config", tags=["BACKEND"])
 async def delete_backend_config(req: DeleteBackendConfigRequest):
     # Delete backend config from configs/backend_configs directory
-    os.remove(os.path.join("configs/backend_configs", req.backend_config_name + ".json"))
+    os.remove(os.path.join("configs", "backend_configs", req.backend_config_name + ".json"))
     return {"message": "OK"}
 
 
@@ -240,14 +258,15 @@ async def save_setup(req: SaveSetupRequest):
     Save to file in configs/setups, generate a unique ID and return it
     """
     # Save setup to configs/setups directory
+    setup_id = uuid.uuid4().hex[:8]
     setup = {
+        "id": setup_id,
         "project": req.project,
         "experiment": req.experiment,
         "ui_config": req.ui_config,
         "backend_config": req.backend_config,
     }
-    setup_id = uuid.uuid4().hex[:8]
-    with open(os.path.join("configs/setups", f"{setup_id}.json"), "w") as f:
+    with open(os.path.join("configs", "setups", f"{setup_id}.json"), "w") as f:
         json.dump(setup, f)
     return {"study_code": setup_id}
 
@@ -334,6 +353,7 @@ def main(args):
     parser.add_argument("--ui-config", type=str, default=None, help="Path to UI config file.")
     parser.add_argument("--backend-config", type=str, default=None, help="Path to backend config file.")
     parser.add_argument("--db-host", type=str, default="sqlite:///rlhfblender.db", help="Path to database file.")
+    parser.add_argument("--logger-type", type=str, default="csv", help="Type of logger to use (sql, json, csv).")
 
     args = parser.parse_args(args)
 
@@ -341,6 +361,7 @@ def main(args):
     os.environ["RLHFBLENDER_UI_CONFIG_PATH"] = args.ui_config if args.ui_config is not None else ""
     os.environ["RLHFBLENDER_BACKEND_CONFIG_PATH"] = args.backend_config if args.backend_config is not None else ""
     os.environ["RLHFBLENDER_DB_HOST"] = args.db_host if args.db_host is not None else ""
+    os.environ["RLHFBLENDER_LOGGER_TYPE"] = args.logger_type if args.logger_type is not None else ""
 
     if args.dev:
         print(f"Serving on port {args.port} in development mode.")

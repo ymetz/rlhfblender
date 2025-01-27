@@ -5,6 +5,7 @@ import os
 from pydantic import BaseModel
 
 from rlhfblender.data_models import StandardizedFeedback, UnprocessedFeedback
+from rlhfblender.data_models.global_models import Environment, Experiment
 
 from .logger import Logger
 
@@ -20,7 +21,7 @@ class CSVLogger(Logger):
     :param suffix: The suffix for the logger ID
     """
 
-    def __init__(self, exp, env, suffix):
+    def __init__(self, exp: Experiment, env: Environment, suffix):
         super().__init__(exp, env, suffix)
         self.raw_feedback: list[UnprocessedFeedback] = []
         self.feedback: list[StandardizedFeedback] = []
@@ -28,14 +29,16 @@ class CSVLogger(Logger):
         self.logger_csv_path = "logs/" + self.logger_id + ".csv"
         self.raw_logger_csv_path = "logs/" + self.logger_id + "_raw.csv"
 
-    def reset(self) -> None:
+    def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
         """
         Resets the logger
         :return: None
         """
-        super().reset()
+        super().reset(exp, env, suffix)
         self.logger_csv_path = "logs/" + self.logger_id + ".csv"
         self.raw_logger_csv_path = "logs/" + self.logger_id + "_raw.csv"
+
+        return self.logger_id
 
     def log(self, feedback):
         """
@@ -101,3 +104,4 @@ class CSVLogger(Logger):
                     writer.writeheader()
                 for feedback in self.raw_feedback:
                     writer.writerow(feedback.dict())
+        self.raw_feedback = []

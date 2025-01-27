@@ -25,8 +25,7 @@ from rlhfblender.data_models.feedback_models import (
     get_target,
 )
 from rlhfblender.data_models.global_models import Environment, Experiment
-from rlhfblender.logger.csv_logger import CSVLogger
-from rlhfblender.logger.json_logger import JSONLogger
+from rlhfblender.logger.logger import Logger
 
 
 class FeedbackTranslator:
@@ -37,16 +36,16 @@ class FeedbackTranslator:
     : param env: The environment object
     """
 
-    def __init__(self, experiment: Experiment, env: Environment):
+    def __init__(self, experiment: Experiment, env: Environment, logger: Logger = None):
         self.experiment = experiment
         self.env = env
 
         self.feedback_id = 0
 
-        self.logger = JSONLogger(experiment, env, "feedback") if experiment is not None and env is not None else None
+        self.logger = logger
         self.feedback_buffer = []
 
-    def set_translator(self, experiment: Experiment, env: Environment) -> str:
+    def set_translator(self, experiment: Experiment, env: Environment, logger: Logger) -> str:
         """
         Sets the experiment and environment for the translator
         :param experiment: The experiment object
@@ -55,12 +54,8 @@ class FeedbackTranslator:
         """
         self.experiment = experiment
         self.env = env
-
-        self.logger = CSVLogger(experiment, env, "feedback")
-
+        self.logger = logger
         self.reset()
-
-        return self.logger.logger_id
 
     def reset(self) -> None:
         """
@@ -68,7 +63,6 @@ class FeedbackTranslator:
         :return:
         """
         self.feedback_id = 0
-        self.logger.reset()
         self.feedback_buffer = []
 
     def give_feedback(self, session_id: str, feedback: UnprocessedFeedback) -> StandardizedFeedback:
@@ -182,6 +176,19 @@ class FeedbackTranslator:
                 ),
                 target=get_target(feedback.targets[0], feedback.granularity),
                 content=Text(text=feedback.text_feedback),
+            )
+        elif feedback.feedback_type == FeedbackType.meta:
+            # Meta Actions such as submit, skip, etc. can also be interpreted as (implicit) feedback
+            return_feedback = AbsoluteFeedback(
+                feedback_id=self.feedback_id,
+                feedback_timestamp=feedback.timestamp,
+                feedback_type=StandardizedFeedbackType(
+                    intention=Intention.none,
+                    actuality=Actuality.observed,
+                    relation=Relation.absolute,
+                    content=Content.meta,
+                    granularity=Granularity.entire,
+                ),
             )
 
         self.feedback_id += 1

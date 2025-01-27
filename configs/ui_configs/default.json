@@ -1,5 +1,6 @@
 {
-    "id": 0,
+    "id": "default",
+    "created_at": "2025-01-01 00:00:00",
     "name": "Default",
     "description": "Default configuration",
     "uiComponents": {
@@ -10,6 +11,7 @@
         "episodeItemVideo": true,
         "rightSidebar": false,
         "horizontalRanking": false,
+        "bestOfK": true,
         "allowEqualRanking": false,
         "videoScrollbar": false,
         "fullTimeLine": true,
@@ -25,7 +27,7 @@
         "featureSelection": false,
         "text": false
     },
-    "max_ranking_elements": 5,
+    "max_ranking_elements": 4,
     "samplingStrategy": "sequential",
     "customInput": ""
 }

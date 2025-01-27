@@ -19,6 +19,7 @@ class FeedbackType(enum.Enum):
     featureSelection = "featureSelection"
     descriptivePreferences = "descriptivePreferences"
     text = "text"
+    meta = "meta"
     other = "other"
 
     def __str__(self):
@@ -73,6 +74,7 @@ class UnprocessedFeedback(BaseModel):
 
     # Meta information
     user_id: int = -1
+    meta_action: str = ""  # e.g.: "skip", "submit", "next", "back", "start", "end"
 
 
 class Intention(FeedbackDimension):
@@ -85,6 +87,11 @@ class Intention(FeedbackDimension):
 class Expression(FeedbackDimension):
     explicit = 1
     implicit = 2
+
+
+class Engagement(FeedbackDimension):
+    proactive = 1
+    reactive = 2
 
 
 class Actuality(FeedbackDimension):
@@ -100,6 +107,13 @@ class Relation(FeedbackDimension):
 class Content(FeedbackDimension):
     instance = 1
     feature = 2
+    meta = 3
+
+
+class ChoiceSetSize(FeedbackDimension):
+    single = 1
+    multiple = 2
+    infinite = 3
 
 
 class Granularity(FeedbackDimension):
@@ -107,6 +121,11 @@ class Granularity(FeedbackDimension):
     segment = 2
     episode = 3
     entire = 4
+
+
+class Exclusivity(FeedbackDimension):
+    exclusive = 1
+    shared = 2
 
 
 class Origin(enum.Enum):

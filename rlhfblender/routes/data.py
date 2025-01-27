@@ -214,17 +214,6 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     reward = episode_benchmark_data["rewards"][request.step]
     info = episode_benchmark_data["infos"][request.step]
 
-    print(
-        "THIS IS RETURNED",
-        {
-            "action_distribution": action_distribution,
-            "action": action,
-            "reward": reward,
-            "info": info,
-            "action_space": action_space,
-        },
-    )
-
     return convert_to_serializable(
         {
             "action_distribution": action_distribution,
@@ -323,10 +312,14 @@ async def reset_sampler(request: Request):
     experiment: Experiment = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
     environment = await db_handler.get_single_entry(database, Environment, key=experiment.env_id, key_column="registration_id")
 
-    request.app.state.sampler.set_sampler(experiment, environment, sampling_strategy)
+    session_id = request.app.state.logger.reset(experiment, environment)
+    request.app.state.sampler.set_sampler(
+        experiment, environment, request.app.state.logger, sampling_strategy=sampling_strategy
+    )
+    request.app.state.feedback_translator.set_translator(experiment, environment, request.app.state.logger)
 
     return {
-        "session_id": request.app.state.feedback_translator.set_translator(experiment, environment),
+        "session_id": session_id,
         "environment_id": experiment.env_id,
     }
 
@@ -339,16 +332,6 @@ async def get_all_episodes(request: Request):
     :return:
     """
     return request.app.state.sampler.get_full_episode_list()
-
-
-@router.get("/sample_episodes", response_model=list[EpisodeID])
-async def sample_episodes(request: Request):
-    """
-    Samples episodes from the database
-    """
-    num_episodes = request.query_params.get("num_episodes", 1)
-    num_episodes = int(num_episodes)
-    return request.app.state.sampler.sample(batch_size=num_episodes)
 
 
 @router.post("/give_feedback")
