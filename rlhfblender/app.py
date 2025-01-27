@@ -16,7 +16,6 @@ from pydantic import BaseModel
 
 from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.sampler import Sampler
-from rlhfblender.logger import SQLLogger, JSONLogger, CSVLogger
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models import get_model_by_name
 from rlhfblender.data_models.global_models import (
@@ -26,6 +25,7 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
+from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
 from rlhfblender.routes import data
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend

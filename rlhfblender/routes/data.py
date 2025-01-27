@@ -313,7 +313,9 @@ async def reset_sampler(request: Request):
     environment = await db_handler.get_single_entry(database, Environment, key=experiment.env_id, key_column="registration_id")
 
     session_id = request.app.state.logger.reset(experiment, environment)
-    request.app.state.sampler.set_sampler(experiment, environment, request.app.state.logger, sampling_strategy=sampling_strategy)
+    request.app.state.sampler.set_sampler(
+        experiment, environment, request.app.state.logger, sampling_strategy=sampling_strategy
+    )
     request.app.state.feedback_translator.set_translator(experiment, environment, request.app.state.logger)
 
     return {

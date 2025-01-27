@@ -88,9 +88,11 @@ class Expression(FeedbackDimension):
     explicit = 1
     implicit = 2
 
+
 class Engagement(FeedbackDimension):
     proactive = 1
     reactive = 2
+
 
 class Actuality(FeedbackDimension):
     observed = 1
@@ -107,16 +109,19 @@ class Content(FeedbackDimension):
     feature = 2
     meta = 3
 
+
 class ChoiceSetSize(FeedbackDimension):
     single = 1
     multiple = 2
     infinite = 3
+
 
 class Granularity(FeedbackDimension):
     state = 1
     segment = 2
     episode = 3
     entire = 4
+
 
 class Exclusivity(FeedbackDimension):
     exclusive = 1

@@ -9,8 +9,8 @@ import numpy as np
 
 from rlhfblender.data_collection.feedback_model import FeedbackModel
 from rlhfblender.data_models.global_models import Environment, EpisodeID, Experiment
-from rlhfblender.utils import process_env_name
 from rlhfblender.logger import Logger
+from rlhfblender.utils import process_env_name
 
 
 class SamplerType(Enum):
