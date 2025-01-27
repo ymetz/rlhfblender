@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.sampler import Sampler
+from rlhfblender.logger import SQLLogger, JSONLogger, CSVLogger
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models import get_model_by_name
 from rlhfblender.data_models.global_models import (
@@ -62,9 +63,18 @@ async def startup():
     await db_handler.create_table_from_model(database, Dataset)
     await db_handler.create_table_from_model(database, TrackingItem)
 
+    # initialize logger
+    logger_type = os.environ.get("RLHFBLENDER_LOGGER_TYPE", "csv")
+    if logger_type == "sql":
+        app.state.logger = SQLLogger(None, None, os.path.join("logs"))
+    elif logger_type == "json":
+        app.state.logger = JSONLogger(None, None, os.path.join("logs"))
+    else:
+        app.state.logger = CSVLogger(None, None, os.path.join("logs"))
+
     # add sampler and feedback model to app state
-    app.state.sampler = Sampler(None, None, os.path.join("data", "renders"))
-    app.state.feedback_translator = FeedbackTranslator(None, None)
+    app.state.sampler = Sampler(None, None, os.path.join("data", "renders"), logger=app.state.logger)
+    app.state.feedback_translator = FeedbackTranslator(None, None, logger=app.state.logger)
 
     # Run the startup script as a separate process
     startup_script_path = os.path.join("rlhfblender", "startup_script.py")
@@ -343,6 +353,7 @@ def main(args):
     parser.add_argument("--ui-config", type=str, default=None, help="Path to UI config file.")
     parser.add_argument("--backend-config", type=str, default=None, help="Path to backend config file.")
     parser.add_argument("--db-host", type=str, default="sqlite:///rlhfblender.db", help="Path to database file.")
+    parser.add_argument("--logger-type", type=str, default="csv", help="Type of logger to use (sql, json, csv).")
 
     args = parser.parse_args(args)
 
@@ -350,6 +361,7 @@ def main(args):
     os.environ["RLHFBLENDER_UI_CONFIG_PATH"] = args.ui_config if args.ui_config is not None else ""
     os.environ["RLHFBLENDER_BACKEND_CONFIG_PATH"] = args.backend_config if args.backend_config is not None else ""
     os.environ["RLHFBLENDER_DB_HOST"] = args.db_host if args.db_host is not None else ""
+    os.environ["RLHFBLENDER_LOGGER_TYPE"] = args.logger_type if args.logger_type is not None else ""
 
     if args.dev:
         print(f"Serving on port {args.port} in development mode.")

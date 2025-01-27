@@ -10,6 +10,7 @@ import numpy as np
 from rlhfblender.data_collection.feedback_model import FeedbackModel
 from rlhfblender.data_models.global_models import Environment, EpisodeID, Experiment
 from rlhfblender.utils import process_env_name
+from rlhfblender.logger import Logger
 
 
 class SamplerType(Enum):
@@ -39,6 +40,7 @@ class Sampler:
         max_episode_count: int = 1000,
         sampler_type: SamplerType = SamplerType.sequential,
         sample_model: FeedbackModel | None = None,
+        logger: Logger = None,
     ):
         self.experiment = experiment
         self.env = env
@@ -46,6 +48,7 @@ class Sampler:
         self.max_episode_count = max_episode_count
         self.sampler_type = sampler_type
         self.sample_model = sample_model
+        self.logger = logger
 
         self.episode_count = None
         self.episode_buffer: list[EpisodeID] = []
@@ -58,6 +61,7 @@ class Sampler:
         self,
         experiment: Experiment,
         env: Environment,
+        logger: Logger,
         sampling_strategy: str = "sequential",
     ) -> None:
         """
@@ -69,6 +73,7 @@ class Sampler:
         """
         self.experiment = experiment
         self.env = env
+        self.logger = logger
 
         self.episode_buffer = []
         for checkpoint in self.experiment.checkpoint_list:
@@ -147,7 +152,7 @@ class Sampler:
         """
 
         if batch_size == -1:
-            return  [self.episode_buffer[i] for i in np.random.permutation(len(self.episode_buffer))]
+            return [self.episode_buffer[i] for i in np.random.permutation(len(self.episode_buffer))]
 
         if self.sampler_type == SamplerType.sequential:
             sampled_batch = self.episode_buffer[self.episode_pointer : self.episode_pointer + batch_size]

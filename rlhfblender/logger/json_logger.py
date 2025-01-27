@@ -2,6 +2,7 @@ import asyncio
 import json
 
 from rlhfblender.data_models.feedback_models import StandardizedFeedback, UnprocessedFeedback
+from rlhfblender.data_models.global_models import Environment, Experiment
 
 from .logger import Logger
 
@@ -39,16 +40,18 @@ class JSONLogger(Logger):
         with open(self.raw_logger_json_path, "w") as f:
             f.write(json.dumps([]))
 
-    def reset(self) -> None:
+    def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
         """
         Resets the logger
         :return: None
         """
-        super().reset()
+        super().reset(exp, env, suffix)
         self.logger_json_path = "logs/" + self.logger_id + ".json"
         self.raw_logger_json_path = "logs/" + self.logger_id + "_raw.json"
 
         self.init_empty_json()
+
+        return self.logger_id
 
     def log(self, feedback: StandardizedFeedback) -> None:
         """
