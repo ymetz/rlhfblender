@@ -1,11 +1,5 @@
 # RLHF-Blender
 
-
-> [!WARNING]  
-> Right now, RLHF-Blender is still in preview mode and might therefore contain bugs or will not immediately run on each system.
-> We are working on a stable release. 
-
-
 Implementation for RLHF-Blender: A Configurable Interactive Interface for Learning from Diverse Human Feedback
 Paper: https://arxiv.org/abs/2308.04332 (Presented at the ICML2023 Interactive Learning from Implicit Human Feedback Workshop)
 
