@@ -1,5 +1,6 @@
 import importlib
 import os
+from typing import Any, Dict, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -63,6 +64,75 @@ def numpy_to_python(obj):
     # Return other types as-is
     return obj
 
+def get_metaworld_env(
+    env_name: str = "pick-place-v2",
+    n_envs: int = 1,
+    environment_config: Optional[Dict[str, Any]] = None,
+    seed: Optional[int] = None
+) -> VecEnv:
+    """
+    Create a MetaWorld environment wrapped to match the Gymnasium interface.
+    """
+    if n_envs != 1:
+        raise ValueError("MetaWorld environments currently only support n_envs=1")
+    
+    try:
+        from metaworld import MT1
+
+    except ImportError:
+        raise ImportError("Please install MetaWorld to use MetaWorld environments")
+
+    # Initialize MT1 benchmark
+    mt1 = MT1(env_name, seed=seed)
+    
+    # Create environment
+    env = mt1.train_classes[env_name]()
+    env.set_task(mt1.train_tasks[0])
+    
+    # Wrap in a class that converts to Gymnasium interface
+    wrapped_env = MetaWorldGymWrapper(env)
+    
+    # Create vectorized environment
+    vec_env = DummyVecEnv([lambda: wrapped_env])
+    
+    return vec_env
+
+
+class MetaWorldGymWrapper(gym.Env):
+    """
+    Wraps MetaWorld environments to follow the Gymnasium interface.
+    """
+    def __init__(self, env):
+        self.env = env
+        self.observation_space = gym.spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=self.env.observation_space.shape,
+            dtype=np.float32
+        )
+        self.action_space = gym.spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=self.env.action_space.shape,
+            dtype=np.float32
+        )
+        
+    def reset(self, seed=None):
+        if seed is not None:
+            self.env.seed(seed)
+        obs = self.env.reset()
+        return obs, {}
+        
+    def step(self, action):
+        obs, reward, terminated, info = self.env.step(action)
+        return obs, reward, terminated, False, info
+        
+    def render(self):
+        return self.env.render()
+        
+    def close(self):
+        self.env.close()
+
 
 def get_environment(
     env_name: str = "CartPole-v0",
@@ -70,6 +140,7 @@ def get_environment(
     environment_config: dict | None = None,
     norm_env_path: str | None = None,
     additional_packages: list = (),
+    gym_entry_point: str | None = "",
 ) -> VecEnv:
     """
     Get the gym environment by name.
@@ -96,6 +167,11 @@ def get_environment(
         env_kwargs = {"render_mode": "rgb_array"}
     else:
         env_kwargs["render_mode"] = "rgb_array"
+
+    if gym_entry_point:
+        # Register the environment with the given entry point to gym for the current session
+        print("ENTRY POINT", gym_entry_point)
+        gym.register(id=env_name, entry_point=gym_entry_point)
 
     env = make_vec_env(
         env_name,
@@ -148,7 +224,7 @@ def initial_space_info(space: gym.spaces.Space, save_low_high=False, action_name
 
     tag_dict = {}
     if shape is not None:
-        if action_names is not None:
+        if action_names:
             assert len(action_names) == shape[-1], "Action names must match the number of actions"
             tag_dict = {f"{i}": action_names[i] for i in range(shape[-1])}
         else:
@@ -188,12 +264,17 @@ def initial_registration(
         for env_module in additional_gym_packages:
             importlib.import_module(env_module)
 
-    if entry_point != "":
-        gym.register(id=env_id, entry_point=entry_point)
+    # Check if this is a MetaWorld environment
+    is_metaworld = any(name in env_id.lower() for name in [
+        'pick-place', 'button-press', 'door-open', 'drawer-close', 'sweep'
+    ])
 
-    if gym_env_kwargs is None:
-        gym_env_kwargs = {}
-    env = gym.make(env_id, render_mode="rgb_array", **gym_env_kwargs)
+    if is_metaworld:
+        env = get_metaworld_env(env_id).envs[0]
+    else:
+        if entry_point:
+            gym.register(id=env_id, entry_point=entry_point)
+        env = gym.make(env_id, render_mode="rgb_array", **gym_env_kwargs)
 
     return Environment(
         env_name=env_id,
@@ -204,6 +285,6 @@ def initial_registration(
         has_state_loading=0,
         description="",
         tags=[],
-        env_path="",
+        gym_entry_point=entry_point if entry_point else "",
         additional_gym_packages=[] if len(additional_gym_packages) == 0 else additional_gym_packages,
     )

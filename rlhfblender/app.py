@@ -43,7 +43,7 @@ app = FastAPI(
     title="Test Python Backend",
     description="""This is a template for a Python backend.
                    It provides access via REST API.""",
-    version="0.1.0",
+    version="0.3.2",
 )
 app.include_router(data.router)
 

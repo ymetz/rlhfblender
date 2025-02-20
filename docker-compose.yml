@@ -16,7 +16,7 @@ services:
       - BACKEND_HOST=backend
       - BACKEND_PORT=8080
     volumes:
-      - ./rlhfblender-ui/app/:/usr/src/app/
+      - ./rlhfblender-ui/:/usr/src/app/
       - node-modules:/usr/src/app/node_modules/
 
   backend:

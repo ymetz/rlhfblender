@@ -194,6 +194,7 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
                 n_envs=1,
                 norm_env_path=os.path.join(benchmark_run["path"], process_env_name(exp.env_id)),
                 additional_packages=database_env.additional_gym_packages,
+                gym_entry_point=database_env.gym_entry_point,
             )
             if "BabyAI" not in exp.env_id
             else gym.make(exp.env_id, render_mode="rgb_array")

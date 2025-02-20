@@ -88,7 +88,7 @@ class Environment(BaseModel):
     has_state_loading: int = 0
     description: str = ""
     tags: list = []
-    env_path: str = ""
+    gym_entry_point: str = ""
     additional_gym_packages: list[str] = []
 
     @field_validator(
