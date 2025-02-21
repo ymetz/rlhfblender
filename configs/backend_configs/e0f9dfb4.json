@@ -1,0 +1,38 @@
+{
+    "id": "e0f9dfb4",
+    "name": "Alternating",
+    "description": "An alternating experiment setup",
+    "samplingStrategy": "sequential",
+    "loggerMode": "local",
+    "selectedUiConfigs": [
+        {
+            "id": "2a3e4126",
+            "name": "Descriptive"
+        },
+        {
+            "id": "2d410252",
+            "name": "Corrective"
+        },
+        {
+            "id": "ce4fd67b",
+            "name": "Demonstrative"
+        },
+        {
+            "id": "19302d54",
+            "name": "Comparative"
+        },
+        {
+            "id": "590e07bb",
+            "name": "Evaluative"
+        },
+        {
+            "id": "b9f6e554",
+            "name": "Text"
+        }
+    ],
+    "uiConfigMode": "alternating",
+    "feedbackModelTrainingEnabled": false,
+    "feeedbackModelType": "",
+    "feedbackModelConfig": {},
+    "created_at": "2025-01-13 14:06:31"
+}

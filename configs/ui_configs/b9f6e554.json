@@ -1,0 +1,28 @@
+{
+    "id": "b9f6e554",
+    "name": "Text",
+    "description": "",
+    "uiComponents": {
+        "progressBar": true,
+        "interactiveEpisodeSelect": false,
+        "episodePreview": false,
+        "episodeItem": true,
+        "episodeItemVideo": true,
+        "horizontalRanking": true,
+        "bestOfK": true,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": false
+    },
+    "feedbackComponents": {
+        "rating": false,
+        "ranking": false,
+        "demonstration": false,
+        "correction": false,
+        "featureSelection": false,
+        "text": true
+    },
+    "max_ranking_elements": "1",
+    "customInput": "",
+    "created_at": "2025-01-15 10:57:15"
+}

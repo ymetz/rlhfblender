@@ -1,0 +1,28 @@
+{
+    "id": "19302d54",
+    "name": "Comparative",
+    "description": "",
+    "uiComponents": {
+        "progressBar": true,
+        "interactiveEpisodeSelect": false,
+        "episodePreview": false,
+        "episodeItem": true,
+        "episodeItemVideo": true,
+        "horizontalRanking": true,
+        "bestOfK": true,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": false
+    },
+    "feedbackComponents": {
+        "rating": false,
+        "ranking": true,
+        "demonstration": false,
+        "correction": false,
+        "featureSelection": false,
+        "text": false
+    },
+    "max_ranking_elements": "2",
+    "customInput": "",
+    "created_at": "2025-01-13 13:48:33"
+}

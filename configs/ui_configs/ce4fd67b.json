@@ -1,0 +1,28 @@
+{
+    "id": "ce4fd67b",
+    "name": "Demonstrative",
+    "description": "",
+    "uiComponents": {
+        "progressBar": true,
+        "interactiveEpisodeSelect": false,
+        "episodePreview": false,
+        "episodeItem": true,
+        "episodeItemVideo": true,
+        "horizontalRanking": true,
+        "bestOfK": true,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": false
+    },
+    "feedbackComponents": {
+        "rating": false,
+        "ranking": false,
+        "demonstration": true,
+        "correction": false,
+        "featureSelection": false,
+        "text": false
+    },
+    "max_ranking_elements": "1",
+    "customInput": "",
+    "created_at": "2025-01-15 10:57:15"
+}
