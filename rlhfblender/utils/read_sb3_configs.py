@@ -1,5 +1,5 @@
 """
-    Read parsing of args-config files from SB3 to enable automatic model loading possible 
+Read parsing of args-config files from SB3 to enable automatic model loading possible
 """
 
 import yaml

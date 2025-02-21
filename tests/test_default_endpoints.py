@@ -1,5 +1,5 @@
 """
-    Test the API endpoints.
+Test the API endpoints.
 """
 
 import os
