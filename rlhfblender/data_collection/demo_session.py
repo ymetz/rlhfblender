@@ -4,9 +4,10 @@ import os
 import socket
 import sys
 from multiprocessing import Process
+from rlhfblender.data_collection.environment_handler import get_environment
+from rlhfblender.data_models.global_models import Environment, Experiment
 
 import cv2
-import gymnasium as gym
 import numpy as np
 
 HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
@@ -29,7 +30,7 @@ def find_available_port(start_port=65432, max_attempts=100):
     raise RuntimeError("No available ports found.")
 
 
-async def create_new_session(session_id: str, gym_env: str, seed: str | int):
+async def create_new_session(session_id: str, exp: Experiment, db_env: Environment, seed: str | int):
     """
     Create a new session as a asynchronous process. In the process, initialize a gym environment and
     wait for commands via a pipe.
@@ -48,7 +49,7 @@ async def create_new_session(session_id: str, gym_env: str, seed: str | int):
         demo_number += 1
 
     # Create a new process
-    p = Process(target=run_env_session, args=(session_id, demo_number, gym_env, seed))
+    p = Process(target=run_env_session, args=(session_id, demo_number, exp, db_env, seed))
     p.start()
 
     # Wait for the process to be ready
@@ -58,7 +59,7 @@ async def create_new_session(session_id: str, gym_env: str, seed: str | int):
     return p.pid, demo_number
 
 
-def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: str | int):
+def run_env_session(session_id: str, demo_number: int, exp: Experiment, database_env: Environment, seed: str | int):
     """
     Blocking loop that initializes a gym environment and waits for commands via a socket.
     :param session_id: (str) The unique id of the session (used for the socket port
@@ -68,7 +69,14 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: str |
     :return:
     """
     # Create the gym environment
-    env = gym.make(gym_env, render_mode="rgb_array")
+    env =  get_environment(
+        database_env.registration_id,
+        environment_config=exp.environment_config,
+        n_envs=1,
+        norm_env_path=None,
+        additional_packages=database_env.additional_gym_packages,
+        gym_entry_point=database_env.gym_entry_point,
+    ).envs[0] # Get the first environment, we do not need a vectorized environment here
 
     obs_buffer = []
     rew_buffer = []
@@ -112,7 +120,7 @@ def run_env_session(session_id: str, demo_number: int, gym_env: str, seed: str |
                             render = env.render()
                             reward = 0
                             done = False
-                            if "BabyAI" not in gym_env:
+                            if "BabyAI" not in database_env.registration_id:
                                 info = {}
                             else:
                                 # Such that first frame of demo modal also shows the mission

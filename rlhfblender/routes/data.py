@@ -371,17 +371,20 @@ async def initialize_demo_session(request: Request):
     :return:
     """
     request = await request.json()
-    env_id = request["env_id"]
+    env_id = request.get("env_id", None)
+    exp_id = request.get("exp_id", None)
+    print("EXP ID", exp_id, env_id)
     seed = request["seed"]
     session_id = request["session_id"]
 
     action_space = {}
+    exp = await db_handler.get_single_entry(database, Experiment, key=exp_id)
     db_env = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
     if db_env is not None:
         action_space = db_env.action_space_info
 
     try:
-        pid, demo_number = await create_new_session(session_id, db_env.registration_id, int(seed))
+        pid, demo_number = await create_new_session(session_id, exp, db_env, int(seed))
 
         first_step = demo_perform_step(session_id, [])
         success = True

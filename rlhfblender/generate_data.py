@@ -82,6 +82,11 @@ if __name__ == "__main__":
         help="(Optional) Names for the actions in the environment. Should match length of available action dims",
         default=[],
     )
+    parser.add_argument(
+        "--register-only",
+        action="store_true",
+        help="Only register the environment and experiment, do not generate data.",
+    )
 
     args = parser.parse_args()
 
@@ -156,6 +161,10 @@ if __name__ == "__main__":
         }
         for checkpoint in checkpoints
     ]
+
+    if args.register_only:
+        print("Registered environment and experiment. Did not generate data.")
+        sys.exit(0)
 
     try:
         asyncio.run(generate_data(benchmark_dicts))
