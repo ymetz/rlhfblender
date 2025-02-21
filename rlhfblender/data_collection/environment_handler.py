@@ -64,18 +64,19 @@ def numpy_to_python(obj):
     # Return other types as-is
     return obj
 
+
 def get_metaworld_env(
     env_name: str = "pick-place-v2",
     n_envs: int = 1,
     environment_config: Optional[Dict[str, Any]] = None,
-    seed: Optional[int] = None
+    seed: Optional[int] = None,
 ) -> VecEnv:
     """
     Create a MetaWorld environment wrapped to match the Gymnasium interface.
     """
     if n_envs != 1:
         raise ValueError("MetaWorld environments currently only support n_envs=1")
-    
+
     try:
         from metaworld import MT1
 
@@ -84,17 +85,17 @@ def get_metaworld_env(
 
     # Initialize MT1 benchmark
     mt1 = MT1(env_name, seed=seed)
-    
+
     # Create environment
     env = mt1.train_classes[env_name]()
     env.set_task(mt1.train_tasks[0])
-    
+
     # Wrap in a class that converts to Gymnasium interface
     wrapped_env = MetaWorldGymWrapper(env)
-    
+
     # Create vectorized environment
     vec_env = DummyVecEnv([lambda: wrapped_env])
-    
+
     return vec_env
 
 
@@ -102,34 +103,27 @@ class MetaWorldGymWrapper(gym.Env):
     """
     Wraps MetaWorld environments to follow the Gymnasium interface.
     """
+
     def __init__(self, env):
         self.env = env
         self.observation_space = gym.spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=self.env.observation_space.shape,
-            dtype=np.float32
+            low=-np.inf, high=np.inf, shape=self.env.observation_space.shape, dtype=np.float32
         )
-        self.action_space = gym.spaces.Box(
-            low=-1.0,
-            high=1.0,
-            shape=self.env.action_space.shape,
-            dtype=np.float32
-        )
-        
+        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=self.env.action_space.shape, dtype=np.float32)
+
     def reset(self, seed=None):
         if seed is not None:
             self.env.seed(seed)
         obs = self.env.reset()
         return obs, {}
-        
+
     def step(self, action):
         obs, reward, terminated, info = self.env.step(action)
         return obs, reward, terminated, False, info
-        
+
     def render(self):
         return self.env.render()
-        
+
     def close(self):
         self.env.close()
 
@@ -265,9 +259,7 @@ def initial_registration(
             importlib.import_module(env_module)
 
     # Check if this is a MetaWorld environment
-    is_metaworld = any(name in env_id.lower() for name in [
-        'pick-place', 'button-press', 'door-open', 'drawer-close', 'sweep'
-    ])
+    is_metaworld = any(name in env_id.lower() for name in ["pick-place", "button-press", "door-open", "drawer-close", "sweep"])
 
     if is_metaworld:
         env = get_metaworld_env(env_id).envs[0]

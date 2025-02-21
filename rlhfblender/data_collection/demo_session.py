@@ -4,11 +4,12 @@ import os
 import socket
 import sys
 from multiprocessing import Process
-from rlhfblender.data_collection.environment_handler import get_environment
-from rlhfblender.data_models.global_models import Environment, Experiment
 
 import cv2
 import numpy as np
+
+from rlhfblender.data_collection.environment_handler import get_environment
+from rlhfblender.data_models.global_models import Environment, Experiment
 
 HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 
@@ -69,14 +70,16 @@ def run_env_session(session_id: str, demo_number: int, exp: Experiment, database
     :return:
     """
     # Create the gym environment
-    env =  get_environment(
+    env = get_environment(
         database_env.registration_id,
         environment_config=exp.environment_config,
         n_envs=1,
         norm_env_path=None,
         additional_packages=database_env.additional_gym_packages,
         gym_entry_point=database_env.gym_entry_point,
-    ).envs[0] # Get the first environment, we do not need a vectorized environment here
+    ).envs[
+        0
+    ]  # Get the first environment, we do not need a vectorized environment here
 
     obs_buffer = []
     rew_buffer = []
