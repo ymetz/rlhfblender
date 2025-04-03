@@ -25,7 +25,7 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
-from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
+from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger, GoogleSheetsLogger
 from rlhfblender.routes import data
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend
@@ -43,7 +43,7 @@ app = FastAPI(
     title="Test Python Backend",
     description="""This is a template for a Python backend.
                    It provides access via REST API.""",
-    version="0.3.2",
+    version="0.5.0",
 )
 app.include_router(data.router)
 
@@ -70,7 +70,14 @@ async def startup():
     elif logger_type == "json":
         app.state.logger = JSONLogger(None, None, os.path.join("logs"))
     else:
-        app.state.logger = CSVLogger(None, None, os.path.join("logs"))
+        # check if credentials file is provided, if so use Google Sheets logger
+        credentials_file = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "google-service-account.json")
+        if os.path.isfile(credentials_file):
+            print("Using Google Sheets logger.")
+            app.state.logger = GoogleSheetsLogger(None, None, os.path.join("logs"), credentials_file)
+        else:
+            print("[INFO] You can provide a Google service account file to use Google Sheets logger. Defaulting to CSV.")
+            app.state.logger = CSVLogger(None, None, os.path.join("logs"))
 
     # add sampler and feedback model to app state
     app.state.sampler = Sampler(None, None, os.path.join("data", "renders"), logger=app.state.logger)

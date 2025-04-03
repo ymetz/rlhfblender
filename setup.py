@@ -31,8 +31,8 @@ setup(
     package_data={"rlhfblender": ["py.typed", "version.txt"]},
     install_requires=[
         # "safety-gymnasium>=1.0.0",
-        "stable-baselines3[extra]>=2.2.1",
-        "rl_zoo3>=2.2.1",
+        "stable-baselines3[extra]>=2.3.0",
+        "rl_zoo3>=2.3.0",
         "minigrid>=2.0.0",
         "highway-env>=1.8.2",
         "sb3-contrib>=2.0.0",
@@ -41,6 +41,7 @@ setup(
         "uvicorn",
         "databases[sqlite]",
         "python-multipart",
+        "gspread",
     ],
     extras_require={
         "tests": [

@@ -125,3 +125,6 @@ dmypy.json
 
 # Ingnore Cache folders from Git
 data
+
+# Google Auth File
+rlhfblender/rlhf-blender-logging-714e89599cb1.json
