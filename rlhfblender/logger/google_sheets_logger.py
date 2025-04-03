@@ -39,18 +39,18 @@ class GoogleSheetsLogger(Logger):
         # Google Sheets specific configurations
         self.credentials_file = credentials_file
         self.spreadsheet_name = spreadsheet_name or f"Survey_Results_{self.logger_id}"
-        
+
         # Initialization state tracking
         self.init_complete = asyncio.Event()
         self.client = None
         self.spreadsheet = None
         self.worksheet_name = "processed_feedback"
         self.raw_worksheet_name = "raw_feedback"
-        
+
         # Caches for feedback received before initialization completes
         self.feedback_cache = []
         self.raw_feedback_cache = []
-        
+
         # Start async initialization
         self._init_task = asyncio.create_task(self._init_google_sheets_async())
         background_tasks.add(self._init_task)
@@ -60,40 +60,40 @@ class GoogleSheetsLogger(Logger):
         try:
             # Use ThreadPoolExecutor for blocking gspread operations
             loop = asyncio.get_event_loop()
-            
+
             def init_client():
                 try:
                     client = gspread.service_account(self.credentials_file)
-                    
+
                     # Try to open existing spreadsheet or create a new one
                     try:
                         spreadsheet = client.open(self.spreadsheet_name)
                     except SpreadsheetNotFound:
                         print("Spreadsheet not found, creating a new one...", self.spreadsheet_name)
                         spreadsheet = client.create(self.spreadsheet_name)
-                    
+
                     # Create worksheets if they don't exist
                     worksheet_list = [ws.title for ws in spreadsheet.worksheets()]
-                    
+
                     if self.worksheet_name not in worksheet_list:
                         spreadsheet.add_worksheet(title=self.worksheet_name, rows=1000, cols=50)
-                    
+
                     if self.raw_worksheet_name not in worksheet_list:
                         spreadsheet.add_worksheet(title=self.raw_worksheet_name, rows=1000, cols=50)
-                    
+
                     # sharing the spreadsheet with the provided email
                     share_email = os.getenv("GOOGLE_SHEETS_SHARE_EMAIL")
                     if share_email:
                         spreadsheet.share(share_email, perm_type="user", role="writer")
-                    
+
                     return client, spreadsheet
                 except Exception as e:
                     print(f"Error in thread initializing Google Sheets: {e}")
                     return None, None
-            
+
             # Run the blocking operations in a thread
             self.client, self.spreadsheet = await loop.run_in_executor(None, init_client)
-            
+
             # Process any cached feedback
             if self.client and self.spreadsheet:
                 if self.feedback_cache:
@@ -101,16 +101,16 @@ class GoogleSheetsLogger(Logger):
                         self.feedback.append(feedback_item)
                     self.feedback_cache = []
                     await self.dump()
-                
+
                 if self.raw_feedback_cache:
                     for raw_item in self.raw_feedback_cache:
                         self.raw_feedback.append(raw_item)
                     self.raw_feedback_cache = []
                     await self.dump_raw()
-            
+
             # Set the initialization as complete
             self.init_complete.set()
-            
+
         except Exception as e:
             print(f"Error in async Google Sheets initialization: {e}")
             # Set the event anyway to avoid hanging
@@ -123,16 +123,16 @@ class GoogleSheetsLogger(Logger):
         :return: The logger ID
         """
         # Cancel the previous init task if it's still running
-        if hasattr(self, '_init_task') and not self._init_task.done():
+        if hasattr(self, "_init_task") and not self._init_task.done():
             self._init_task.cancel()
             try:
                 await self._init_task
             except asyncio.CancelledError:
                 pass
-            
+
         # Reset the base logger
         await super().reset(exp, env, suffix)
-        
+
         # Reset state
         self.spreadsheet_name = f"Survey_Results_{self.logger_id}"
         self.init_complete = asyncio.Event()
@@ -142,11 +142,11 @@ class GoogleSheetsLogger(Logger):
         self.raw_feedback = []
         self.feedback_cache = []
         self.raw_feedback_cache = []
-        
+
         # Start async initialization
         self._init_task = asyncio.create_task(self._init_google_sheets_async())
         background_tasks.add(self._init_task)
-        
+
         return self.logger_id
 
     def log(self, feedback: StandardizedFeedback):
@@ -207,18 +207,18 @@ class GoogleSheetsLogger(Logger):
         try:
             # Use run_in_executor for the blocking gspread operations
             loop = asyncio.get_event_loop()
-            
+
             def append_to_sheet():
                 try:
                     # Get the right worksheet
                     worksheet = self.spreadsheet.worksheet(self.worksheet_name)
-                    
+
                     # Check if headers need to be added (empty sheet)
                     if worksheet.row_count <= 1:  # Only has header or is empty
                         fb_dict = self.feedback[0].model_dump()
                         headers = list(fb_dict.keys())
                         worksheet.append_row(headers)
-                    
+
                     # Convert feedback to rows and append to sheet
                     rows_to_append = []
                     for feedback in self.feedback:
@@ -226,18 +226,18 @@ class GoogleSheetsLogger(Logger):
                         # Convert all values to strings to avoid type issues
                         row = [str(fb_dict[key]) for key in fb_dict.keys()]
                         rows_to_append.append(row)
-                    
+
                     # Use batch append for better performance
                     if rows_to_append:
                         worksheet.append_rows(rows_to_append)
-                    
+
                     return True
                 except Exception as e:
                     print(f"Error writing to Google Sheets in thread: {e}")
                     return False
-            
+
             success = await loop.run_in_executor(None, append_to_sheet)
-            
+
             if success:
                 # Clear the feedback list after successful write
                 self.feedback = []
@@ -258,18 +258,18 @@ class GoogleSheetsLogger(Logger):
         try:
             # Use run_in_executor for the blocking gspread operations
             loop = asyncio.get_event_loop()
-            
+
             def append_raw_to_sheet():
                 try:
                     # Get the right worksheet
                     worksheet = self.spreadsheet.worksheet(self.raw_worksheet_name)
-                    
+
                     # Check if headers need to be added (empty sheet)
                     if worksheet.row_count <= 1:  # Only has header or is empty
                         fb_dict = self.raw_feedback[0].dict()
                         headers = list(fb_dict.keys())
                         worksheet.append_row(headers)
-                    
+
                     # Convert feedback to rows and append to sheet
                     rows_to_append = []
                     for feedback in self.raw_feedback:
@@ -277,18 +277,18 @@ class GoogleSheetsLogger(Logger):
                         # Convert all values to strings to avoid type issues
                         row = [str(fb_dict[key]) for key in fb_dict.keys()]
                         rows_to_append.append(row)
-                    
+
                     # Use batch append for better performance
                     if rows_to_append:
                         worksheet.append_rows(rows_to_append)
-                    
+
                     return True
                 except Exception as e:
                     print(f"Error writing raw feedback to Google Sheets in thread: {e}")
                     return False
-            
+
             success = await loop.run_in_executor(None, append_raw_to_sheet)
-            
+
             if success:
                 # Clear the raw feedback list after successful write
                 self.raw_feedback = []
