@@ -25,7 +25,7 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
-from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger, GoogleSheetsLogger
+from rlhfblender.logger import CSVLogger, GoogleSheetsLogger, JSONLogger, SQLLogger
 from rlhfblender.routes import data
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend
