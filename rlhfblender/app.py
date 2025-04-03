@@ -296,8 +296,8 @@ async def load_setup(req: LoadSetupRequest):
         return {"message": "Setup not found."}, 404
 
 
-@app.get("/retreive_logs", tags=["LOGS"])
-async def retreive_logs():
+@app.get("/retrieve_logs", tags=["LOGS"])
+async def retrieve_logs():
     # Return list of CSV files from logs directory, zip them and proide download link
     logs = []
     try:
@@ -312,8 +312,8 @@ async def retreive_logs():
         return {"message": "No logs found."}
 
 
-@app.get("/retreive_demos", tags=["LOGS"])
-async def retreive_demos():
+@app.get("/retrieve_demos", tags=["LOGS"])
+async def retrieve_demos():
     # Return list of CSV files from logs directory, zip them and proide download link
     demos = []
     try:
@@ -328,8 +328,8 @@ async def retreive_demos():
         return {"message": "No demos found."}
 
 
-@app.get("/retreive_feature_feedback", tags=["LOGS"])
-async def retreive_feature_feedback():
+@app.get("/retrieve_feature_feedback", tags=["LOGS"])
+async def retrieve_feature_feedback():
     # Return list of CSV files from logs directory, zip them and proide download link
     feedbacks = []
     try:

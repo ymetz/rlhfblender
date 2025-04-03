@@ -40,6 +40,7 @@ A list of currently supported environments:
   - Atari
   - Minigrid/BabyAI
   - SafetyGym
+  - Mujoco
 
 .. toctree::
    :maxdepth: 1

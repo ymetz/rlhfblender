@@ -306,18 +306,27 @@ async def reset_sampler(request: Request):
     """
     experiment_id = request.query_params.get("experiment_id", None)
     sampling_strategy = request.query_params.get("sampling_strategy", None)
+    
     if experiment_id is None:
         return "No experiment id given"
+        
     experiment: Experiment = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
-    environment = await db_handler.get_single_entry(database, Environment, key=experiment.env_id, key_column="registration_id")
+    environment = await db_handler.get_single_entry(
+        database, Environment, key=experiment.env_id, key_column="registration_id"
+    )
 
-    session_id = request.app.state.logger.reset(experiment, environment)
+    session_id = await request.app.state.logger.reset(experiment, environment)
+    
     print("Resetting sampler:", experiment_id, experiment.env_id, sampling_strategy)
+    
     request.app.state.sampler.set_sampler(
         experiment, environment, request.app.state.logger, sampling_strategy=sampling_strategy
     )
-    request.app.state.feedback_translator.set_translator(experiment, environment, request.app.state.logger)
-
+    
+    request.app.state.feedback_translator.set_translator(
+        experiment, environment, request.app.state.logger
+    )
+    
     return {
         "session_id": session_id,
         "environment_id": experiment.env_id,
