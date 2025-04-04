@@ -12,3 +12,4 @@ seaborn
 opencv-python-headless
 minigrid
 gspread
+umap-learn

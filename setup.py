@@ -42,6 +42,7 @@ setup(
         "databases[sqlite]",
         "python-multipart",
         "gspread",
+        "umap-learn"
     ],
     extras_require={
         "tests": [
