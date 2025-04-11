@@ -16,11 +16,10 @@ class ProjectionHandler:
     """
 
     def __init__(self, projection_method: str = "UMAP", projection_props: dict = None, **kwargs):
-        # Default settings
+
         self.in_fitting = None
         self.set_embedding_method(projection_method, projection_props)
 
-        # For ParametricUMAP, we implement saving/loading of the embedding
         self.save_embedding = False
         self.save_embedding_path = None
 

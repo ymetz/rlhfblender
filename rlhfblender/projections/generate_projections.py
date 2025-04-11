@@ -17,8 +17,13 @@ from scipy import spatial
 from sklearn.cluster import DBSCAN
 from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel
+from databases import Database
 
+from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.projections.projection_handler import ProjectionHandler
+from rlhfblender.data_models.global_models import Experiment
+
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
 class EpisodeID(BaseModel):
@@ -40,9 +45,7 @@ def process_env_name(env_name: str) -> str:
 
 # Function to get available episodes for a given configuration
 def get_available_episodes(
-    env_name: str,
-    benchmark_type: str,
-    benchmark_id: int,
+    experiment: Experiment,
     checkpoint_step: int
 ) -> List[int]:
     """
@@ -58,14 +61,11 @@ def get_available_episodes(
         List of available episode numbers
     """
 
-    if benchmark_type == "random":
-        checkpoint_step = -1  # Random episodes don't have a checkpoint step
-
     base_dir = os.path.join(
         "data",
         "episodes",
-        process_env_name(env_name),
-        f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}"
+        process_env_name(experiment.env_id),
+        f"{process_env_name(experiment.env_id)}_{experiment.id}_{checkpoint_step}"
     )
     
     # Check if directory exists
@@ -703,9 +703,7 @@ async def compute_projection(
 
 # Main function
 async def generate_projections(
-    env_name: str,
-    benchmark_type: str,
-    benchmark_id: int,
+    experiment_id: int,
     checkpoint_step: int,
     projection_method: str = "UMAP",
     sequence_length: int = 1,
@@ -736,16 +734,22 @@ async def generate_projections(
     Returns:
         Projection results
     """
+
+    db_experiment = await get_single_entry(
+        database,
+        Experiment,
+        experiment_id
+    )
+    env_name = process_env_name(db_experiment.env_id)
+
     # Find available episodes
     episode_nums = get_available_episodes(
-        env_name=env_name,
-        benchmark_type=benchmark_type,
-        benchmark_id=benchmark_id,
+        experiment=db_experiment,
         checkpoint_step=checkpoint_step
     )
     
     if not episode_nums:
-        print(f"No episodes found for {env_name} (benchmark_id={benchmark_id}, checkpoint_step={checkpoint_step})")
+        print(f"No episodes found for {env_name} (benchmark_id={experiment_id}, checkpoint_step={checkpoint_step})")
         return {
             "projection": [],
             "labels": [],
@@ -762,8 +766,8 @@ async def generate_projections(
     episodes = [
         EpisodeID(
             env_name=env_name,
-            benchmark_type=benchmark_type,
-            benchmark_id=benchmark_id,
+            benchmark_type="random" if db_experiment.framework == "random" else "trained",
+            benchmark_id=experiment_id,
             checkpoint_step=checkpoint_step,
             episode_num=episode_num
         )
@@ -774,7 +778,7 @@ async def generate_projections(
     episode_data = await load_episode_data(episodes)
 
     # Create projection hash for caching
-    projection_hash = f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}"
+    projection_hash = f"{process_env_name(env_name)}_{experiment_id}_{checkpoint_step}"
     
     # Compute projection
     return await compute_projection(
@@ -837,9 +841,9 @@ if __name__ == "__main__":
     
     # Build projection properties from relevant arguments
     projection_props = {
-        "n_neighbors": args.n_neighbors,
-        "min_dist": args.min_dist,
-        "metric": args.metric,
+        #"n_neighbors": args.n_neighbors,
+        #"min_dist": args.min_dist,
+        #"metric": args.metric,
     }
     
     # Determine save path
@@ -856,9 +860,7 @@ if __name__ == "__main__":
         
         # Run the main projection generation function
         projection_results = asyncio.run(generate_projections(
-            env_name=args.env,
-            benchmark_type=args.benchmark_type,
-            benchmark_id=args.benchmark_id,
+            experiment_id=args.benchmark_id,
             checkpoint_step=args.checkpoint_step,
             projection_method=args.projection_method,
             sequence_length=args.sequence_length,

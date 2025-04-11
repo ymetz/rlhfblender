@@ -15,8 +15,9 @@ from rlhfblender.utils.data_generation import generate_data
 # When enabling other data, make sure to download models as well
 gen_data = {
     "ALE_Breakout-v5": False,
-    "BabyAI-MiniBossLevel-v0": True,
-    "roundabout-v0": True,
+    "BabyAI-MiniBossLevel-v0": False,
+    "roundabout-v0": False,
+    "Ant-v4": True,
 }
 
 if __name__ == "__main__":
@@ -108,3 +109,28 @@ if __name__ == "__main__":
         except Exception as e:
             print(traceback.format_exc())
             print("Error running Highway-Env benchmarks:", e)
+
+    # with random policy
+    if gen_data["Ant-v4"]:
+        # Run benchmarks for Ant
+        benchmark_dicts = [
+            {
+                "env": "Ant-v4",
+                "benchmark_type": "random",
+                "exp": "Ant-v4_random",
+                "checkpoint_step": -1,
+                "n_episodes": 20,
+                "path": os.path.join("rlhfblender_model/Ant-v4"),
+                "framework": "StableBaselines3",
+                "project": "RLHF-Blender",
+            }
+        ]
+
+        try:
+            if not glob.glob(os.path.join("data", "episodes", "Ant-v4", "Ant-v4_*")) or force_recreate_data:
+                asyncio.run(generate_data(benchmark_dicts))
+            else:
+                print("Data already exists for Ant")
+        except Exception as e:
+            print(traceback.format_exc())
+            print("Error running Ant benchmarks:", e)

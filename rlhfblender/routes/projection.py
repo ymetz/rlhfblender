@@ -7,6 +7,7 @@ from databases import Database
 # Import projection computation functions
 # In a real implementation, these would be imported from your module
 # For this example, we'll import from the standalone script
+from rlhfblender.data_models.global_models import Experiment
 from rlhfblender.projections.generate_projections import (
     get_available_episodes,
     load_episode_data,
@@ -14,6 +15,7 @@ from rlhfblender.projections.generate_projections import (
     process_env_name,
     EpisodeID
 )
+from data_handling.database_handler import get_single_entry
 
 # Initialize database
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
@@ -136,40 +138,8 @@ async def get_projection(request: ProjectionRequest):
         raise HTTPException(status_code=500, detail=f"Error computing projection: {e!s}") from e
 
 
-@router.get("/get_available_episodes", response_model=list[int], tags=["PROJECTION"])
-async def api_get_available_episodes(
-    env_name: str,
-    benchmark_type: str,
-    benchmark_id: int,
-    checkpoint_step: int
-):
-    """
-    Find all available episode numbers for a given configuration.
-    
-    Args:
-        env_name: Environment name
-        benchmark_type: Type of benchmark (e.g., 'trained', 'random')
-        benchmark_id: Benchmark ID
-        checkpoint_step: Checkpoint step
-        
-    Returns:
-        List of available episode numbers
-    """
-
-    env_name = process_env_name(env_name)
-
-    return get_available_episodes(
-        env_name=env_name,
-        benchmark_type=benchmark_type,
-        benchmark_id=benchmark_id,
-        checkpoint_step=checkpoint_step
-    )
-
-
 @router.post("/generate_projection", response_model=dict[str, Any], tags=["PROJECTION"])
 async def generate_projection(
-    env_name: str,
-    benchmark_type: str,
     benchmark_id: int,
     checkpoint_step: int,
     projection_method: str = "UMAP",
@@ -185,8 +155,6 @@ async def generate_projection(
     Compute projection for all episodes matching the given parameters.
     
     Args:
-        env_name: Environment name
-        benchmark_type: Type of benchmark (e.g., 'trained', 'random')
         benchmark_id: Benchmark ID
         checkpoint_step: Checkpoint step
         projection_method: Name of projection method to use
@@ -201,14 +169,19 @@ async def generate_projection(
     Returns:
         Projection results
     """
+    print("PARAMS", benchmark_id, checkpoint_step, projection_method, sequence_length, step_range, reproject, use_one_d_projection, append_time, projection_props)
 
-    env_name = process_env_name(env_name)
+    # exp from benchmark_id
+    db_experiment = await get_single_entry(
+        database,
+        Experiment,
+        benchmark_id
+    )
+    env_name = process_env_name(db_experiment.env_id)
 
     # Find available episodes
     episode_nums = get_available_episodes(
-        env_name=env_name,
-        benchmark_type=benchmark_type,
-        benchmark_id=benchmark_id,
+        experiment=db_experiment,
         checkpoint_step=checkpoint_step
     )
     
@@ -230,7 +203,7 @@ async def generate_projection(
     episodes = [
         EpisodeID(
             env_name=env_name,
-            benchmark_type=benchmark_type,
+            benchmark_type="random" if db_experiment.framework == "random" else "trained",
             benchmark_id=benchmark_id,
             checkpoint_step=checkpoint_step,
             episode_num=episode_num
