@@ -5,6 +5,13 @@ from setuptools import find_packages, setup
 with open(os.path.join("rlhfblender", "version.txt")) as file_handler:
     __version__ = file_handler.read().strip()
 
+# Get absolute paths to dependencies
+base_dir = os.path.abspath(os.path.dirname(__file__))
+
+
+def get_abs_path(rel_path):
+    return f"file://{os.path.join(base_dir, rel_path)}"
+
 
 long_description = """
 
@@ -42,7 +49,9 @@ setup(
         "databases[sqlite]",
         "python-multipart",
         "gspread",
-        "umap-learn"
+        "umap-learn",
+        f"multi-type-feedback @ {get_abs_path('multi-type-feedback')}",
+
     ],
     extras_require={
         "tests": [
