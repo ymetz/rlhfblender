@@ -118,16 +118,13 @@ class ProjectionHandler:
         if episode_indices is not None:
             data = np.concatenate((data, np.expand_dims(episode_indices, -1)), axis=1)
         if actions is not None:
-            print("Actions shape: ", actions.shape)
-            print("Data shape: ", data.shape)
-            print("TODO: SKIP FOR NOW")
+            pass
             #data = np.concatenate((data, np.expand_dims(actions, -1)), axis=1)
         if self.save_embedding_path != "" and (self.embedding_method.__class__.__name__ == "ParametricUMAP"):
             # If a pre-trained, we do not need to fit the model again, just call the transform
             self.embedding_method.embedding_ = self.embedding_method.transform(np.squeeze(data))
         else:
             # Fit the embedding method to the data
-            print(data)
             return self.embedding_method.fit_transform(data)
 
         if self.save_embedding and (self.embedding_method.__class__.__name__ == "ParametricUMAP"

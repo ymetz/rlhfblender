@@ -282,6 +282,7 @@ def preprocess_input_data(
     dones = episode_data["dones"]
     renders = episode_data["renders"]
     
+    
     # Apply step range if specified
     if step_range:
         start, end = step_range
@@ -330,9 +331,8 @@ def preprocess_input_data(
                     max_input_val = np.max(embedding_input[0]) if np.max(embedding_input[0]) > 0 else 1
                     episode_indices = episode_indices * max_input_val / max_episode_index
     
-    # Prepare transition input for transition embedding
-    # Using action probabilities as a proxy for transitions
-    if transition_embedding:
+    # Prepare transition input for transition embedding, if props are 0 everywhere, return None
+    if transition_embedding and probs is not None and np.sum(probs) >= 1.0:
         transition_input = probs
     else:
         transition_input = None
@@ -409,7 +409,7 @@ def compute_projections_and_clusters(
     
     # Compute transition projection using UMAP
     print("Computing transition projection")
-    if transition_input and transition_input.shape[0] > 0:
+    if transition_input is not None and transition_input.shape[0] > 0:
         transition_projection = handler.fit(
             np.squeeze(transition_input),
             sequence_length=sequence_length,
@@ -602,6 +602,9 @@ async def compute_projection(
                     "connections": cached_projection["connections"].tolist(),
                     "feature_projection": cached_projection["feature_projection"].tolist(),
                     "transition_projection": cached_projection["transition_projection"].tolist(),
+                    "actions": cached_projection["actions"].tolist(),
+                    "dones": cached_projection["dones"].tolist(),
+                    "episode_indices": cached_projection["episode_indices"].tolist(),
                 }
         
         # Preprocess input data
@@ -638,6 +641,14 @@ async def compute_projection(
         
         # Compute clusters and merged points
         labels, centroids, merged_points, connections = compute_clusters_and_merging(projection_array)
+
+        episode_indices = []
+        current_episode = 0
+        for i, done in enumerate(episode_data["dones"]):
+            episode_indices.append(current_episode)
+            if done:
+                current_episode += 1
+
         
         # Save projection if hash is provided
         if projection_hash is not None:
@@ -654,6 +665,9 @@ async def compute_projection(
                 connections=connections,
                 feature_projection=feature_projection,
                 transition_projection=transition_projection,
+                actions=episode_data["actions"],
+                dones=episode_data["dones"],
+                episode_indices=episode_indices,
             )
         
         # Return results
@@ -665,6 +679,9 @@ async def compute_projection(
             "connections": connections.tolist(),
             "feature_projection": feature_projection.tolist(),
             "transition_projection": transition_projection.tolist(),
+            "actions": episode_data["actions"].tolist(),
+            "dones": episode_data["dones"].tolist(),
+            "episode_indices": episode_indices,
         }
         
     except Exception as e:
@@ -678,6 +695,9 @@ async def compute_projection(
             "connections": [],
             "feature_projection": [],
             "transition_projection": [],
+            "actions": [],
+            "dones": [],
+            "episode_indices": [],
         }
 
 

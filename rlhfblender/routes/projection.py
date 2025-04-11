@@ -21,7 +21,6 @@ database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender
 # Create router
 router = APIRouter(prefix="/projection")
 
-
 class ProjectionRequest(BaseModel):
     """
     Request for projection computation.
@@ -47,7 +46,7 @@ class BenchmarkRetreiveModel(BaseModel):
     checkpoint_step: int = -1
 
 
-@router.get("/get_projection_methods", response_model=list[str], tags=["EMBEDDING"])
+@router.get("/get_projection_methods", response_model=list[str], tags=["PROJECTION"])
 async def get_projection_methods():
     """
     Return a list of all available projection methods.
@@ -57,7 +56,7 @@ async def get_projection_methods():
     return ["UMAP", "PCA", "t-SNE", "ParametricAngleUMAP"]
 
 
-@router.get("/get_projection_method_params", response_model=dict[str, Any], tags=["EMBEDDING"])
+@router.get("/get_projection_method_params", response_model=dict[str, Any], tags=["PROJECTION"])
 async def get_projection_method_params(projection_method: str = "UMAP"):
     """
     Return the parameters for the given projection method.
@@ -92,7 +91,7 @@ async def get_projection_method_params(projection_method: str = "UMAP"):
     return params.get(projection_method, {})
 
 
-@router.post("/current_obs_to_projection", response_model=dict[str, Any], tags=["EMBEDDING"])
+@router.post("/current_obs_to_projection", response_model=dict[str, Any], tags=["PROJECTION"])
 async def get_projection(request: ProjectionRequest):
     """
     Get the projection for a list of episodes.
@@ -112,6 +111,9 @@ async def get_projection(request: ProjectionRequest):
             "connections": [],
             "feature_projection": [],
             "transition_projection": [],
+            "actions": [],
+            "dones": [],
+            "episode_indices": [],
         }
     
     try:
@@ -134,7 +136,7 @@ async def get_projection(request: ProjectionRequest):
         raise HTTPException(status_code=500, detail=f"Error computing projection: {e!s}") from e
 
 
-@router.get("/get_available_episodes", response_model=list[int], tags=["DATA"])
+@router.get("/get_available_episodes", response_model=list[int], tags=["PROJECTION"])
 async def api_get_available_episodes(
     env_name: str,
     benchmark_type: str,
@@ -164,7 +166,7 @@ async def api_get_available_episodes(
     )
 
 
-@router.post("/generate_projection", response_model=dict[str, Any], tags=["EMBEDDING"])
+@router.post("/generate_projection", response_model=dict[str, Any], tags=["PROJECTION"])
 async def generate_projection(
     env_name: str,
     benchmark_type: str,
@@ -178,7 +180,6 @@ async def generate_projection(
     append_time: bool = False,
     projection_props: Dict[str, Any] = {},
     projection_hash: Optional[int] = None,
-    episode_limit: Optional[int] = None
 ):
     """
     Compute projection for all episodes matching the given parameters.
@@ -196,14 +197,13 @@ async def generate_projection(
         append_time: Whether to append time information
         projection_props: Additional projection properties
         projection_hash: Hash for caching projections
-        episode_limit: Maximum number of episodes to include
         
     Returns:
         Projection results
     """
 
     env_name = process_env_name(env_name)
-    
+
     # Find available episodes
     episode_nums = get_available_episodes(
         env_name=env_name,
@@ -221,11 +221,10 @@ async def generate_projection(
             "connections": [],
             "feature_projection": [],
             "transition_projection": [],
+            "actions": [],
+            "dones": [],
+            "episode_indices": [],
         }
-    
-    # Limit the number of episodes if requested
-    if episode_limit is not None and len(episode_nums) > episode_limit:
-        episode_nums = episode_nums[:episode_limit]
     
     # Create episode IDs
     episodes = [

@@ -46,7 +46,7 @@ app = FastAPI(
     version="0.5.0",
 )
 app.include_router(data.router)
-app.include_router(projection.router, prefix="/projection", tags=["PROJECTION"])
+app.include_router(projection.router)
 
 app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_files")), name="files")
 app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")
