@@ -11,7 +11,7 @@ import torch
 from scipy.stats import pearsonr
 from sklearn.cluster import MiniBatchKMeans
 
-from multi_type_feedback.networks import LightningNetwork
+from multi_type_feedback.networks import SingleNetwork
 
 
 def generate_correlation_data(
@@ -88,7 +88,7 @@ def generate_correlation_data(
     device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 
     def reward_fn(reward_model_path):
-        return lambda input: LightningNetwork.load_from_checkpoint(
+        return lambda input: SingleNetwork.load_from_checkpoint(
             reward_model_path, map_location=device
         )(
             torch.as_tensor(

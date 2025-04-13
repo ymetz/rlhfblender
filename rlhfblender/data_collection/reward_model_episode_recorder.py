@@ -1,20 +1,28 @@
+from dataclasses import dataclass
 import os
 import random
 from collections.abc import Callable
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import argparse
 import gymnasium as gym
 import numpy as np
 import torch
 from pydantic import BaseModel
 from stable_baselines3.common.vec_env import VecEnv, VecMonitor, is_vecenv_wrapped
+from databases import Database
+import asyncio
 
 from rlhfblender.data_collection import RecordedEpisodesContainer
 from rlhfblender.data_collection.metrics_processor import process_metrics
-from rlhfblender.data_models.agent import BaseAgent
-from multi_type_feedback.networks import LightningCnnNetwork, LightningNetwork
+from rlhfblender.data_models.agent import BaseAgent, RandomAgent, TrainedAgent
+from multi_type_feedback.networks import SingleCnnNetwork, SingleNetwork
+from rlhfblender.data_handling import database_handler as db_handler
+from rlhfblender.data_models.global_models import Experiment, Environment
+from rlhfblender.data_collection.environment_handler import get_environment
 
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 class BenchmarkSummary(BaseModel):
     benchmark_steps: int = 0
@@ -23,10 +31,21 @@ class BenchmarkSummary(BaseModel):
     additional_metrics: dict
 
 
-class EnhancedRecordedEpisodesContainer(RecordedEpisodesContainer):
-    """Extended version of RecordedEpisodesContainer that includes reward model predictions."""
-    predicted_rewards: np.ndarray = []
-    uncertainties: np.ndarray = []
+@dataclass
+class EnhancedRecordedEpisodesContainer:
+    obs: np.ndarray
+    rewards: np.ndarray
+    dones: np.ndarray
+    actions: np.ndarray
+    infos: np.ndarray
+    renders: np.ndarray
+    features: np.ndarray
+    probs: np.ndarray
+    predicted_rewards: np.ndarray
+    uncertainties: np.ndarray
+    episode_rewards: np.ndarray
+    episode_lengths: np.ndarray
+    additional_metrics: dict[str, Any]
 
 
 class EpisodeRecorder:
@@ -44,6 +63,7 @@ class EpisodeRecorder:
         additional_out_attributes: dict[str, Any] | None = None,
         callback: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
         reward_model_path: str = None,
+        random_reward_model: bool = False,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         self.agent = agent
@@ -58,6 +78,7 @@ class EpisodeRecorder:
         self.additional_out_attributes = additional_out_attributes
         self.callback = callback
         self.reward_model_path = reward_model_path
+        self.random_reward_model = random_reward_model
         self.device = device
 
         # Setup reward model if provided
@@ -103,10 +124,10 @@ class EpisodeRecorder:
         # Check if we need CNN by checking observation space dimensions
         if len(obs_space.shape) > 1 and obs_space.shape[0] > 1 and obs_space.shape[1] > 1:
             # This is likely image observation space (e.g., Atari games)
-            reward_model_cls = LightningCnnNetwork
+            reward_model_cls = SingleCnnNetwork
         else:
             # This is likely a vector observation space (e.g., MuJoCo tasks)
-            reward_model_cls = LightningNetwork
+            reward_model_cls = SingleNetwork
             
         self.reward_model = reward_model_cls.load_from_checkpoint(
             self.reward_model_path, 
@@ -612,3 +633,92 @@ def convert_infos(infos: np.ndarray):
         out_info["episode step"] = i
         out_infos.append(out_info)
     return out_infos
+
+
+if __name__ == "__main__":
+
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--env", type=str, default="CartPole-v1")
+    argparser.add_argument("--exp", type=str, default=None, help="(Optional)  - Load experiment from db")
+    argparser.add_argument("--n_eval_episodes", type=int, default=2)
+    argparser.add_argument("--max_steps", type=int, default=1000)
+    argparser.add_argument("--save_path", type=str, default="data/reward_episodes")
+    argparser.add_argument("--overwrite", action="store_true")
+    argparser.add_argument("--deterministic", action="store_true")
+    argparser.add_argument("--render", action="store_true")
+    argparser.add_argument("--reset_to_initial_state", action="store_true")
+    argparser.add_argument("--policy_path", type=str, default=None)
+    argparser.add_argument("--reward_model_path", type=str, default=None)
+    argparser.add_argument("--random_reward_model", action="store_true")
+    argparser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    args = argparser.parse_args()
+
+    if args.exp:
+        # Load experiment from database
+        async def get_exp_and_env():
+            db_experiment = await db_handler.get_single_entry(
+                database, 
+                Experiment, 
+                key=args.exp, 
+                key_column="exp_name",
+            )
+            db_env = await db_handler.get_single_entry(
+                database, 
+                Environment,
+                key=db_experiment.env_id, 
+                key_column="env_name",
+            )
+            env = get_environment(db_env.registration_id, n_envs=1, environment_config=db_experiment.environment_config, additional_packages=db_env.additional_gym_packages, gym_entry_point=db_env.gym_entry_point)
+            return db_experiment, env
+        
+        db_env, env = asyncio.run(get_exp_and_env())
+    
+    else:
+        env = get_environment(args.env)
+        
+
+    if args.random_reward_model:
+        args.reward_model_path = None
+        agent = RandomAgent(env.observation_space, env.action_space, env=env)
+    else:
+        if args.policy_path:
+            agent = TrainedAgent.load(args.policy_path, env=env, device=args.device)
+        else:
+            raise ValueError("Policy path is required for loading an agent.")
+
+    # Initialize with a reward model path
+    recorder = EpisodeRecorder(
+        agent=agent,
+        env=env,
+        n_eval_episodes=args.n_eval_episodes,
+        max_steps=args.max_steps,
+        save_path=args.save_path,
+        overwrite=args.overwrite,
+        deterministic=args.deterministic,
+        render=args.render,
+        reset_to_initial_state=args.reset_to_initial_state,
+        additional_out_attributes={"additional_info": "example"},
+        callback=None,
+        reward_model_path=args.reward_model_path,
+        device=args.device,
+    )
+
+    # Record episodes - now includes reward model predictions
+    recorder.record_episodes()
+
+    # Load recorded episodes
+    episodes = EpisodeRecorder.load_episodes(recorder.save_path)
+
+    # Convert to feedback dataset format
+    # If you have human feedback:
+    """feedback_data = EpisodeRecorder.convert_to_feedback_dataset(
+        episodes, 
+        feedback_type="evaluative",
+        human_preds=[8.5, 7.2, 9.0]  # Human ratings
+    )"""
+
+    # Or using model predictions:
+    """feedback_data = EpisodeRecorder.convert_to_feedback_dataset(
+        episodes, 
+        feedback_type="evaluative"
+    )"""

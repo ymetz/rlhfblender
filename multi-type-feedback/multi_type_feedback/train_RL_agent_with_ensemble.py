@@ -20,8 +20,8 @@ from multi_type_feedback.utils import TrainingUtils
 import wandb
 from multi_type_feedback.datatypes import FeedbackType
 from multi_type_feedback.networks import (
-    LightningCnnNetwork,
-    LightningNetwork,
+    SingleCnnNetwork,
+    SingleNetwork,
 )
 
 
@@ -30,7 +30,7 @@ class CustomReward(RewardFn):
 
     def __init__(
         self,
-        reward_model_cls: typing.Union[LightningNetwork, LightningCnnNetwork] = None,
+        reward_model_cls: typing.Union[SingleNetwork, SingleCnnNetwork] = None,
         reward_model_paths: list[str] = [],
         vec_env_norm_fn: typing.Callable = None,
         device: str = "cuda",
@@ -206,9 +206,9 @@ def main():
 
     # ================ Load correct reward function model =================
     if "ALE/" in args.environment or "procgen" in args.environment:
-        architecture_cls = LightningCnnNetwork
+        architecture_cls = SingleCnnNetwork
     else:
-        architecture_cls = LightningNetwork
+        architecture_cls = SingleNetwork
 
     # ================ Load correct reward function model ===================
     exp_manager = ExperimentManager(

@@ -22,8 +22,8 @@ import wandb
 from multi_type_feedback.feedback_dataset import BufferDataset, load_flat_buffer_into_feedback_dataset
 from multi_type_feedback.feedback_oracle import FeedbackOracle
 from multi_type_feedback.networks import (
-    LightningCnnNetwork,
-    LightningNetwork,
+    SingleCnnNetwork,
+    SingleNetwork,
     calculate_pairwise_loss,
     calculate_single_reward_loss,
 )

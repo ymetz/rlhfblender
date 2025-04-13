@@ -120,8 +120,8 @@ if __name__ == "__main__":
                 "exp": "Ant-v4_random",
                 "checkpoint_step": -1,
                 "n_episodes": 20,
-                "path": os.path.join("rlhfblender_model/Ant-v4"),
-                "framework": "StableBaselines3",
+                "path": "",
+                "framework": "randoom",
                 "project": "RLHF-Blender",
             }
         ]

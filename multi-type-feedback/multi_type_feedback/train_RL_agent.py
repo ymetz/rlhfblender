@@ -25,8 +25,8 @@ from stable_baselines3.common.utils import set_random_seed
 import wandb
 from multi_type_feedback.datatypes import FeedbackType
 from multi_type_feedback.networks import (
-    LightningCnnNetwork,
-    LightningNetwork,
+    SingleCnnNetwork,
+    SingleNetwork,
     calculate_pairwise_loss,
     calculate_single_reward_loss,
 )
@@ -39,7 +39,7 @@ class CustomReward(RewardFn):
 
     def __init__(
         self,
-        reward_model_cls: typing.Union[LightningNetwork, LightningCnnNetwork] = None,
+        reward_model_cls: typing.Union[SingleNetwork, SingleCnnNetwork] = None,
         reward_model_path: list[str] = [],
         vec_env_norm_fn: typing.Callable = None,
         device: str = "cuda",
@@ -144,9 +144,9 @@ def main():
     )
 
     architecture_cls = (
-        LightningCnnNetwork
+        SingleCnnNetwork
         if "ALE/" in args.environment or "procgen" in args.environment
-        else LightningNetwork
+        else SingleNetwork
     )
 
     exp_manager = ExperimentManager(

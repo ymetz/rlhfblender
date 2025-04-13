@@ -20,8 +20,8 @@ sys.path.append(os.getcwd())
 from multi_type_feedback.datatypes import FeedbackType
 from multi_type_feedback.feedback_dataset import FeedbackDataset, LoadFeedbackDataset
 from multi_type_feedback.networks import (
-    LightningCnnNetwork,
-    LightningNetwork,
+    SingleCnnNetwork,
+    SingleNetwork,
     calculate_pairwise_loss,
     calculate_single_reward_loss,
 )
@@ -115,9 +115,9 @@ def main():
             
             # Set up reward model
             reward_model = (
-                LightningCnnNetwork
+                SingleCnnNetwork
                 if "procgen" in args.env or "ALE" in args.env
-                else LightningNetwork
+                else SingleNetwork
             )(
                 input_spaces=(environment.observation_space, environment.action_space),
                 hidden_dim=256,

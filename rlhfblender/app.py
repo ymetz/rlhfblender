@@ -88,7 +88,7 @@ async def startup():
     startup_script_path = os.path.join("rlhfblender", "startup_script.py")
     if os.path.isfile(startup_script_path):
         print("Running startup script...")
-        os.system(f"python3 {startup_script_path}")
+        os.system(f"python {startup_script_path}")
     else:
         print("No startup script found. Skipping...")
     print("Startup script finished.")
