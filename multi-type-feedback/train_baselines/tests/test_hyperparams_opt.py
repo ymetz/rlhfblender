@@ -78,9 +78,7 @@ def test_optimize_log_path(tmp_path):
     assert os.path.isdir(optimization_log_path)
     # Log folder of the first trial
     assert os.path.isdir(os.path.join(optimization_log_path, "trial_1"))
-    assert os.path.isfile(
-        os.path.join(optimization_log_path, "trial_1", "evaluations.npz")
-    )
+    assert os.path.isfile(os.path.join(optimization_log_path, "trial_1", "evaluations.npz"))
 
     study_path = next(iter(glob.glob(str(tmp_path / algo / "report_*.pkl"))))
     print(study_path)
@@ -125,12 +123,7 @@ def test_multiple_workers(tmp_path):
         workers.append(worker)
 
     study = optuna.load_study(study_name=study_name, storage=storage)
-    assert (
-        len(study.get_trials(states=(TrialState.COMPLETE, TrialState.PRUNED)))
-        == max_trials
-    )
+    assert len(study.get_trials(states=(TrialState.COMPLETE, TrialState.PRUNED))) == max_trials
 
     for worker in workers:
-        assert worker.returncode == 0, "STDOUT:\n{}\nSTDERR:\n{}\n".format(
-            *worker.communicate()
-        )
+        assert worker.returncode == 0, "STDOUT:\n{}\nSTDERR:\n{}\n".format(*worker.communicate())

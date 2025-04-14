@@ -329,6 +329,7 @@ async def reset_sampler(request: Request):
         "environment_id": experiment.env_id,
     }
 
+
 @router.post("/step_sampler")
 async def step_sampler(request: Request):
     """
@@ -339,7 +340,7 @@ async def step_sampler(request: Request):
 
     if session_id is None or exp_id is None:
         return "No session id or experiment id given"
-    
+
     # if trained, the database exp. will have an updated checkpoint list
     updated_experiment = await db_handler.get_single_entry(database, Experiment, key=exp_id)
 
@@ -485,6 +486,7 @@ async def check_demo_connection(session_id: str):
 
 class FeedbackItem(BaseModel):
     """Model for feedback items."""
+
     feedback_type: str
     trajectory_id: int
     value: float
@@ -495,114 +497,94 @@ class FeedbackItem(BaseModel):
 async def train_iteration(request: Request, background_tasks: BackgroundTasks):
     """
     Performs a training iteration for the given experiment: Trains the reward model with the provided feedback,
-    generates new episodes, and then updates the experiment in the database. Returns the uncertainty and average 
+    generates new episodes, and then updates the experiment in the database. Returns the uncertainty and average
     predicted reward.
-    
+
     Args:
         request: The HTTP request
-        
+
     Returns:
         JSON response with submission status
     """
     # Get session_id and experiment_id from query parameters
     session_id = request.query_params.get("session_id", None)
     experiment_id = request.query_params.get("experiment_id", None)
-    
+
     if not session_id:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "Missing session_id parameter"}
-        )
-        
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Missing session_id parameter"})
+
     if not experiment_id:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "Missing experiment_id parameter"}
-        )
-    
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Missing experiment_id parameter"})
+
     # Get experiment from database
     db_handler = request.app.state.db_handler
     database = request.app.state.database
-    
+
     exp = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
     if exp is None:
-        return JSONResponse(
-            status_code=404, 
-            content={"status": "error", "message": "No experiment found"}
-        )
-    
+        return JSONResponse(status_code=404, content={"status": "error", "message": "No experiment found"})
+
     # Check if the feedback translator is initialized
     translator = request.app.state.feedback_translator
-    
+
     # Load feedback from the translator's logger
     in_feedback = translator.logger.read()
-    
+
     handler = RewardModelHandler(exp, session_id)
-    
+
     # Submit feedback for training (non-blocking)
     submission_status = handler.submit_feedback(in_feedback)
-    
-    return JSONResponse(
-        content={
-            "submission_status": submission_status,
-            "session_id": session_id
-        }
-    )
+
+    return JSONResponse(content={"submission_status": submission_status, "session_id": session_id})
 
 
 @router.get("/get_training_status", response_model=dict[str, Any])
 async def get_training_status(request: Request):
     """
     Returns the training status of the current training iteration.
-    
+
     Args:
         request: The HTTP request
-        
+
     Returns:
         Dictionary with training status
     """
     session_id = request.query_params.get("session_id", None)
-    
+
     if session_id is None:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "No session id given"}
-        )
-    
+        return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
+
     # Get handler from cache or create a new one
     handler = RewardModelHandler(None, session_id)
-    
+
     # Get training status
     status = handler.get_training_status()
-    
+
     return status
 
 
 @router.get("/get_training_results", response_model=dict[str, Any])
 async def get_training_results(request: Request):
     """
-    Returns the training results of the current training iteration: 
+    Returns the training results of the current training iteration:
     uncertainty and average predicted reward.
-    
+
     Args:
         request: The HTTP request
-        
+
     Returns:
         Dictionary with training results
     """
     session_id = request.query_params.get("session_id", None)
-    
+
     if session_id is None:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "No session id given"}
-        )
-    
+        return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
+
     handler = RewardModelHandler(None, session_id)
-    
+
     # Get training results
     results = handler.get_training_results()
-    
+
     return results
 
 
@@ -610,46 +592,37 @@ async def get_training_results(request: Request):
 async def collect_initial_episodes(request: Request):
     """
     Collects initial episodes using a random policy.
-    
+
     Args:
         request: The HTTP request
-        
+
     Returns:
         Dictionary with collected episodes
     """
     session_id = request.query_params.get("session_id", None)
     experiment_id = request.query_params.get("experiment_id", None)
     num_episodes = int(request.query_params.get("num_episodes", "10"))
-    
+
     if not session_id:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "Missing session_id parameter"}
-        )
-        
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Missing session_id parameter"})
+
     if not experiment_id:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "Missing experiment_id parameter"}
-        )
-    
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Missing experiment_id parameter"})
+
     # Get experiment from database
     db_handler = request.app.state.db_handler
     database = request.app.state.database
-    
+
     exp = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
     if exp is None:
-        return JSONResponse(
-            status_code=404, 
-            content={"status": "error", "message": "No experiment found"}
-        )
-    
+        return JSONResponse(status_code=404, content={"status": "error", "message": "No experiment found"})
+
     # Get or create handler instance
     handler = RewardModelHandler(exp, session_id)
-    
+
     # Collect initial episodes
     result = handler.initial_episode_collection(num_episodes)
-    
+
     return result
 
 
@@ -657,40 +630,30 @@ async def collect_initial_episodes(request: Request):
 async def evaluate_model(request: Request):
     """
     Evaluates a trained reward model on episodes.
-    
+
     Args:
         request: The HTTP request
-        
+
     Returns:
         Dictionary with evaluation results
     """
     session_id = request.query_params.get("session_id", None)
     model_path = request.query_params.get("model_path", None)
     num_episodes = int(request.query_params.get("num_episodes", "10"))
-    
+
     if session_id is None:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "No session id given"}
-        )
-    
+        return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
+
     if model_path is None:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "No model path given"}
-        )
-    
+        return JSONResponse(status_code=400, content={"status": "error", "message": "No model path given"})
+
     # Get handler from cache or create a new one
-    handler = RewardModelHandler(None, session_id)#
-    
+    handler = RewardModelHandler(None, session_id)  #
+
     # Evaluate model - this would be implemented in the handler
     # For now, return a placeholder
     return {
         "status": "success",
         "message": f"Model evaluation requested for {model_path}",
-        "metrics": {
-            "average_reward": 0.0,
-            "uncertainty": 0.0,
-            "num_episodes": num_episodes
-        }
+        "metrics": {"average_reward": 0.0, "uncertainty": 0.0, "num_episodes": num_episodes},
     }

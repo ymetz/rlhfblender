@@ -2,20 +2,20 @@ import os
 import tempfile
 import time
 import warnings
-import numpy as np
 from copy import deepcopy
 from functools import wraps
 from threading import Thread
-from typing import Optional, Type, Union, Dict, Any
+from typing import Any, Dict, Optional, Type, Union
 
-import optuna
 import gymnasium as gym
+import numpy as np
+import optuna
 from sb3_contrib import TQC
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback, EventCallback
+from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.vec_env import VecEnv
-from stable_baselines3.common.evaluation import evaluate_policy
 
 
 class TrialEvalCallback(EvalCallback):
@@ -140,10 +140,7 @@ class MetaworldCompatibleEvalCallback(EventCallback):
     def _init_callback(self) -> None:
         # Does not work in some corner cases, where the wrapper is not the same
         if not isinstance(self.training_env, type(self.eval_env)):
-            warnings.warn(
-                "Training and eval env are not of the same type"
-                f"{self.training_env} != {self.eval_env}"
-            )
+            warnings.warn("Training and eval env are not of the same type" f"{self.training_env} != {self.eval_env}")
 
         # Create folders if needed
         if self.best_model_save_path is not None:
@@ -155,9 +152,7 @@ class MetaworldCompatibleEvalCallback(EventCallback):
         if self.callback_on_new_best is not None:
             self.callback_on_new_best.init_callback(self.model)
 
-    def _log_success_callback(
-        self, locals_: Dict[str, Any], globals_: Dict[str, Any]
-    ) -> None:
+    def _log_success_callback(self, locals_: Dict[str, Any], globals_: Dict[str, Any]) -> None:
         """
         Callback passed to the  ``evaluate_policy`` function
         in order to log the success rate (when applicable),
@@ -225,16 +220,11 @@ class MetaworldCompatibleEvalCallback(EventCallback):
                 )
 
             mean_reward, std_reward = np.mean(episode_rewards), np.std(episode_rewards)
-            mean_ep_length, std_ep_length = np.mean(episode_lengths), np.std(
-                episode_lengths
-            )
+            mean_ep_length, std_ep_length = np.mean(episode_lengths), np.std(episode_lengths)
             self.last_mean_reward = float(mean_reward)
 
             if self.verbose >= 1:
-                print(
-                    f"Eval num_timesteps={self.num_timesteps}, "
-                    f"episode_reward={mean_reward:.2f} +/- {std_reward:.2f}"
-                )
+                print(f"Eval num_timesteps={self.num_timesteps}, " f"episode_reward={mean_reward:.2f} +/- {std_reward:.2f}")
                 print(f"Episode length: {mean_ep_length:.2f} +/- {std_ep_length:.2f}")
             # Add to current Logger
             self.logger.record("eval/mean_reward", float(mean_reward))
@@ -247,18 +237,14 @@ class MetaworldCompatibleEvalCallback(EventCallback):
                 self.logger.record("eval/success_rate", success_rate)
 
             # Dump log so the evaluation results are printed with the correct timestep
-            self.logger.record(
-                "time/total_timesteps", self.num_timesteps, exclude="tensorboard"
-            )
+            self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
             self.logger.dump(self.num_timesteps)
 
             if mean_reward > self.best_mean_reward:
                 if self.verbose >= 1:
                     print("New best mean reward!")
                 if self.best_model_save_path is not None:
-                    self.model.save(
-                        os.path.join(self.best_model_save_path, "best_model")
-                    )
+                    self.model.save(os.path.join(self.best_model_save_path, "best_model"))
                 self.best_mean_reward = float(mean_reward)
                 # Trigger callback on new best model, if needed
                 if self.callback_on_new_best is not None:
@@ -313,9 +299,7 @@ class SaveVecNormalizeCallback(BaseCallback):
 
         if self.n_calls % self.save_freq == 0:
             if self.name_prefix is not None:
-                path = os.path.join(
-                    self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.pkl"
-                )
+                path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.pkl")
             else:
                 path = os.path.join(self.save_path, "vecnormalize.pkl")
             if self.model.get_vec_normalize_env() is not None:
@@ -343,9 +327,7 @@ class ParallelTrainCallback(BaseCallback):
     :param sleep_time: Limit the fps in the thread collecting experience.
     """
 
-    def __init__(
-        self, gradient_steps: int = 100, verbose: int = 0, sleep_time: float = 0.0
-    ):
+    def __init__(self, gradient_steps: int = 100, verbose: int = 0, sleep_time: float = 0.0):
         super().__init__(verbose)
         self.batch_size = 0
         self._model_ready = True
@@ -364,9 +346,7 @@ class ParallelTrainCallback(BaseCallback):
             temp_file = os.path.join("logs", "model_tmp.zip")  # type: ignore[arg-type,assignment]
 
         # make mypy happy
-        assert isinstance(
-            self.model, (SAC, TQC)
-        ), f"{self.model} is not supported for parallel training"
+        assert isinstance(self.model, (SAC, TQC)), f"{self.model} is not supported for parallel training"
 
         self.model.save(temp_file)  # type: ignore[arg-type]
 
@@ -376,9 +356,7 @@ class ParallelTrainCallback(BaseCallback):
                 self.model_class = model_class  # type: ignore[assignment]
                 break
 
-        assert (
-            self.model_class is not None
-        ), f"{self.model} is not supported for parallel training"
+        assert self.model_class is not None, f"{self.model} is not supported for parallel training"
         self._model = self.model_class.load(temp_file)  # type: ignore[arg-type]
 
         self.batch_size = self._model.batch_size
@@ -412,9 +390,7 @@ class ParallelTrainCallback(BaseCallback):
         self.process.start()
 
     def _train_thread(self) -> None:
-        self._model.train(
-            gradient_steps=self.gradient_steps, batch_size=self.batch_size
-        )
+        self._model.train(gradient_steps=self.gradient_steps, batch_size=self.batch_size)
         self._model_ready = True
 
     def _on_step(self) -> bool:
@@ -461,9 +437,7 @@ class RawStatisticsCallback(BaseCallback):
         for out_format in self.logger.output_formats:
             if isinstance(out_format, TensorBoardOutputFormat):
                 self._tensorboard_writer = out_format
-        assert (
-            self._tensorboard_writer is not None
-        ), "You must activate tensorboard logging when using RawStatisticsCallback"
+        assert self._tensorboard_writer is not None, "You must activate tensorboard logging when using RawStatisticsCallback"
 
     def _on_step(self) -> bool:
         for info in self.locals["infos"]:
@@ -474,8 +448,6 @@ class RawStatisticsCallback(BaseCallback):
                 }
                 exclude_dict = {key: None for key in logger_dict.keys()}
                 self._timesteps_counter += info["episode"]["l"]
-                self._tensorboard_writer.write(
-                    logger_dict, exclude_dict, self._timesteps_counter
-                )
+                self._tensorboard_writer.write(logger_dict, exclude_dict, self._timesteps_counter)
 
         return True

@@ -1,10 +1,11 @@
-import yaml
-import os
 import argparse
-import numpy as np
+import os
 import traceback
-import pandas as pd
 from typing import List, Optional
+
+import numpy as np
+import pandas as pd
+import yaml
 
 yaml.add_multi_constructor("!!", lambda loader, suffix, node: None)
 yaml.add_multi_constructor(
@@ -13,26 +14,27 @@ yaml.add_multi_constructor(
     Loader=yaml.SafeLoader,
 )
 
+
 def collect_results(
     model_base_path: str = "gt_agents",  # Updated default path
     algorithms: List[str] = ["ppo", "sac"],
     output_dir: Optional[str] = None,
-    full_param_df: bool = False
+    full_param_df: bool = False,
 ) -> pd.DataFrame:
     """
     Collect and process results from multiple algorithm runs.
-    
+
     Args:
         model_base_path: Base path for model results
         algorithms: List of algorithms to process
         output_dir: Directory to save results (if None, uses model_base_path)
-        
+
     Returns:
         DataFrame containing processed results
     """
     if not os.path.isabs(model_base_path):
         model_base_path = os.path.abspath(model_base_path)
-    
+
     # Process each algorithm
     all_results = pd.DataFrame()
     if len(algorithms) > 0:
@@ -43,7 +45,7 @@ def collect_results(
     else:
         algorithm_df = process_algorithm_results(model_base_path, None, full_param_df=full_param_df)
         all_results = pd.concat([all_results, algorithm_df], ignore_index=True)
-    
+
     # Sort and save results
     if not all_results.empty:
         all_results = all_results.sort_values(["environment", "algorithm"])
@@ -56,8 +58,9 @@ def collect_results(
         print(f"Results saved to: {output_path}")
     else:
         print("No results were collected!")
-    
+
     return all_results
+
 
 def process_algorithm_results(model_base_path: str, algorithm: str = None, full_param_df: bool = False) -> pd.DataFrame:
     """Process results for a single algorithm."""
@@ -69,7 +72,7 @@ def process_algorithm_results(model_base_path: str, algorithm: str = None, full_
     if not os.path.exists(algorithm_path):
         print(f"Path not found for algorithm {algorithm}: {algorithm_path}")
         return df
-    
+
     for run_dir in os.listdir(algorithm_path):
         if "." in run_dir:
             # for ipython-checkpoints etc.
@@ -83,7 +86,7 @@ def process_algorithm_results(model_base_path: str, algorithm: str = None, full_
             if not os.path.isfile(args_path):
                 print(f"Args file not found: {args_path}")
                 continue
-                
+
             # Read YAML files
             with open(args_path) as theyaml:
                 next(theyaml)  # Skip first line
@@ -91,18 +94,18 @@ def process_algorithm_results(model_base_path: str, algorithm: str = None, full_
             with open(config_path) as theyaml:
                 next(theyaml)  # Skip first line
                 config = yaml.safe_load(theyaml)
-                
+
             # Combine all parameters
             the_dict = {}
             for elem in run_arguments[0]:
                 the_dict[elem[0]] = elem[1]
             for elem in config[0]:
                 the_dict[elem[0]] = elem[1]
-                
+
             # Load evaluation results
             eval_path = os.path.join(full_run_dir, "evaluations.npz")
             evals = np.mean(np.load(eval_path)["results"][-1])
-            
+
             # Create result dictionary
             if not full_param_df:
                 result_dict = {
@@ -112,7 +115,7 @@ def process_algorithm_results(model_base_path: str, algorithm: str = None, full_
                     "seed": the_dict["seed"],
                     "eval_score": evals,
                 }
-            else:                
+            else:
                 result_dict = {
                     **the_dict,
                     "algorithm": the_dict["algorithm"] if "algorithm" in the_dict else the_dict["algo"],
@@ -121,7 +124,7 @@ def process_algorithm_results(model_base_path: str, algorithm: str = None, full_
                     "seed": the_dict["seed"],
                     "eval_score": evals,
                 }
-            
+
             # Append to dataframe
             df = pd.concat([df, pd.DataFrame([result_dict])], ignore_index=True)
         except Exception as e:
@@ -129,6 +132,7 @@ def process_algorithm_results(model_base_path: str, algorithm: str = None, full_
             print(traceback.format_exc())
             continue
     return df
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -147,9 +151,10 @@ def main():
         default=None,
         help="Directory to save results (default: same as model-base-path)",
     )
-    
+
     args = parser.parse_args()
     collect_results(args.model_base_path, args.algorithms, args.output_dir)
+
 
 if __name__ == "__main__":
     main()

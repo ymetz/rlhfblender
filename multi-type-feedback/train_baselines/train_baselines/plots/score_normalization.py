@@ -33,9 +33,7 @@ reference_scores = [
 #     ReferenceScore("Walker2DBulletEnv-v0", 500, 2500),
 # ]
 
-min_max_score_per_env = {
-    reference_score.env_id: reference_score for reference_score in reference_scores
-}
+min_max_score_per_env = {reference_score.env_id: reference_score for reference_score in reference_scores}
 
 
 def normalize_score(score: np.ndarray, env_id: str) -> np.ndarray:

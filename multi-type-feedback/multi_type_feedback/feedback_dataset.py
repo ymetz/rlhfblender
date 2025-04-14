@@ -1,13 +1,35 @@
+import os
 import pickle
-from typing import List, Tuple, Union
+import random
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from numpy.typing import NDArray
-from scipy.stats import truncnorm, uniform
+from scipy.stats import truncnorm
 from torch.utils.data import Dataset
 
 from multi_type_feedback.datatypes import FeedbackData, FeedbackType, SegmentT
+
+# backwards compatibility
+discount_factors = {
+    "HalfCheetah-v5": 0.98,
+    "Hopper-v5": 0.99,
+    "Swimmer-v5": 0.9999,
+    "Ant-v5": 0.99,
+    "Walker2d-v5": 0.99,
+    "ALE/BeamRider-v5": 0.99,
+    "ALE/MsPacman-v5": 0.99,
+    "ALE/Enduro-v5": 0.99,
+    "ALE/Pong-v5": 0.99,
+    "Humanoid-v5": 0.99,
+    "highway-fast-v0": 0.8,
+    "merge-v0": 0.8,
+    "roundabout-v0": 0.8,
+    "metaworld-sweep-into-v2": 0.99,
+    "metaworld-button-press-v2": 0.99,
+    "metaworld-pick-place-v2": 0.99,
+}
 
 
 def truncated_uniform_vectorized(mean, width, low=0, upp=9):
@@ -38,21 +60,21 @@ def truncated_gaussian_vectorized(mean, width, low=0, upp=9, min_width=1e-6):
     scalar_input = np.isscalar(mean) and np.isscalar(width)
     mean = np.atleast_1d(mean)
     width = np.atleast_1d(width)
-    
+
     # Ensure width is positive to avoid numerical issues
     width = np.maximum(width, min_width)
-    
+
     # Calculate the bounds of the distribution
-    lower = np.maximum(mean - width/2, low)
-    upper = np.minimum(mean + width/2, upp)
-    
+    lower = np.maximum(mean - width / 2, low)
+    upper = np.minimum(mean + width / 2, upp)
+
     # Calculate parameters for truncated normal distribution
-    a = (lower - mean) / (width/4)  # 4 sigma range
-    b = (upper - mean) / (width/4)
-    
+    a = (lower - mean) / (width / 4)  # 4 sigma range
+    b = (upper - mean) / (width / 4)
+
     # Generate samples from truncated normal distribution
-    result = truncnorm.rvs(a, b, loc=mean, scale=width/4, size=mean.shape)
-    
+    result = truncnorm.rvs(a, b, loc=mean, scale=width / 4, size=mean.shape)
+
     return result[0] if scalar_input else result
 
 
@@ -74,6 +96,7 @@ class FeedbackDataset(Dataset):
         env=None,
         seed: int = 1234,
         zero_tolerance: float = 1e6,
+        discount_factor: Optional[float] = None,
     ):
         """Initialize dataset."""
         print("Loading dataset...")
@@ -96,17 +119,17 @@ class FeedbackDataset(Dataset):
                 obs = torch.vstack([torch.as_tensor(p[0]).float() for p in seg])
                 actions = torch.vstack([torch.as_tensor(p[1]).float() for p in seg])
 
-                # Pad both trajectories to the maximum length
-                len_obs = obs.size(0)
+                # Create mask (1 for valid entries, 0 for padded entries)
+                mask = torch.ones(len(seg)).unsqueeze(-1)
 
-                if len_obs < segment_len:
-                    pad_size = segment_len - len_obs
+                # Pad if necessary
+                if len(seg) < segment_len:
+                    pad_size = segment_len - len(seg)
                     obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
+                    actions = torch.cat([actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0)
+                    mask = torch.cat([mask, torch.zeros(pad_size, 1)], dim=0)
 
-                self.targets.append((obs, actions))
+                self.targets.append((obs, actions, mask))
 
             self.preds = feedback_data["ratings"]
             # add noise to the ratings
@@ -120,59 +143,37 @@ class FeedbackDataset(Dataset):
                 )
         elif feedback_type == "comparative":
 
-            rews_min, rews_max = np.min(
+            rews_min, rews_max = np.min([e * -1 for e in feedback_data["opt_gaps"]]), np.max(
                 [e * -1 for e in feedback_data["opt_gaps"]]
-            ), np.max([e * -1 for e in feedback_data["opt_gaps"]])
+            )
             ref_diff = np.abs(rews_max - rews_min)
 
             flipped = 0
             for comp in feedback_data["preferences"]:
                 # seg 1
-                obs = torch.vstack(
-                    [
-                        torch.as_tensor(p[0]).float()
-                        for p in feedback_data["segments"][comp[0]]
-                    ]
-                )
-                actions = torch.vstack(
-                    [
-                        torch.as_tensor(p[1]).float()
-                        for p in feedback_data["segments"][comp[0]]
-                    ]
-                )
+                seg1 = feedback_data["segments"][comp[0]]
+                obs = torch.vstack([torch.as_tensor(p[0]).float() for p in seg1])
+                actions = torch.vstack([torch.as_tensor(p[1]).float() for p in seg1])
+                mask1 = torch.ones(len(seg1)).unsqueeze(-1)
 
                 # seg 2
-                obs2 = torch.vstack(
-                    [
-                        torch.as_tensor(p[0]).float()
-                        for p in feedback_data["segments"][comp[1]]
-                    ]
-                )
-                actions2 = torch.vstack(
-                    [
-                        torch.as_tensor(p[1]).float()
-                        for p in feedback_data["segments"][comp[1]]
-                    ]
-                )
+                seg2 = feedback_data["segments"][comp[1]]
+                obs2 = torch.vstack([torch.as_tensor(p[0]).float() for p in seg2])
+                actions2 = torch.vstack([torch.as_tensor(p[1]).float() for p in seg2])
+                mask2 = torch.ones(len(seg2)).unsqueeze(-1)
 
-                # Pad both trajectories to the maximum length, necessary for batching with data loader
-                len_obs = obs.size(0)
-                len_obs2 = obs2.size(0)
-
-                if len_obs < segment_len:
-                    pad_size = segment_len - len_obs
+                # Pad both trajectories to the maximum length with masks
+                if len(seg1) < segment_len:
+                    pad_size = segment_len - len(seg1)
                     obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
-                if len_obs2 < segment_len:
-                    pad_size = segment_len - len_obs2
-                    obs2 = torch.cat(
-                        [obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0
-                    )
-                    actions2 = torch.cat(
-                        [actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0
-                    )
+                    actions = torch.cat([actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0)
+                    mask1 = torch.cat([mask1, torch.zeros(pad_size, 1)], dim=0)
+
+                if len(seg2) < segment_len:
+                    pad_size = segment_len - len(seg2)
+                    obs2 = torch.cat([obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0)
+                    actions2 = torch.cat([actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0)
+                    mask2 = torch.cat([mask2, torch.zeros(pad_size, 1)], dim=0)
 
                 # add noise and recompute preferences
                 if noise_level > 0:
@@ -193,20 +194,18 @@ class FeedbackDataset(Dataset):
                     )
 
                     if rew2 > rew1:
-                        self.targets.append(((obs, actions), (obs2, actions2)))
+                        self.targets.append(((obs, actions, mask1), (obs2, actions2, mask2)))
                     else:
-                        self.targets.append(((obs2, actions2), (obs, actions)))
+                        self.targets.append(((obs2, actions2, mask2), (obs, actions, mask1)))
                         flipped += 1
                     self.preds.append(comp[2])
                 else:
-                    self.targets.append(((obs, actions), (obs2, actions2)))
+                    self.targets.append(((obs, actions, mask1), (obs2, actions2, mask2)))
                     self.preds.append(comp[2])
 
         elif feedback_type == "demonstrative":
 
-            with open(
-                os.path.join("samples", f"random_{env_name}.pkl"), "rb"
-            ) as random_file:
+            with open(os.path.join("samples", f"random_{env_name}.pkl"), "rb") as random_file:
                 random_data = pickle.load(random_file)
 
             for demo in feedback_data["demos"]:
@@ -214,14 +213,13 @@ class FeedbackDataset(Dataset):
                 actions = np.vstack([p[1] for p in demo])
 
                 if noise_level > 0.0:
-
                     # Calculate statistics across all data points, keeping the feature dimensions
                     obs_min, obs_max, obs_std = np.min(obs, axis=0), np.max(obs, axis=0), np.std(obs, axis=0)
                     non_zero_obs_std = obs_std > zero_tolerance
 
                     acts_min, acts_max, acts_std = np.min(actions, axis=0), np.max(actions, axis=0), np.std(actions, axis=0)
                     non_zero_acts_std = acts_std > zero_tolerance
-                    
+
                     # Process each batch separately
                     noisy_obs = []
                     noisy_actions = []
@@ -229,12 +227,12 @@ class FeedbackDataset(Dataset):
                     # TODO: Check if this for loop is actually necessary...shouldn't it just work as a batch
                     for i in range(obs.shape[0]):
                         # Add noise to each batch independently
-                        
+
                         obs_for_noise = obs[i]
                         if np.any(non_zero_obs_std):
                             obs_for_noise[:, non_zero_obs_std] = truncated_gaussian_vectorized(
-                                mean=obs_for_noise[:, non_zero_obs_std], 
-                                width=np.array(noise_level) * obs_std[non_zero_obs_std], 
+                                mean=obs_for_noise[:, non_zero_obs_std],
+                                width=np.array(noise_level) * obs_std[non_zero_obs_std],
                                 low=obs_min[non_zero_obs_std],
                                 upp=obs_max[non_zero_obs_std],
                             )
@@ -243,8 +241,8 @@ class FeedbackDataset(Dataset):
                         acts_for_noise = actions[i]
                         if np.any(non_zero_acts_std):
                             acts_for_noise[:, non_zero_acts_std] = truncated_gaussian_vectorized(
-                                mean=acts_for_noise[:, non_zero_acts_std], 
-                                width=np.array(noise_level) * acts_std[non_zero_acts_std], 
+                                mean=acts_for_noise[:, non_zero_acts_std],
+                                width=np.array(noise_level) * acts_std[non_zero_acts_std],
                                 low=acts_min[non_zero_acts_std],
                                 upp=acts_max[non_zero_acts_std],
                             )
@@ -255,91 +253,69 @@ class FeedbackDataset(Dataset):
 
                 obs = torch.as_tensor(obs).float()
                 actions = torch.as_tensor(actions).float()
+                mask_demo = torch.ones(len(demo)).unsqueeze(-1)
 
                 # just use a random segment as the opposite
                 rand_index = random.randrange(0, len(random_data["segments"]))
-                obs_rand = torch.vstack(
-                    [
-                        torch.as_tensor(p[0]).float()
-                        for p in random_data["segments"][rand_index]
-                    ]
-                )
-                actions_rand = torch.vstack(
-                    [
-                        torch.as_tensor(p[1]).float()
-                        for p in random_data["segments"][rand_index]
-                    ]
-                )
+                rand_seg = random_data["segments"][rand_index]
+                obs_rand = torch.vstack([torch.as_tensor(p[0]).float() for p in rand_seg])
+                actions_rand = torch.vstack([torch.as_tensor(p[1]).float() for p in rand_seg])
+                mask_rand = torch.ones(len(rand_seg)).unsqueeze(-1)
 
-                # Pad both trajectories to the maximum length
-                len_obs = obs.size(0)
-                len_obs_rand = obs_rand.size(0)
-
-                if len_obs < segment_len:
-                    pad_size = segment_len - len_obs
+                # Pad both trajectories if necessary
+                if len(demo) < segment_len:
+                    pad_size = segment_len - len(demo)
                     obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
-                if len_obs_rand < segment_len:
-                    pad_size = segment_len - len_obs_rand
-                    obs_rand = torch.cat(
-                        [obs_rand, torch.zeros(pad_size, *obs_rand.shape[1:])], dim=0
-                    )
-                    actions_rand = torch.cat(
-                        [actions_rand, torch.zeros(pad_size, *actions_rand.shape[1:])],
-                        dim=0,
-                    )
+                    actions = torch.cat([actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0)
+                    mask_demo = torch.cat([mask_demo, torch.zeros(pad_size, 1)], dim=0)
 
-                self.targets.append(((obs_rand, actions_rand), (obs, actions)))
-                self.preds.append(
-                    1
-                )  # assume that the demonstration is optimal, maybe add confidence value (based on regret)
+                if len(rand_seg) < segment_len:
+                    pad_size = segment_len - len(rand_seg)
+                    obs_rand = torch.cat([obs_rand, torch.zeros(pad_size, *obs_rand.shape[1:])], dim=0)
+                    actions_rand = torch.cat([actions_rand, torch.zeros(pad_size, *actions_rand.shape[1:])], dim=0)
+                    mask_rand = torch.cat([mask_rand, torch.zeros(pad_size, 1)], dim=0)
+
+                self.targets.append(((obs_rand, actions_rand, mask_rand), (obs, actions, mask_demo)))
+                self.preds.append(1)  # assume that the demonstration is optimal
+
         elif feedback_type == "corrective":
-
-            rews_min, rews_max = np.min(
+            rews_min, rews_max = np.min([e * -1 for e in feedback_data["opt_gaps"]]), np.max(
                 [e * -1 for e in feedback_data["opt_gaps"]]
-            ), np.max([e * -1 for e in feedback_data["opt_gaps"]])
+            )
             rew_diff = np.abs(rews_max - rews_min)
             gamma = discount_factors[env_name]
 
             flipped = 0
             for comp in feedback_data["corrections"]:
-                obs = torch.vstack([torch.as_tensor(p[0]).float() for p in comp[0]])
-                actions = torch.vstack([torch.as_tensor(p[1]).float() for p in comp[0]])
+                # Original trajectory
+                traj1 = comp[0]
+                obs = torch.vstack([torch.as_tensor(p[0]).float() for p in traj1])
+                actions = torch.vstack([torch.as_tensor(p[1]).float() for p in traj1])
+                mask1 = torch.ones(len(traj1)).unsqueeze(-1)
 
-                obs2 = torch.vstack([torch.as_tensor(p[0]).float() for p in comp[1]])
-                actions2 = torch.vstack(
-                    [torch.as_tensor(p[1]).float() for p in comp[1]]
-                )
+                # Corrected trajectory
+                traj2 = comp[1]
+                obs2 = torch.vstack([torch.as_tensor(p[0]).float() for p in traj2])
+                actions2 = torch.vstack([torch.as_tensor(p[1]).float() for p in traj2])
+                mask2 = torch.ones(len(traj2)).unsqueeze(-1)
 
                 # Pad both trajectories to the maximum length
-                len_obs = obs.size(0)
-                len_obs2 = obs2.size(0)
-
-                if len_obs < segment_len:
-                    pad_size = segment_len - len_obs
+                if len(traj1) < segment_len:
+                    pad_size = segment_len - len(traj1)
                     obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
-                if len_obs2 < segment_len:
-                    pad_size = segment_len - len_obs2
-                    obs2 = torch.cat(
-                        [obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0
-                    )
-                    actions2 = torch.cat(
-                        [actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0
-                    )
+                    actions = torch.cat([actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0)
+                    mask1 = torch.cat([mask1, torch.zeros(pad_size, 1)], dim=0)
+
+                if len(traj2) < segment_len:
+                    pad_size = segment_len - len(traj2)
+                    obs2 = torch.cat([obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0)
+                    actions2 = torch.cat([actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0)
+                    mask2 = torch.cat([mask2, torch.zeros(pad_size, 1)], dim=0)
 
                 # add noise and recompute preferences
                 if noise_level > 0.0:
-                    rews1 = discounted_sum_numpy(
-                        np.array([p[2] for p in comp[0]]), gamma
-                    )
-                    rews2 = discounted_sum_numpy(
-                        np.array([p[2] for p in comp[1]]), gamma
-                    )
+                    rews1 = discounted_sum_numpy(np.array([p[2] for p in traj1]), gamma)
+                    rews2 = discounted_sum_numpy(np.array([p[2] for p in traj2]), gamma)
 
                     rew1 = truncated_gaussian_vectorized(
                         mean=rews1,
@@ -355,24 +331,30 @@ class FeedbackDataset(Dataset):
                     ).item()
 
                     if rew2 > rew1:
-                        self.targets.append(((obs, actions), (obs2, actions2)))
+                        self.targets.append(((obs, actions, mask1), (obs2, actions2, mask2)))
                     else:
-                        self.targets.append(((obs2, actions2), (obs, actions)))
+                        self.targets.append(((obs2, actions2, mask2), (obs, actions, mask1)))
                         flipped += 1
                     self.preds.append(1)
                 else:
-                    self.targets.append(((obs, actions), (obs2, actions2)))
+                    self.targets.append(((obs, actions, mask1), (obs2, actions2, mask2)))
                     self.preds.append(1)
+
         elif feedback_type == "descriptive":
             cluster_rews = np.array([cr[2] for cr in feedback_data["description"]])
             cluster_rew_min, cluster_rew_max = cluster_rews.min(), cluster_rews.max()
             cluster_rew_diff = np.abs(cluster_rew_max - cluster_rew_min)
 
             for cluster_representative in feedback_data["description"]:
+                # For descriptive feedback, we need to create a similar mask structure
+                # but since it's just a single step, we use a mask of shape [1, 1] with value 1
+                mask = torch.ones(1).unsqueeze(-1)
+
                 self.targets.append(
                     (
                         torch.as_tensor(cluster_representative[0]).unsqueeze(0).float(),
                         torch.as_tensor(cluster_representative[1]).unsqueeze(0).float(),
+                        mask,
                     )
                 )
 
@@ -386,6 +368,7 @@ class FeedbackDataset(Dataset):
                     self.preds.append(rew.item())
                 else:
                     self.preds.append(cluster_representative[2])
+
         elif feedback_type == "descriptive_preference":
             cluster_rews = np.array([cr[2] for cr in feedback_data["description"]])
             cluster_rew_min, cluster_rew_max = cluster_rews.min(), cluster_rews.max()
@@ -394,32 +377,19 @@ class FeedbackDataset(Dataset):
             flipped = 0
             for cpref in feedback_data["description_preference"]:
                 idx_1 = cpref[0]
-
-                # cluster 1
-                obs = (
-                    torch.as_tensor(feedback_data["description"][idx_1][0])
-                    .unsqueeze(0)
-                    .float()
-                )
-                actions = (
-                    torch.as_tensor(feedback_data["description"][idx_1][1])
-                    .unsqueeze(0)
-                    .float()
-                )
-
                 idx_2 = cpref[1]
 
+                # For each cluster representative, create a mask
+                mask1 = torch.ones(1).unsqueeze(-1)
+                mask2 = torch.ones(1).unsqueeze(-1)
+
+                # cluster 1
+                obs = torch.as_tensor(feedback_data["description"][idx_1][0]).unsqueeze(0).float()
+                actions = torch.as_tensor(feedback_data["description"][idx_1][1]).unsqueeze(0).float()
+
                 # cluster 2
-                obs2 = (
-                    torch.as_tensor(feedback_data["description"][idx_2][0])
-                    .unsqueeze(0)
-                    .float()
-                )
-                actions2 = (
-                    torch.as_tensor(feedback_data["description"][idx_2][1])
-                    .unsqueeze(0)
-                    .float()
-                )
+                obs2 = torch.as_tensor(feedback_data["description"][idx_2][0]).unsqueeze(0).float()
+                actions2 = torch.as_tensor(feedback_data["description"][idx_2][1]).unsqueeze(0).float()
 
                 # add noise and recompute preferences
                 if noise_level > 0:
@@ -440,13 +410,13 @@ class FeedbackDataset(Dataset):
                     ).item()
 
                     if rew2 > rew1:
-                        self.targets.append(((obs, actions), (obs2, actions2)))
+                        self.targets.append(((obs, actions, mask1), (obs2, actions2, mask2)))
                     else:
-                        self.targets.append(((obs2, actions2), (obs, actions)))
+                        self.targets.append(((obs2, actions2, mask2), (obs, actions, mask1)))
                         flipped += 1
                     self.preds.append(cpref[2])
                 else:
-                    self.targets.append(((obs, actions), (obs2, actions2)))
+                    self.targets.append(((obs, actions, mask1), (obs2, actions2, mask2)))
                     self.preds.append(cpref[2])
         else:
             raise NotImplementedError("Dataset not implemented for this feedback type.")
@@ -472,7 +442,7 @@ class FeedbackDataset(Dataset):
 
 
 class LoadFeedbackDataset(FeedbackDataset):
-    """ Load feedback dataset from file. """
+    """Load feedback dataset from file."""
 
     def __init__(
         self,
@@ -484,6 +454,7 @@ class LoadFeedbackDataset(FeedbackDataset):
         segment_len: int = 50,
         env=None,
         seed: int = 1234,
+        discount_factor: Optional[float] = None,
     ):
 
         with open(dataset_path, "rb") as feedback_file:
@@ -498,15 +469,13 @@ class LoadFeedbackDataset(FeedbackDataset):
             segment_len,
             env,
             seed,
+            discount_factor=discount_factor,
         )
 
 
 class BufferDataset(Dataset):
 
-    def __init__(
-        self,
-        buffer
-    ):
+    def __init__(self, buffer):
         self.buffer = buffer
 
     def __len__(self):
@@ -515,7 +484,7 @@ class BufferDataset(Dataset):
 
     def __getitem__(self, index):
         """Return item with given index."""
-        return self.buffer[index]    
+        return self.buffer[index]
 
 
 FEEDBACK_TYPE_TO_KEY = {
@@ -524,12 +493,11 @@ FEEDBACK_TYPE_TO_KEY = {
     "demonstrative": "demos",
     "corrective": "corrections",
     "descriptive": "description",
-    "descriptive_preference": "description_preference"
+    "descriptive_preference": "description_preference",
 }
 
-def load_flat_buffer_into_feedback_dataset(
-    feedback_buffer: List[SegmentT], feedback_type: FeedbackType
-) -> dict:
+
+def load_flat_buffer_into_feedback_dataset(feedback_buffer: List[SegmentT], feedback_type: FeedbackType) -> dict:
     """Maps feedback buffer to the appropriate feedback data structure."""
     if feedback_type not in FEEDBACK_TYPE_TO_KEY:
         raise NotImplementedError(f"Feedback type {feedback_type} not implemented.")

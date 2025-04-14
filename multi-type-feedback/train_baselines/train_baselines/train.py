@@ -28,9 +28,7 @@ def train() -> None:
         choices=list(ALGOS.keys()),
     )
     parser.add_argument("--env", type=str, default="CartPole-v1", help="environment ID")
-    parser.add_argument(
-        "-tb", "--tensorboard-log", help="Tensorboard log dir", default="", type=str
-    )
+    parser.add_argument("-tb", "--tensorboard-log", help="Tensorboard log dir", default="", type=str)
     parser.add_argument(
         "-i",
         "--trained-agent",
@@ -101,9 +99,7 @@ def train() -> None:
         action="store_true",
         default=False,
     )
-    parser.add_argument(
-        "-f", "--log-folder", help="Log folder", type=str, default="train_baselines/gt_agents"
-    )
+    parser.add_argument("-f", "--log-folder", help="Log folder", type=str, default="train_baselines/gt_agents")
     parser.add_argument("--seed", help="Random generator seed", type=int, default=-1)
     parser.add_argument(
         "--vec-env",
@@ -190,9 +186,7 @@ def train() -> None:
         type=str,
         default=None,
     )
-    parser.add_argument(
-        "--verbose", help="Verbose mode (0: no output, 1: INFO)", default=1, type=int
-    )
+    parser.add_argument("--verbose", help="Verbose mode (0: no output, 1: INFO)", default=1, type=int)
     parser.add_argument(
         "--gym-packages",
         type=str,
@@ -243,9 +237,7 @@ def train() -> None:
         default=False,
         help="if toggled, this experiment will be tracked with Weights and Biases",
     )
-    parser.add_argument(
-        "--wandb-project-name", type=str, default="sb3", help="the wandb's project name"
-    )
+    parser.add_argument("--wandb-project-name", type=str, default="sb3", help="the wandb's project name")
     parser.add_argument(
         "--wandb-entity",
         type=str,
@@ -283,9 +275,7 @@ def train() -> None:
             closest_match = difflib.get_close_matches(env_id, registered_envs, n=1)[0]
         except IndexError:
             closest_match = "'no close match found...'"
-        raise ValueError(
-            f"{env_id} not found in gym registry, you maybe meant {closest_match}?"
-        )
+        raise ValueError(f"{env_id} not found in gym registry, you maybe meant {closest_match}?")
 
     # Unique id to ensure there is no race condition for the folder creation
     uuid_str = f"_{uuid.uuid4()}" if args.uuid else ""

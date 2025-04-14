@@ -19,12 +19,8 @@ from train_baselines.utils import StoreDict, get_model_path
 
 def enjoy() -> None:  # noqa: C901
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--env", help="environment ID", type=EnvironmentName, default="CartPole-v1"
-    )
-    parser.add_argument(
-        "-f", "--folder", help="Log folder", type=str, default="rl-trained-agents"
-    )
+    parser.add_argument("--env", help="environment ID", type=EnvironmentName, default="CartPole-v1")
+    parser.add_argument("-f", "--folder", help="Log folder", type=str, default="rl-trained-agents")
     parser.add_argument(
         "--algo",
         help="RL Algorithm",
@@ -33,9 +29,7 @@ def enjoy() -> None:  # noqa: C901
         required=False,
         choices=list(ALGOS.keys()),
     )
-    parser.add_argument(
-        "-n", "--n-timesteps", help="number of timesteps", default=1000, type=int
-    )
+    parser.add_argument("-n", "--n-timesteps", help="number of timesteps", default=1000, type=int)
     parser.add_argument(
         "--num-threads",
         help="Number of threads for PyTorch (-1 to use default)",
@@ -49,9 +43,7 @@ def enjoy() -> None:  # noqa: C901
         default=0,
         type=int,
     )
-    parser.add_argument(
-        "--verbose", help="Verbose mode (0: no output, 1: INFO)", default=1, type=int
-    )
+    parser.add_argument("--verbose", help="Verbose mode (0: no output, 1: INFO)", default=1, type=int)
     parser.add_argument(
         "--no-render",
         action="store_true",
@@ -101,9 +93,7 @@ def enjoy() -> None:  # noqa: C901
         help="Normalize reward if applicable (trained with VecNormalize)",
     )
     parser.add_argument("--seed", help="Random generator seed", type=int, default=0)
-    parser.add_argument(
-        "--reward-log", help="Where to log reward", default="", type=str
-    )
+    parser.add_argument("--reward-log", help="Where to log reward", default="", type=str)
     parser.add_argument(
         "--gym-packages",
         type=str,
@@ -157,9 +147,7 @@ def enjoy() -> None:  # noqa: C901
         if "rl-trained-agents" not in folder:
             raise e
         else:
-            print(
-                "Pretrained model not found, trying to download it from sb3 Huggingface hub: https://huggingface.co/sb3"
-            )
+            print("Pretrained model not found, trying to download it from sb3 Huggingface hub: https://huggingface.co/sb3")
             # Auto-download
             download_from_hub(
                 algo=algo,
@@ -197,9 +185,7 @@ def enjoy() -> None:  # noqa: C901
     is_minigrid = ExperimentManager.is_minigrid(env_name.gym_id)
 
     stats_path = os.path.join(log_path, env_name)
-    hyperparams, maybe_stats_path = get_saved_hyperparams(
-        stats_path, norm_reward=args.norm_reward, test_mode=True
-    )
+    hyperparams, maybe_stats_path = get_saved_hyperparams(stats_path, norm_reward=args.norm_reward, test_mode=True)
 
     # load env_kwargs if existing
     env_kwargs = {}
@@ -251,9 +237,7 @@ def enjoy() -> None:  # noqa: C901
     if "HerReplayBuffer" in hyperparams.get("replay_buffer_class", ""):
         kwargs["env"] = env
 
-    model = ALGOS[algo].load(
-        model_path, custom_objects=custom_objects, device=args.device, **kwargs
-    )
+    model = ALGOS[algo].load(model_path, custom_objects=custom_objects, device=args.device, **kwargs)
     obs = env.reset()
 
     # Deterministic by default except for atari games
@@ -328,14 +312,10 @@ def enjoy() -> None:  # noqa: C901
 
     if args.verbose > 0 and len(episode_rewards) > 0:
         print(f"{len(episode_rewards)} Episodes")
-        print(
-            f"Mean reward: {np.mean(episode_rewards):.2f} +/- {np.std(episode_rewards):.2f}"
-        )
+        print(f"Mean reward: {np.mean(episode_rewards):.2f} +/- {np.std(episode_rewards):.2f}")
 
     if args.verbose > 0 and len(episode_lengths) > 0:
-        print(
-            f"Mean episode length: {np.mean(episode_lengths):.2f} +/- {np.std(episode_lengths):.2f}"
-        )
+        print(f"Mean episode length: {np.mean(episode_lengths):.2f} +/- {np.std(episode_lengths):.2f}")
 
     env.close()
 

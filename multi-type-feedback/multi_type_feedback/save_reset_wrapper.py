@@ -2,19 +2,24 @@ import copy
 
 import gymnasium as gym
 import numpy as np
-from ale_py import AtariEnv
+
+try:
+    from ale_py import AtariEnv
+except ImportError:
+    AtariEnv = None
 from gymnasium.envs.mujoco import MujocoEnv
 from minigrid.minigrid_env import MiniGridEnv
 from train_baselines.wrappers import Gym3ToGymnasium
+
 from multi_type_feedback.custom_save_reset_envs import CUSTOM_SAVE_RESET_WRAPPERS
 
 
 class SaveResetEnvWrapper(gym.Wrapper):
     def __init__(self, env):
         """
-            A Wrapper that ensure ability to save/load the state for a selected
-            set of enviornments. If you encounter an unsupported env, feel free to 
-            add them to the CUSTOM_SAVE_RESET_WRAPPERS dict
+        A Wrapper that ensure ability to save/load the state for a selected
+        set of enviornments. If you encounter an unsupported env, feel free to
+        add them to the CUSTOM_SAVE_RESET_WRAPPERS dict
         """
         super(SaveResetEnvWrapper, self).__init__(env)
 
@@ -37,7 +42,7 @@ class SaveResetEnvWrapper(gym.Wrapper):
                 "qpos": np.copy(self.unwrapped.data.qpos),
                 "qval": np.copy(self.unwrapped.data.qvel),
             }
-        elif isinstance(self.unwrapped, AtariEnv):
+        elif AtariEnv is not None and isinstance(self.unwrapped, AtariEnv):
             state = self.unwrapped.clone_state()
         elif isinstance(self.unwrapped, MiniGridEnv):
             # Minigrid environment
@@ -73,18 +78,16 @@ class SaveResetEnvWrapper(gym.Wrapper):
         Returns the observation
         """
         if state_and_obs is None:
-            raise ValueError(
-                "The provided state is None. Please provide a valid state."
-            )
+            raise ValueError("The provided state is None. Please provide a valid state.")
 
         obs = state_and_obs["observation"]
         state = state_and_obs["state"]
         self._elapsed_steps = state_and_obs.get("elapsed_steps", 0)
-        
+
         if isinstance(self.unwrapped, MujocoEnv):
             # MuJoCo environment
             self.unwrapped.set_state(state["qpos"], state["qval"])
-        elif isinstance(self.unwrapped, AtariEnv):
+        elif AtariEnv is not None and isinstance(self.unwrapped, AtariEnv):
             self.unwrapped.restore_state(state)
         elif isinstance(self.unwrapped, MiniGridEnv):
             # Minigrid environment (A bit cluncky i guess)

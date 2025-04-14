@@ -8,23 +8,19 @@ from pathlib import Path
 from typing import List, Type, Union
 
 # necessary to import ale_py/procgen, otherwise it will not be found
-import ale_py
 import gymnasium as gym
-import highway_env
 import numpy as np
 import pandas as pd
-import procgen
 import torch
 from gymnasium.wrappers.stateful_observation import FrameStackObservation
 from gymnasium.wrappers.transform_observation import TransformObservation
 from minigrid.wrappers import FlatObsWrapper
-from procgen import ProcgenGym3Env
-from train_baselines.utils import ppo_make_metaworld_env
-from train_baselines.wrappers import Gym3ToGymnasium
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.atari_wrappers import WarpFrame
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from torch import Tensor
+from train_baselines.utils import ppo_make_metaworld_env
+from train_baselines.wrappers import Gym3ToGymnasium
+
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 
 
@@ -108,9 +104,7 @@ def generate_feedback(
             for model_dir in os.listdir(os.path.join(checkpoints_path, algorithm))
             if f"{environment_name.replace('/', '-')}" in model_dir
         ]
-        checkpoints_dir = os.path.join(
-            checkpoints_path, algorithm, f"{environment_name.replace('/', '-')}_1"
-        )
+        checkpoints_dir = os.path.join(checkpoints_path, algorithm, f"{environment_name.replace('/', '-')}_1")
 
         print(f"Generating feedback for: {feedback_id}")
 
@@ -118,11 +112,9 @@ def generate_feedback(
         oversampling_factor = 1.0
         target_n_feedback = int(n_feedback * oversampling_factor)
 
-        checkpoint_files = [
-            file
-            for file in os.listdir(checkpoints_dir)
-            if re.search(r"rl_model_.*\.zip", file)
-        ] or [f"{environment_name}.zip"]
+        checkpoint_files = [file for file in os.listdir(checkpoints_dir) if re.search(r"rl_model_.*\.zip", file)] or [
+            f"{environment_name}.zip"
+        ]
 
         total_steps = n_feedback * total_steps_factor
         num_checkpoints = len(checkpoint_files) + 1
@@ -130,9 +122,7 @@ def generate_feedback(
         feedback_per_checkpoint = target_n_feedback // num_checkpoints
         gamma = expert_models[0][0].gamma
 
-        checkpoint_files = ["random"] + sorted(
-            checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group())
-        )
+        checkpoint_files = ["random"] + sorted(checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group()))
 
     else:
         print(f"Generating random samples for: {environment_name}")
@@ -166,9 +156,7 @@ def generate_feedback(
     state_copies = []
     for model_file in checkpoint_files:
         feedback = []
-        fb_indices = random.sample(
-            range(steps_per_checkpoint - segment_len + 1), k=feedback_per_checkpoint + 1
-        )
+        fb_indices = random.sample(range(steps_per_checkpoint - segment_len + 1), k=feedback_per_checkpoint + 1)
         final_segment_indices = sorted(set(fb_indices))
 
         if model_file != "random":
@@ -179,13 +167,9 @@ def generate_feedback(
                 os.path.join(model_path, model_file),
                 custom_objects={"learning_rate": 0.0, "lr_schedule": lambda _: 0.0},
             )
-            norm_env_path = os.path.join(
-                model_path, environment_name, "vecnormalize.pkl"
-            )
+            norm_env_path = os.path.join(model_path, environment_name, "vecnormalize.pkl")
             norm_env = (
-                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment]))
-                if os.path.isfile(norm_env_path)
-                else None
+                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment])) if os.path.isfile(norm_env_path) else None
             )
         else:
             model = None
@@ -205,17 +189,13 @@ def generate_feedback(
             else:
                 actions = environment.action_space.sample()
 
-            next_observation, reward, terminated, truncated, _ = environment.step(
-                actions
-            )
+            next_observation, reward, terminated, truncated, _ = environment.step(actions)
             done = terminated or truncated
 
             if action_one_hot:
                 actions = one_hot_vector(actions, one_hot_dim)
 
-            feedback.append(
-                (np.expand_dims(observation, axis=0), actions, reward, done)
-            )
+            feedback.append((np.expand_dims(observation, axis=0), actions, reward, done))
 
             observation = next_observation if not done else environment.reset()[0]
 
@@ -241,9 +221,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=int, default=0, help="Experiment number")
     parser.add_argument("--algorithm", type=str, default="ppo", help="RL algorithm")
-    parser.add_argument(
-        "--environment", type=str, default="HalfCheetah-v5", help="Environment"
-    )
+    parser.add_argument("--environment", type=str, default="HalfCheetah-v5", help="Environment")
     parser.add_argument(
         "--n-steps-factor",
         type=int,
@@ -256,18 +234,14 @@ def main():
         default=int(1000),
         help="How many feedback instances should be generated",
     )
-    parser.add_argument(
-        "--seed", type=int, default=6389, help="TODO: Seed for env and stuff"
-    )
+    parser.add_argument("--seed", type=int, default=6389, help="TODO: Seed for env and stuff")
     parser.add_argument(
         "--segment-len",
         type=int,
         default=50,
         help="How long is the segment we generate feedback for",
     )
-    parser.add_argument(
-        "--save-folder", type=str, default="samples", help="Where to save the feedback"
-    )
+    parser.add_argument("--save-folder", type=str, default="samples", help="Where to save the feedback")
     parser.add_argument("--top-n-models", type=int, default=3)
     parser.add_argument("--random", action="store_true")
     args = parser.parse_args()
@@ -278,25 +252,13 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     feedback_id = f"{args.algorithm}_{args.environment}"
     if not args.random:
-        feedback_path = (
-            Path(__file__).parents[1].resolve()
-            / args.save_folder
-            / f"{feedback_id}_{args.seed}.pkl"
-        )
+        feedback_path = Path(__file__).parents[1].resolve() / args.save_folder / f"{feedback_id}_{args.seed}.pkl"
     else:
-        feedback_path = (
-            Path(__file__).parents[1].resolve()
-            / args.save_folder
-            / f"random_{args.environment}.pkl"
-        )
+        feedback_path = Path(__file__).parents[1].resolve() / args.save_folder / f"random_{args.environment}.pkl"
     checkpoints_path = "../main/gt_agents"
 
     # load "ensemble" of expert agents
-    env_name = (
-        args.environment
-        if "ALE" not in args.environment
-        else args.environment.replace("/", "-")
-    )
+    env_name = args.environment if "ALE" not in args.environment else args.environment.replace("/", "-")
     expert_model_paths = [
         os.path.join(checkpoints_path, args.algorithm, model)
         for model in os.listdir(os.path.join(checkpoints_path, args.algorithm))
@@ -308,55 +270,41 @@ def main():
     # )
 
     try:
-        run_eval_scores = pd.read_csv(
-            os.path.join(checkpoints_path, "collected_results.csv")
-        )
+        run_eval_scores = pd.read_csv(os.path.join(checkpoints_path, "collected_results.csv"))
         run_eval_scores = (
             run_eval_scores.loc[run_eval_scores["env"] == args.environment]
             .sort_values(by=["eval_score"], ascending=False)
             .head(args.top_n_models)["run"]
             .to_list()
         )
-        expert_model_paths = [
-            path
-            for path in expert_model_paths
-            if path.split(os.path.sep)[-1] in run_eval_scores
-        ]
+        expert_model_paths = [path for path in expert_model_paths if path.split(os.path.sep)[-1] in run_eval_scores]
     except:
-        print(
-            "[WARN] No eval benchmark results are available. Check you eval benchmarks"
-        )
+        print("[WARN] No eval benchmark results are available. Check you eval benchmarks")
 
     if "procgen" in args.environment:
+        from procgen import ProcgenGym3Env  # noqa: F401
+
         _, short_name, _ = args.environment.split("-")
         environment = Gym3ToGymnasium(ProcgenGym3Env(num=1, env_name=short_name))
         environment = SaveResetEnvWrapper(
-            TransformObservation(
-                environment, lambda obs: obs["rgb"], environment.observation_space
-            )
+            TransformObservation(environment, lambda obs: obs["rgb"], environment.observation_space)
         )
     elif "ALE/" in args.environment:
         environment = FrameStackObservation(WarpFrame(gym.make(args.environment)), 4)
         environment = SaveResetEnvWrapper(
-            TransformObservation(
-                environment, lambda obs: obs.squeeze(-1), environment.observation_space
-            )
+            TransformObservation(environment, lambda obs: obs.squeeze(-1), environment.observation_space)
         )
     elif "MiniGrid" in args.environment:
         environment = SaveResetEnvWrapper(FlatObsWrapper(gym.make(args.environment)))
     elif "metaworld" in args.environment:
         environment_name = args.environment.replace("metaworld-", "")
-        environment = SaveResetEnvWrapper(
-            ppo_make_metaworld_env(environment_name, args.seed)
-        )
+        environment = SaveResetEnvWrapper(ppo_make_metaworld_env(environment_name, args.seed))
     else:
         environment = SaveResetEnvWrapper(gym.make(args.environment))
 
     expert_models = []
     for expert_model_path in expert_model_paths:
-        if os.path.isfile(
-            os.path.join(expert_model_path, env_name, "vecnormalize.pkl")
-        ):
+        if os.path.isfile(os.path.join(expert_model_path, env_name, "vecnormalize.pkl")):
             norm_env = VecNormalize.load(
                 os.path.join(expert_model_path, env_name, "vecnormalize.pkl"),
                 DummyVecEnv([lambda: environment]),
@@ -365,9 +313,7 @@ def main():
             norm_env = None
         expert_models.append(
             (
-                (PPO if args.algorithm == "ppo" else SAC).load(
-                    os.path.join(expert_model_path, f"{env_name}.zip")
-                ),
+                (PPO if args.algorithm == "ppo" else SAC).load(os.path.join(expert_model_path, f"{env_name}.zip")),
                 norm_env,
             )
         )

@@ -1,7 +1,7 @@
 import torch
-from torchvision.models import resnet18, ResNet18_Weights
-from torchvision.transforms import transforms
 import torch.nn as nn
+from torchvision.models import ResNet18_Weights, resnet18
+from torchvision.transforms import transforms
 
 
 class RemoveFirstChannel(object):
@@ -23,9 +23,7 @@ class ResnetFeatureExtractor(nn.Module):
                 transforms.ToTensor(),
                 RemoveFirstChannel(),
                 transforms.Resize(224),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),  # default for imagenet
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # default for imagenet
             ]
         )
 

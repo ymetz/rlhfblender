@@ -1,8 +1,7 @@
 """Common types for all scripts in the project."""
 
-from typing import Generic, List, Literal, Tuple, TypedDict, TypeVar, Union
+from typing import List, Literal, Tuple, TypedDict, TypeVar, Union
 
-import numpy
 from numpy.typing import NDArray
 
 # Different Feedback Types

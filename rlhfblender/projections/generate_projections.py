@@ -7,28 +7,29 @@ with a grid of samples. The results are cached for use in the web interface.
 
 import argparse
 import asyncio
+import glob
+import hashlib
+import json
 import os
 import sys
 import traceback
-import glob
-import numpy as np
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import networkx as nx
+import numpy as np
 import torch
-import json
-import hashlib
+from databases import Database
+from pydantic import BaseModel
 from scipy import spatial
 from sklearn.cluster import DBSCAN
-from typing import List, Dict, Any, Optional, Tuple
-from pydantic import BaseModel
-from databases import Database
-from pathlib import Path
 
 from rlhfblender.data_handling.database_handler import get_single_entry
-from rlhfblender.projections.projection_handler import ProjectionHandler
 from rlhfblender.data_models.global_models import Experiment
 
 # Import the InverseProjectionHandler
-from inverse_projection_handler import InverseProjectionHandler
+from rlhfblender.projections.inverse_projection_handler import InverseProjectionHandler
+from rlhfblender.projections.projection_handler import ProjectionHandler
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -45,6 +46,7 @@ class EpisodeID(BaseModel):
     """
     Identifies a specific episode to load data from.
     """
+
     env_name: str = ""  # e.g.: BreakoutNoFrameskip-v4
     benchmark_type: str = ""  # e.g.: trained
     benchmark_id: int = -1  # e.g.: 1
@@ -56,6 +58,7 @@ class InverseProjectionOptions(BaseModel):
     """
     Options for inverse projection computation.
     """
+
     model_type: str = "auto"  # Options: "auto", "mlp", "cnn", "vae"
     num_epochs: int = 50
     learning_rate: float = 0.001
@@ -76,18 +79,15 @@ def process_env_name(env_name: str) -> str:
 
 
 # Function to get available episodes for a given configuration
-def get_available_episodes(
-    experiment: Experiment,
-    checkpoint_step: int
-) -> List[int]:
+def get_available_episodes(experiment: Experiment, checkpoint_step: int) -> List[int]:
     """
     Find all available episode numbers for a given configuration.
-    
+
     Args:
         env_name: Environment name
         benchmark_type: Type of benchmark (e.g., 'trained', 'random')
         checkpoint_step: Checkpoint step
-        
+
     Returns:
         List of available episode numbers
     """
@@ -96,16 +96,16 @@ def get_available_episodes(
         "data",
         "episodes",
         process_env_name(experiment.env_id),
-        f"{process_env_name(experiment.env_id)}_{experiment.id}_{checkpoint_step}"
+        f"{process_env_name(experiment.env_id)}_{experiment.id}_{checkpoint_step}",
     )
-    
+
     # Check if directory exists
     if not os.path.exists(base_dir):
         return []
-    
+
     # Find all benchmark files
     episode_files = glob.glob(os.path.join(base_dir, "benchmark_*.npz"))
-    
+
     # Extract episode numbers
     episode_nums = []
     for file_path in episode_files:
@@ -115,7 +115,7 @@ def get_available_episodes(
             episode_nums.append(episode_num)
         except (IndexError, ValueError):
             continue
-    
+
     return sorted(episode_nums)
 
 
@@ -123,11 +123,11 @@ def get_available_episodes(
 def get_episode_file_path(episode_id: EpisodeID, data_type: str = "episodes") -> str:
     """
     Generate file path for a specific episode and data type.
-    
+
     Args:
         episode_id: Episode identifier
         data_type: Type of data to load (episodes, renders, thumbnails, rewards, uncertainty)
-        
+
     Returns:
         Path to the requested file
     """
@@ -135,9 +135,9 @@ def get_episode_file_path(episode_id: EpisodeID, data_type: str = "episodes") ->
         "data",
         data_type,
         process_env_name(episode_id.env_name),
-        f"{process_env_name(episode_id.env_name)}_{episode_id.benchmark_id}_{episode_id.checkpoint_step}"
+        f"{process_env_name(episode_id.env_name)}_{episode_id.benchmark_id}_{episode_id.checkpoint_step}",
     )
-    
+
     if data_type == "episodes":
         return os.path.join(base_dir, f"benchmark_{episode_id.episode_num}.npz")
     elif data_type in ["renders", "thumbnails"]:
@@ -154,10 +154,10 @@ def get_episode_file_path(episode_id: EpisodeID, data_type: str = "episodes") ->
 async def load_episode_data(episodes: List[EpisodeID]) -> Dict[str, np.ndarray]:
     """
     Load episode data for a list of episode IDs.
-    
+
     Args:
         episodes: List of episode identifiers
-        
+
     Returns:
         Dictionary with concatenated episode data
     """
@@ -170,19 +170,19 @@ async def load_episode_data(episodes: List[EpisodeID]) -> Dict[str, np.ndarray]:
     rewards_list = []
     infos_list = []
     episode_steps = []
-    
+
     for i, episode_id in enumerate(episodes):
         try:
             # Load episode data
             episode_file = get_episode_file_path(episode_id, "episodes")
             print(f"Loading episode data from {episode_file}")
             episode_data = np.load(episode_file, allow_pickle=True)
-            
+
             # Collect data
             obs_list.append(episode_data["obs"])
             actions_list.append(episode_data["actions"])
             dones_list.append(episode_data["dones"])
-            
+
             # Add probs if they exist, otherwise use placeholder
             if "probs" in episode_data:
                 probs_list.append(episode_data["probs"])
@@ -194,14 +194,14 @@ async def load_episode_data(episodes: List[EpisodeID]) -> Dict[str, np.ndarray]:
                     action_size = 1
                 placeholder_probs = np.zeros((len(episode_data["obs"]), action_size))
                 probs_list.append(placeholder_probs)
-                
+
             rewards_list.append(episode_data["rewards"])
             infos_list.append(episode_data["infos"])
-            
+
             # Track step indices for temporal information
             steps = np.arange(len(episode_data["obs"]))
             episode_steps.extend(steps.tolist())
-            
+
             # Try to load features if they exist, otherwise use empty placeholders
             if "features" in episode_data:
                 features_list.append(episode_data["features"])
@@ -209,19 +209,19 @@ async def load_episode_data(episodes: List[EpisodeID]) -> Dict[str, np.ndarray]:
                 # Create empty features with appropriate shape based on obs
                 feature_shape = (len(episode_data["obs"]), 128)  # Default feature dimension
                 features_list.append(np.zeros(feature_shape))
-            
+
             # Try to load renders if they exist, otherwise use empty placeholders
             if "renders" in episode_data:
                 renders_list.append(episode_data["renders"])
             else:
                 # For now, just use empty renders since they're optional
                 renders_list.append(np.array([]))
-            
+
         except Exception as e:
             print(f"Error loading episode {i}: {e}")
             traceback.print_exc()
             continue
-    
+
     # Concatenate all data (or return empty arrays if no data was loaded)
     result = {
         "obs": np.concatenate(obs_list) if obs_list else np.array([]),
@@ -232,9 +232,9 @@ async def load_episode_data(episodes: List[EpisodeID]) -> Dict[str, np.ndarray]:
         "rewards": np.concatenate(rewards_list) if rewards_list else np.array([]),
         "infos": np.concatenate(infos_list) if infos_list else np.array([]),
         "episode_steps": np.array(episode_steps) if episode_steps else np.array([]),
-        "renders": np.concatenate(renders_list) if renders_list and len(renders_list[0]) > 0 else np.array([])
+        "renders": np.concatenate(renders_list) if renders_list and len(renders_list[0]) > 0 else np.array([]),
     }
-    
+
     return result
 
 
@@ -242,39 +242,39 @@ async def load_episode_data(episodes: List[EpisodeID]) -> Dict[str, np.ndarray]:
 async def reproject_observations(obs: np.ndarray, env_name: str) -> np.ndarray:
     """
     Reproject observations using a feature extractor.
-    
+
     Args:
         obs: Observations to reproject
         env_name: Environment name for caching
-        
+
     Returns:
         Reprojected features
     """
     try:
         # Check if cached reprojected features exist
         reproject_file_name = f"{process_env_name(env_name)}_reproject"
-        
+
         if os.path.exists(os.path.join("data", "saved_embeddings", reproject_file_name) + ".npy"):
             print(f"Loading cached reprojected features from {reproject_file_name}")
             return np.load(os.path.join("data", "saved_embeddings", reproject_file_name) + ".npy")
-        
+
         print("Reprojecting observations with feature extractor")
-        
+
         # Placeholder for actual feature extraction
         # In a real implementation, you would:
         # 1. Import your feature extractor (e.g., ResnetFeatureExtractor)
         # 2. Process observations in batches
         # 3. Return the extracted features
-        
+
         # For now, simulate the feature extraction with random features
         features = np.random.random((obs.shape[0], 128))
-        
+
         # Save the features for future use
         os.makedirs(os.path.join("data", "saved_embeddings"), exist_ok=True)
         np.save(os.path.join("data", "saved_embeddings", reproject_file_name), features)
-        
+
         return features
-        
+
     except Exception as e:
         print(f"Error in reprojection: {e}")
         traceback.print_exc()
@@ -291,11 +291,11 @@ def preprocess_input_data(
     reproject: bool,
     env_name: str,
     transition_embedding: bool = True,
-    feature_embedding: bool = True
+    feature_embedding: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
     """
     Preprocess the input data for projection.
-    
+
     Args:
         episode_data: Dictionary containing episode data
         sequence_length: Sequence length for projection
@@ -303,7 +303,7 @@ def preprocess_input_data(
         append_time: Whether to append temporal information
         reproject: Whether to use reprojected features
         env_name: Environment name (for reprojection caching)
-        
+
     Returns:
         Tuple containing (embedding_input, feature_input, transition_input, episode_indices)
     """
@@ -312,8 +312,7 @@ def preprocess_input_data(
     probs = episode_data["probs"]
     dones = episode_data["dones"]
     renders = episode_data["renders"]
-    
-    
+
     # Apply step range if specified
     if step_range:
         start, end = step_range
@@ -324,7 +323,7 @@ def preprocess_input_data(
             dones = dones[start:end]
         if len(renders) > 0:
             renders = renders[start:end]
-    
+
     # Handle special preprocessing for multi-frame observations (e.g., Atari)
     if len(obs.shape) > 3:
         # ATARI specific, for the first four frames repeat the last frame (others are black by default)
@@ -335,13 +334,13 @@ def preprocess_input_data(
                 obs[0:4] = obs[4]
             # After each done state, initialize the next few frames
             for i in done_indices[:-1]:
-                obs[i[0] + 1: i[0] + 4] = obs[i[0] + 4]
-        
+                obs[i[0] + 1 : i[0] + 4] = obs[i[0] + 4]
+
         # Subtract the "MEAN" image to keep relevant information (removes static UI elements)
         embedding_input = obs - obs[0]
     else:
         embedding_input = obs
-    
+
     # Handle reprojection if requested
     if reproject:
         # This would be an async call in real code, but for simplicity we'll make it sync here
@@ -349,7 +348,7 @@ def preprocess_input_data(
         loop = asyncio.get_event_loop()
         source = renders if len(renders) > 0 else obs
         embedding_input = loop.run_until_complete(reproject_observations(source, env_name))
-    
+
     # Prepare episode indices for temporal information
     episode_indices = None
     if append_time:
@@ -361,13 +360,13 @@ def preprocess_input_data(
                 if len(embedding_input.shape) > 1 and embedding_input.shape[0] > 0:
                     max_input_val = np.max(embedding_input[0]) if np.max(embedding_input[0]) > 0 else 1
                     episode_indices = episode_indices * max_input_val / max_episode_index
-    
+
     # Prepare transition input for transition embedding, if props are 0 everywhere, return None
     if transition_embedding and probs is not None and np.sum(probs) >= 1.0:
         transition_input = probs
     else:
         transition_input = None
-    
+
     return embedding_input, features, transition_input, episode_indices
 
 
@@ -383,11 +382,11 @@ def compute_projections_and_clusters(
     use_one_d_projection: bool,
     actions: np.ndarray,
     projection_props: Dict[str, Any],
-    suffix: str
+    suffix: str,
 ) -> Dict[str, Any]:
     """
     Compute projections and cluster the projected data.
-    
+
     Args:
         embedding_input: Input data for main projection
         feature_input: Input features for feature projection
@@ -400,20 +399,19 @@ def compute_projections_and_clusters(
         actions: Action data for projection
         projection_props: Additional projection properties
         suffix: Suffix for caching
-        
+
     Returns:
         Dictionary with projection results
     """
     # Initialize projection handler
-    handler = ProjectionHandler(projection_method=projection_method, 
-                               projection_props=projection_props)
-    
+    handler = ProjectionHandler(projection_method=projection_method, projection_props=projection_props)
+
     # Set dimensionality based on option
     if use_one_d_projection:
         handler.embedding_method.n_components = 1
     else:
         handler.embedding_method.n_components = 2
-    
+
     # Compute main projection
     print(f"Computing main projection with method {projection_method}")
     main_projection = handler.fit(
@@ -422,9 +420,9 @@ def compute_projections_and_clusters(
         step_range=step_range,
         episode_indices=episode_indices,
         actions=actions,
-        suffix=suffix
+        suffix=suffix,
     )
-    
+
     print("Computing feature projection")
     if feature_input is not None and feature_input.shape[0] > 0:
         feature_projection = handler.fit(
@@ -433,11 +431,11 @@ def compute_projections_and_clusters(
             step_range=step_range,
             episode_indices=episode_indices,
             actions=None,
-            suffix=f"{suffix}_features"
+            suffix=f"{suffix}_features",
         )
     else:
         feature_projection = np.zeros((0, 2))
-    
+
     # Compute transition projection using UMAP
     print("Computing transition projection")
     if transition_input is not None and transition_input.shape[0] > 0:
@@ -447,7 +445,7 @@ def compute_projections_and_clusters(
             step_range=step_range,
             episode_indices=None,
             actions=None,
-            suffix=f"{suffix}_transition"
+            suffix=f"{suffix}_transition",
         )
     else:
         transition_projection = np.zeros((0, 2))
@@ -458,38 +456,36 @@ def compute_projections_and_clusters(
         max_val = main_projection.max()
         if max_val > min_val:
             main_projection = (main_projection - min_val) / (max_val - min_val)
-    
+
     # Normalize feature projection
     if feature_projection.shape[0] > 0:
         min_val = feature_projection.min()
         max_val = feature_projection.max()
         if max_val > min_val:
             feature_projection = (feature_projection - min_val) / (max_val - min_val)
-    
+
     # Normalize transition projection
     if transition_projection.shape[0] > 0:
         min_val = transition_projection.min()
         max_val = transition_projection.max()
         if max_val > min_val:
             transition_projection = (transition_projection - min_val) / (max_val - min_val)
-    
+
     return {
         "projection_array": main_projection,
         "feature_projection": feature_projection,
-        "transition_projection": transition_projection
+        "transition_projection": transition_projection,
     }
 
 
 # Function to cluster and compute point merging
-def compute_clusters_and_merging(
-    projection_array: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def compute_clusters_and_merging(projection_array: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute clusters and merged points for the projection.
-    
+
     Args:
         projection_array: Projected data
-        
+
     Returns:
         Tuple of (labels, centroids, merged_points, connections)
     """
@@ -497,32 +493,25 @@ def compute_clusters_and_merging(
     dbscan = DBSCAN(eps=0.02, min_samples=8)
     dbscan.fit(projection_array)
     labels = dbscan.labels_
-    
+
     # Compute centroids for each cluster
     unique_labels = np.unique(labels)
-    centroids = np.array([
-        np.mean(projection_array[np.where(labels == label)], axis=0)
-        for label in unique_labels
-    ])
-    
+    centroids = np.array([np.mean(projection_array[np.where(labels == label)], axis=0) for label in unique_labels])
+
     # Find connected components for point merging
     components = list(
         nx.connected_components(
             nx.from_edgelist(
                 (i, j)
-                for i, js in enumerate(
-                    spatial.KDTree(projection_array).query_ball_point(
-                        projection_array, 0.015
-                    )
-                )
+                for i, js in enumerate(spatial.KDTree(projection_array).query_ball_point(projection_array, 0.015))
                 for j in js
             )
         )
     )
-    
+
     # Create clusters mapping
     clusters = {j: i for i, js in enumerate(components) for j in js}
-    
+
     # Compute merged points with stats
     merged_points = []
     for c in components:
@@ -534,14 +523,14 @@ def compute_clusters_and_merging(
             shape_info = np.array([point_data.shape[0]])  # Number of points in the component
             merged_point = np.concatenate([mean_point, shape_info])
             merged_points.append(merged_point)
-    
+
     # Convert to numpy array with safe fallback
     if len(merged_points) > 0:
         merged_points = np.array(merged_points)
     else:
         # Create empty array with proper shape if no points
         merged_points = np.zeros((0, projection_array.shape[1] + 1))
-    
+
     # Compute connections between merged points
     if len(clusters) > 1:
         # Create adjacency matrix
@@ -549,15 +538,15 @@ def compute_clusters_and_merging(
         for i in range(len(clusters) - 1):
             if i in clusters and i + 1 in clusters:
                 adj_matrix[clusters[i], clusters[i + 1]] += 1.0
-        
+
         # Extract non-zero connections
         connections = np.transpose(np.nonzero(adj_matrix))
         connection_values = np.array([adj_matrix[i, j] for i, j in connections])
-        
+
         # Add connection strengths as third column
         if len(connections) > 0:
             connections = np.concatenate((connections, connection_values[:, None]), axis=1)
-        
+
         # Compute flow statistics for merged points
         change_in_connections = np.zeros((len(merged_points), 3))
         for i in range(len(merged_points)):
@@ -566,17 +555,17 @@ def compute_clusters_and_merging(
             change_in_connections[i, 0] = incoming_connections
             change_in_connections[i, 1] = outgoing_connections
             change_in_connections[i, 2] = incoming_connections - outgoing_connections
-        
+
         # Clean extreme values
         change_in_connections[change_in_connections > 5] = 1
         change_in_connections[change_in_connections < -5] = -1
-        
+
         # Append flow statistics to merged points
         merged_points = np.concatenate((merged_points, change_in_connections), axis=1)
     else:
         # If there are no connections, return empty arrays
         connections = np.zeros((0, 3))
-    
+
     return labels, centroids, merged_points, connections
 
 
@@ -597,7 +586,7 @@ async def compute_projection(
 ) -> Dict[str, Any]:
     """
     Compute projection for the provided episode data.
-    
+
     Args:
         episode_data: Dictionary containing loaded episode data
         projection_method: Name of projection method to use
@@ -609,7 +598,7 @@ async def compute_projection(
         projection_props: Additional projection properties
         projection_hash: Hash for caching projections
         env_name: Environment name for caching
-        
+
     Returns:
         Dictionary with projection results
     """
@@ -618,7 +607,7 @@ async def compute_projection(
         step_range_list = None
         if step_range != "[]":
             step_range_list = [int(sr) for sr in step_range.strip("[]").split(",")]
-        
+
         # Check if cached projection exists
         if projection_hash is not None:
             projection_save_path = os.path.join("data", "saved_projections", f"{projection_hash}.npz")
@@ -637,19 +626,19 @@ async def compute_projection(
                     "dones": cached_projection["dones"].tolist(),
                     "episode_indices": cached_projection["episode_indices"].tolist(),
                 }
-        
+
         # Preprocess input data
         embedding_input, feature_input, transition_input, episode_indices = preprocess_input_data(
-            episode_data, 
-            sequence_length, 
-            step_range_list, 
-            append_time, 
-            reproject, 
+            episode_data,
+            sequence_length,
+            step_range_list,
+            append_time,
+            reproject,
             env_name,
             transition_embedding=transition_embedding,
-            feature_embedding=feature_embedding
+            feature_embedding=feature_embedding,
         )
-        
+
         # Compute projections
         projection_results = compute_projections_and_clusters(
             embedding_input,
@@ -662,14 +651,14 @@ async def compute_projection(
             use_one_d_projection,
             episode_data["actions"],
             projection_props,
-            projection_hash if projection_hash else ""
+            projection_hash if projection_hash else "",
         )
-        
+
         # Extract projection arrays
         projection_array = projection_results["projection_array"]
         feature_projection = projection_results["feature_projection"]
         transition_projection = projection_results["transition_projection"]
-        
+
         # Compute clusters and merged points
         labels, centroids, merged_points, connections = compute_clusters_and_merging(projection_array)
 
@@ -680,13 +669,12 @@ async def compute_projection(
             if done:
                 current_episode += 1
 
-        
         # Save projection if hash is provided
         if projection_hash is not None:
             os.makedirs(os.path.join("data", "saved_projections"), exist_ok=True)
             projection_save_path = os.path.join("data", "saved_projections", f"{projection_hash}.npz")
             print(f"Saving projection to {projection_save_path}")
-            
+
             np.savez(
                 projection_save_path,
                 projection_array=projection_array,
@@ -700,7 +688,7 @@ async def compute_projection(
                 dones=episode_data["dones"],
                 episode_indices=episode_indices,
             )
-        
+
         # Return results
         return {
             "projection": projection_array.tolist(),
@@ -714,7 +702,7 @@ async def compute_projection(
             "dones": episode_data["dones"].tolist(),
             "episode_indices": episode_indices,
         }
-        
+
     except Exception as e:
         print(f"Error computing projection: {e}")
         traceback.print_exc()
@@ -734,35 +722,32 @@ async def compute_projection(
 
 # Function to compute inverse projection
 def compute_inverse_projection(
-    original_data: np.ndarray,
-    coords_2d: np.ndarray,
-    inverse_options: InverseProjectionOptions,
-    cache_key: str
+    original_data: np.ndarray, coords_2d: np.ndarray, inverse_options: InverseProjectionOptions, cache_key: str
 ) -> Dict[str, Any]:
     """
     Compute inverse projection and grid of samples.
-    
+
     Args:
         original_data: Original high-dimensional data
         coords_2d: 2D coordinates from forward projection
         inverse_options: Options for inverse projection
         cache_key: Cache key for storing results
-        
+
     Returns:
         Dictionary with inverse projection results
     """
     try:
         cache_file = INVERSE_CACHE_DIR / f"{cache_key}.json"
         model_file = INVERSE_MODELS_DIR / f"{cache_key}.pth"
-        
+
         # Check if we can use cached results
         if not inverse_options.force_retrain and cache_file.exists() and model_file.exists():
             print(f"Loading cached inverse projection from {cache_file}")
             with open(cache_file, "r") as f:
                 return json.load(f)
-        
+
         print("Computing inverse projection")
-        
+
         # Set up the inverse projection handler
         handler = InverseProjectionHandler(
             model_type=inverse_options.model_type,
@@ -771,62 +756,56 @@ def compute_inverse_projection(
             num_epochs=inverse_options.num_epochs,
             save_model=True,
             save_dir=str(INVERSE_MODELS_DIR),
-            device=None  # Auto-detect
+            device=None,  # Auto-detect
         )
-        
+
         # Determine suitable model type based on data shape
         if len(original_data.shape) > 2:  # Image-like data
             model_type = "cnn" if inverse_options.model_type == "auto" else inverse_options.model_type
         else:  # Vector data
             model_type = "mlp" if inverse_options.model_type == "auto" else inverse_options.model_type
             handler.model_type = model_type
-        
+
         # Train the inverse projection model
         print(f"Training inverse projection model with {inverse_options.num_epochs} epochs")
         history = handler.fit(
-            data=original_data,
-            coords=coords_2d,
-            validation_split=inverse_options.validation_split,
-            verbose=True
+            data=original_data, coords=coords_2d, validation_split=inverse_options.validation_split, verbose=True
         )
-        
+
         # Determine grid ranges
         if inverse_options.auto_grid_range:
             x_min, x_max = coords_2d[:, 0].min(), coords_2d[:, 0].max()
             y_min, y_max = coords_2d[:, 1].min(), coords_2d[:, 1].max()
-            
+
             # Add margin
             x_margin = (x_max - x_min) * (inverse_options.grid_margin - 1) / 2
             y_margin = (y_max - y_min) * (inverse_options.grid_margin - 1) / 2
-            
+
             x_range = (x_min - x_margin, x_max + x_margin)
             y_range = (y_min - y_margin, y_max + y_margin)
         else:
             x_range = inverse_options.x_range
             y_range = inverse_options.y_range
-        
+
         # Generate grid samples
         print(f"Generating grid samples with resolution {inverse_options.grid_resolution}")
         grid_recon, coords, (grid_x, grid_y) = handler.create_latent_space_grid(
-            x_range=x_range,
-            y_range=y_range,
-            resolution=inverse_options.grid_resolution,
-            return_coords=True
+            x_range=x_range, y_range=y_range, resolution=inverse_options.grid_resolution, return_coords=True
         )
-        
+
         # Extract model info
         inverse_model_info = {
             "model_type": model_type,
             "training_history": {
                 "train_loss": [float(loss) for loss in history["train_loss"]],
-                "val_loss": [float(loss) for loss in history["val_loss"]] if "val_loss" in history else []
+                "val_loss": [float(loss) for loss in history["val_loss"]] if "val_loss" in history else [],
             },
             "data_shape": list(original_data.shape),
             "num_epochs": inverse_options.num_epochs,
             "learning_rate": inverse_options.learning_rate,
-            "batch_size": inverse_options.batch_size
+            "batch_size": inverse_options.batch_size,
         }
-        
+
         # Convert grid data to JSON-serializable format
         grid_samples = {
             "reconstructions": grid_recon.tolist(),
@@ -835,38 +814,33 @@ def compute_inverse_projection(
             "grid_y": grid_y.tolist(),
             "x_range": x_range,
             "y_range": y_range,
-            "resolution": inverse_options.grid_resolution
+            "resolution": inverse_options.grid_resolution,
         }
-        
+
         # Cache the results
-        results = {
-            "inverse_model_info": inverse_model_info,
-            "grid_samples": grid_samples,
-            "model_path": str(model_file)
-        }
-        
+        results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": str(model_file)}
+
         with open(cache_file, "w") as f:
             json.dump(results, f)
-        
+
         # Save model with the cache key as filename
-        torch.save({
-            'model_state_dict': handler.model.state_dict(),
-            'model_type': model_type,
-            'data_shape': original_data.shape,
-            'hidden_dims': handler.hidden_dims
-        }, model_file)
-        
+        torch.save(
+            {
+                "model_state_dict": handler.model.state_dict(),
+                "model_type": model_type,
+                "data_shape": original_data.shape,
+                "hidden_dims": handler.hidden_dims,
+            },
+            model_file,
+        )
+
         print(f"Inverse projection model and grid samples saved to {cache_file}")
         return results
-        
+
     except Exception as e:
         print(f"Error computing inverse projection: {e}")
         traceback.print_exc()
-        return {
-            "inverse_model_info": {},
-            "grid_samples": {},
-            "model_path": ""
-        }
+        return {"inverse_model_info": {}, "grid_samples": {}, "model_path": ""}
 
 
 # Function to generate cache key for inverse projection
@@ -880,11 +854,11 @@ def generate_inverse_cache_key(
     inverse_model_type: str,
     num_epochs: int,
     original_data: np.ndarray,
-    coords_2d: np.ndarray
+    coords_2d: np.ndarray,
 ) -> str:
     """
     Generate a cache key for inverse projection.
-    
+
     Args:
         env_name: Environment name
         benchmark_id: Benchmark ID
@@ -896,7 +870,7 @@ def generate_inverse_cache_key(
         num_epochs: Number of training epochs
         original_data: Original data
         coords_2d: 2D coordinates
-        
+
     Returns:
         Cache key string
     """
@@ -912,9 +886,9 @@ def generate_inverse_cache_key(
         "num_epochs": num_epochs,
         "data_shape": list(original_data.shape),
         "data_hash": hashlib.md5(original_data.tobytes()).hexdigest(),
-        "coords_hash": hashlib.md5(coords_2d.tobytes()).hexdigest()
+        "coords_hash": hashlib.md5(coords_2d.tobytes()).hexdigest(),
     }
-    
+
     key_str = json.dumps(key_dict, sort_keys=True)
     return hashlib.md5(key_str.encode()).hexdigest()
 
@@ -937,7 +911,7 @@ async def generate_projections(
 ) -> Dict[str, Any]:
     """
     Generate projections for episodes matching the given parameters.
-    
+
     Args:
         experiment_id: Experiment/Benchmark ID
         checkpoint_step: Checkpoint step
@@ -952,7 +926,7 @@ async def generate_projections(
         feature_embedding: Whether to compute feature embeddings
         compute_inverse: Whether to compute inverse projection
         inverse_options: Options for inverse projection
-        
+
     Returns:
         Projection results and optionally inverse projection results
     """
@@ -966,11 +940,8 @@ async def generate_projections(
     env_name = process_env_name(db_experiment.env_id)
 
     # Find available episodes
-    episode_nums = get_available_episodes(
-        experiment=db_experiment,
-        checkpoint_step=checkpoint_step
-    )
-    
+    episode_nums = get_available_episodes(experiment=db_experiment, checkpoint_step=checkpoint_step)
+
     if not episode_nums:
         print(f"No episodes found for {env_name} (benchmark_id={experiment_id}, checkpoint_step={checkpoint_step})")
         return {
@@ -983,9 +954,9 @@ async def generate_projections(
             "transition_projection": [],
             "inverse_results": None,
         }
-    
+
     print(f"Found {len(episode_nums)} episodes: {episode_nums}")
-    
+
     # Create episode IDs
     episodes = [
         EpisodeID(
@@ -993,17 +964,17 @@ async def generate_projections(
             benchmark_type="random" if db_experiment.framework == "random" else "trained",
             benchmark_id=db_experiment.id,
             checkpoint_step=checkpoint_step,
-            episode_num=episode_num
+            episode_num=episode_num,
         )
         for episode_num in episode_nums
     ]
-    
+
     # Load episode data
     episode_data = await load_episode_data(episodes)
 
     # Create projection hash for caching
     projection_hash = f"{process_env_name(env_name)}_{experiment_id}_{checkpoint_step}_{projection_method}"
-    
+
     # Compute projection
     projection_results = await compute_projection(
         episode_data=episode_data,
@@ -1017,20 +988,20 @@ async def generate_projections(
         projection_hash=projection_hash,
         env_name=env_name,
         transition_embedding=transition_embedding,
-        feature_embedding=feature_embedding
+        feature_embedding=feature_embedding,
     )
-    
+
     # Compute inverse projection if requested
     inverse_results = None
     if compute_inverse and len(projection_results["projection"]) > 0:
         print("Computing inverse projection...")
-        
+
         # Convert projection coordinates to numpy array
         coords_2d = np.array(projection_results["projection"])
-        
+
         # Get original data for inverse mapping
         original_data = episode_data["obs"]
-        
+
         # Generate cache key for inverse projection
         inverse_cache_key = generate_inverse_cache_key(
             env_name=env_name,
@@ -1042,116 +1013,79 @@ async def generate_projections(
             inverse_model_type=inverse_options.model_type,
             num_epochs=inverse_options.num_epochs,
             original_data=original_data,
-            coords_2d=coords_2d
+            coords_2d=coords_2d,
         )
-        
+
         # Compute inverse projection
         inverse_results = compute_inverse_projection(
-            original_data=original_data,
-            coords_2d=coords_2d,
-            inverse_options=inverse_options,
-            cache_key=inverse_cache_key
+            original_data=original_data, coords_2d=coords_2d, inverse_options=inverse_options, cache_key=inverse_cache_key
         )
-    
+
     # Add inverse results to projection results
     projection_results["inverse_results"] = inverse_results
-    
+
     return projection_results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate projections and inverse projections for RLHFBlender")
-    
+
     # Episode identification parameters
-    parser.add_argument("--experiment-name", type=str, required=True, 
-                       help="Benchmark/Experiment ID")
-    parser.add_argument("--checkpoint-step", type=int, default=-1, 
-                       help="Checkpoint step")
-    
+    parser.add_argument("--experiment-name", type=str, required=True, help="Benchmark/Experiment ID")
+    parser.add_argument("--checkpoint-step", type=int, default=-1, help="Checkpoint step")
+
     # Projection parameters
-    parser.add_argument("--projection-method", type=str, default="UMAP",
-                       help="Projection method to use")
-    parser.add_argument("--sequence-length", type=int, default=1,
-                       help="Sequence length for projection")
-    parser.add_argument("--step-range", type=str, default="[]",
-                       help="Range of steps to include, e.g. '[0,100]'")
-    parser.add_argument("--reproject", action="store_true",
-                       help="Whether to reproject observations")
-    parser.add_argument("--one-d-projection", action="store_true",
-                       help="Use 1D projection instead of 2D")
-    parser.add_argument("--append-time", action="store_true",
-                       help="Append time information")
-    parser.add_argument("--save-to", type=str, default=None,
-                       help="Custom path to save the projection")
-    parser.add_argument("--n-neighbors", type=int, default=15,
-                       help="Number of neighbors for UMAP/t-SNE (if applicable)")
-    parser.add_argument("--min-dist", type=float, default=0.1,
-                       help="Minimum distance for UMAP (if applicable)")
-    parser.add_argument("--metric", type=str, default="euclidean",
-                       help="Distance metric for projection methods")
-    parser.add_argument("--no-clustering", action="store_true",
-                       help="Skip clustering and point merging steps")
-    parser.add_argument("--no-transition", action="store_true",
-                       help="Skip transition embedding computation")
-    parser.add_argument("--no-feature", action="store_true",
-                       help="Skip feature embedding computation")
-    
+    parser.add_argument("--projection-method", type=str, default="UMAP", help="Projection method to use")
+    parser.add_argument("--sequence-length", type=int, default=1, help="Sequence length for projection")
+    parser.add_argument("--step-range", type=str, default="[]", help="Range of steps to include, e.g. '[0,100]'")
+    parser.add_argument("--reproject", action="store_true", help="Whether to reproject observations")
+    parser.add_argument("--one-d-projection", action="store_true", help="Use 1D projection instead of 2D")
+    parser.add_argument("--append-time", action="store_true", help="Append time information")
+    parser.add_argument("--save-to", type=str, default=None, help="Custom path to save the projection")
+    parser.add_argument("--n-neighbors", type=int, default=15, help="Number of neighbors for UMAP/t-SNE (if applicable)")
+    parser.add_argument("--min-dist", type=float, default=0.1, help="Minimum distance for UMAP (if applicable)")
+    parser.add_argument("--metric", type=str, default="euclidean", help="Distance metric for projection methods")
+    parser.add_argument("--no-clustering", action="store_true", help="Skip clustering and point merging steps")
+    parser.add_argument("--no-transition", action="store_true", help="Skip transition embedding computation")
+    parser.add_argument("--no-feature", action="store_true", help="Skip feature embedding computation")
+
     # Inverse projection parameters
-    parser.add_argument("--compute-inverse", action="store_true",
-                       help="Compute inverse projection")
-    parser.add_argument("--inverse-model-type", type=str, default="auto",
-                       help="Inverse model type ('auto', 'mlp', 'cnn', 'vae')")
-    parser.add_argument("--inverse-epochs", type=int, default=50,
-                       help="Number of epochs for inverse model training")
-    parser.add_argument("--inverse-lr", type=float, default=0.001,
-                       help="Learning rate for inverse model")
-    parser.add_argument("--inverse-batch-size", type=int, default=64,
-                       help="Batch size for inverse model training")
-    parser.add_argument("--grid-resolution", type=int, default=20,
-                       help="Resolution of the grid for inverse projection")
-    parser.add_argument("--auto-grid-range", action="store_true",
-                       help="Automatically determine grid range")
-    parser.add_argument("--grid-margin", type=float, default=1.5,
-                       help="Margin to add around the data when auto-computing grid range")
-    parser.add_argument("--x-range", type=str, default="-5,5",
-                       help="Range for x-axis in grid, format: 'min,max'")
-    parser.add_argument("--y-range", type=str, default="-5,5",
-                       help="Range for y-axis in grid, format: 'min,max'")
-    parser.add_argument("--force-retrain", action="store_true",
-                       help="Force retraining of inverse model even if cached")
-    
+    parser.add_argument("--compute-inverse", action="store_true", help="Compute inverse projection")
+    parser.add_argument(
+        "--inverse-model-type", type=str, default="auto", help="Inverse model type ('auto', 'mlp', 'cnn', 'vae')"
+    )
+    parser.add_argument("--inverse-epochs", type=int, default=50, help="Number of epochs for inverse model training")
+    parser.add_argument("--inverse-lr", type=float, default=0.001, help="Learning rate for inverse model")
+    parser.add_argument("--inverse-batch-size", type=int, default=64, help="Batch size for inverse model training")
+    parser.add_argument("--grid-resolution", type=int, default=20, help="Resolution of the grid for inverse projection")
+    parser.add_argument("--auto-grid-range", action="store_true", help="Automatically determine grid range")
+    parser.add_argument(
+        "--grid-margin", type=float, default=1.5, help="Margin to add around the data when auto-computing grid range"
+    )
+    parser.add_argument("--x-range", type=str, default="-5,5", help="Range for x-axis in grid, format: 'min,max'")
+    parser.add_argument("--y-range", type=str, default="-5,5", help="Range for y-axis in grid, format: 'min,max'")
+    parser.add_argument("--force-retrain", action="store_true", help="Force retraining of inverse model even if cached")
+
     args = parser.parse_args()
-    
+
     # Build projection properties from relevant arguments
     params = {
-        "UMAP": {
-            "n_neighbors": args.n_neighbors,
-            "min_dist": args.min_dist,
-            "n_components": 2,
-            "metric": args.metric
-        },
-        "PCA": {
-            "n_components": 2
-        },
-        "t-SNE": {
-            "perplexity": 30,
-            "early_exaggeration": 12,
-            "learning_rate": 200,
-            "n_components": 2
-        },
+        "UMAP": {"n_neighbors": args.n_neighbors, "min_dist": args.min_dist, "n_components": 2, "metric": args.metric},
+        "PCA": {"n_components": 2},
+        "t-SNE": {"perplexity": 30, "early_exaggeration": 12, "learning_rate": 200, "n_components": 2},
         "ParametricAngleUMAP": {
             "n_neighbors": args.n_neighbors,
             "min_dist": args.min_dist,
             "n_components": 2,
             "metric": args.metric,
-            "action_angle_weight": 0.5
-        }
+            "action_angle_weight": 0.5,
+        },
     }
-    
+
     # Parse x and y range for grid
     x_range = tuple(float(x) for x in args.x_range.split(","))
     y_range = tuple(float(y) for y in args.y_range.split(","))
-    
+
     # Create inverse projection options
     inverse_options = InverseProjectionOptions(
         model_type=args.inverse_model_type,
@@ -1163,83 +1097,88 @@ if __name__ == "__main__":
         x_range=x_range,
         y_range=y_range,
         grid_margin=args.grid_margin,
-        force_retrain=args.force_retrain
+        force_retrain=args.force_retrain,
     )
-    
+
     # Determine save path
     save_path = args.save_to
     if save_path is None:
         # Build default path from parameters
         save_path = f"{args.experiment_name}_{args.checkpoint_step}_{args.projection_method}"
-    
+
     # Run the projection generation
     try:
         print(f"Generating projections for experiment_name={args.experiment_name}, checkpoint_step={args.checkpoint_step}")
         print(f"Using method: {args.projection_method}, sequence length: {args.sequence_length}")
         print(f"Additional options: reproject={args.reproject}, 1D={args.one_d_projection}, append_time={args.append_time}")
-        
+
         if args.compute_inverse:
             print(f"Computing inverse projection with model type: {args.inverse_model_type}")
             print(f"Inverse training parameters: epochs={args.inverse_epochs}, batch_size={args.inverse_batch_size}")
             print(f"Grid parameters: resolution={args.grid_resolution}, auto_range={args.auto_grid_range}")
-        
+
         # Run the main projection generation function
-        projection_results = asyncio.run(generate_projections(
-            experiment_id=args.experiment_name,
-            checkpoint_step=args.checkpoint_step,
-            projection_method=args.projection_method,
-            sequence_length=args.sequence_length,
-            step_range=args.step_range,
-            reproject=args.reproject,
-            use_one_d_projection=args.one_d_projection,
-            append_time=args.append_time,
-            projection_props=params[args.projection_method],
-            transition_embedding=not args.no_transition,
-            feature_embedding=not args.no_feature,
-            compute_inverse=args.compute_inverse,
-            inverse_options=inverse_options,
-        ))
-        
+        projection_results = asyncio.run(
+            generate_projections(
+                experiment_id=args.experiment_name,
+                checkpoint_step=args.checkpoint_step,
+                projection_method=args.projection_method,
+                sequence_length=args.sequence_length,
+                step_range=args.step_range,
+                reproject=args.reproject,
+                use_one_d_projection=args.one_d_projection,
+                append_time=args.append_time,
+                projection_props=params[args.projection_method],
+                transition_embedding=not args.no_transition,
+                feature_embedding=not args.no_feature,
+                compute_inverse=args.compute_inverse,
+                inverse_options=inverse_options,
+            )
+        )
+
         # Check if we got valid results
         if projection_results["projection"] and len(projection_results["projection"]) > 0:
             print(f"Projection generated with {len(projection_results['projection'])} points")
-            
+
             # Check inverse results
             if args.compute_inverse and projection_results["inverse_results"]:
                 print("Inverse projection successfully computed")
                 inverse_model_info = projection_results["inverse_results"]["inverse_model_info"]
                 grid_samples = projection_results["inverse_results"]["grid_samples"]
                 model_path = projection_results["inverse_results"]["model_path"]
-                
+
                 print(f"Inverse model type: {inverse_model_info.get('model_type', 'unknown')}")
-                print(f"Final training loss: {inverse_model_info.get('training_history', {}).get('train_loss', [])[-1] if inverse_model_info.get('training_history', {}).get('train_loss', []) else 'N/A'}")
+                print(
+                    f"Final training loss: {inverse_model_info.get('training_history', {}).get('train_loss', [])[-1] if inverse_model_info.get('training_history', {}).get('train_loss', []) else 'N/A'}"
+                )
                 print(f"Grid samples: {grid_samples.get('resolution', 0)}x{grid_samples.get('resolution', 0)} grid")
                 print(f"Model saved at: {model_path}")
-            
+
             # Save as JSON for easier analysis (optional)
             import json
+
             json_path = os.path.join("data", "saved_projections", f"{save_path}.json")
             os.makedirs(os.path.dirname(json_path), exist_ok=True)
-            
+
             # Convert numpy arrays to lists for JSON serialization
             json_results = {}
             for key, value in projection_results.items():
                 if key == "inverse_results":
                     # Already in JSON-serializable format
                     json_results[key] = value
-                elif hasattr(value, 'tolist'):  # Convert numpy arrays to lists
+                elif hasattr(value, "tolist"):  # Convert numpy arrays to lists
                     json_results[key] = value.tolist()
                 else:
                     json_results[key] = value
-            
-            with open(json_path, 'w') as f:
+
+            with open(json_path, "w") as f:
                 json.dump(json_results, f)
             print(f"Results saved as JSON to {json_path}")
-            
+
             print("Projection generation completed successfully.")
         else:
             print("Warning: Projection generated empty results. Check input data and parameters.")
-        
+
     except Exception as e:
         print(f"Error generating projections: {e}")
         traceback.print_exc()

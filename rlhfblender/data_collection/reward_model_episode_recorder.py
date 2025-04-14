@@ -2,18 +2,18 @@ import os
 import random
 from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional
 
 import gymnasium as gym
 import numpy as np
 import torch
+from multi_type_feedback.networks import SingleCnnNetwork, SingleNetwork
 from pydantic import BaseModel
 from stable_baselines3.common.vec_env import VecEnv, VecMonitor, is_vecenv_wrapped
 
 from rlhfblender.data_collection import RecordedEpisodesContainer
 from rlhfblender.data_collection.metrics_processor import process_metrics
 from rlhfblender.data_models.agent import BaseAgent
-from multi_type_feedback.networks import LightningCnnNetwork, LightningNetwork
 
 
 class BenchmarkSummary(BaseModel):
@@ -25,6 +25,7 @@ class BenchmarkSummary(BaseModel):
 
 class EnhancedRecordedEpisodesContainer(RecordedEpisodesContainer):
     """Extended version of RecordedEpisodesContainer that includes reward model predictions."""
+
     predicted_rewards: np.ndarray = []
     uncertainties: np.ndarray = []
 
@@ -98,20 +99,16 @@ class EpisodeRecorder:
         """Initialize and load the reward model."""
         # Determine if we need CNN network based on environment observation space
         obs_space = self.env.observation_space
-        action_space = self.env.action_space
-        
+
         # Check if we need CNN by checking observation space dimensions
         if len(obs_space.shape) > 1 and obs_space.shape[0] > 1 and obs_space.shape[1] > 1:
             # This is likely image observation space (e.g., Atari games)
-            reward_model_cls = LightningCnnNetwork
+            reward_model_cls = SingleCnnNetwork
         else:
             # This is likely a vector observation space (e.g., MuJoCo tasks)
-            reward_model_cls = LightningNetwork
-            
-        self.reward_model = reward_model_cls.load_from_checkpoint(
-            self.reward_model_path, 
-            map_location=self.device
-        )
+            reward_model_cls = SingleNetwork
+
+        self.reward_model = reward_model_cls.load_from_checkpoint(self.reward_model_path, map_location=self.device)
         self.reward_model.eval()  # Set to evaluation mode
         print(f"Loaded reward model from {self.reward_model_path}")
 
@@ -132,13 +129,13 @@ class EpisodeRecorder:
         while (self.episode_counts < self.episode_count_targets).any() and self.total_steps <= self.max_steps:
             actions = self.agent.act(self.observations)
             additional_outputs = self.collect_agent_outputs(actions)
-            
+
             # Get reward model predictions if available
             if self.reward_model:
                 predicted_reward, uncertainty = self.get_reward_model_predictions(self.observations, actions)
             else:
                 predicted_reward, uncertainty = np.zeros(self.n_envs), np.zeros(self.n_envs)
-                
+
             self.handle_resets()
             self.update_buffers(actions, additional_outputs, predicted_reward, uncertainty)
             self.process_steps()
@@ -201,7 +198,7 @@ class EpisodeRecorder:
         self.buffers["dones"].append(np.squeeze(self.dones))
         self.buffers["predicted_rewards"].append(np.squeeze(predicted_reward))
         self.buffers["uncertainties"].append(np.squeeze(uncertainty))
-        
+
         if "feature_extractor_output" in additional_outputs:
             self.buffers["features"].append(np.squeeze(additional_outputs["feature_extractor_output"]))
         if "log_probs" in additional_outputs:
@@ -284,14 +281,14 @@ class EpisodeRecorder:
     def get_reward_model_predictions(self, observations, actions):
         """
         Get reward model predictions and uncertainty for a given state-action pair.
-        
+
         Returns:
             tuple: (predicted_rewards, uncertainties)
         """
         with torch.no_grad():
             # Convert to tensors and move to device
             obs_tensor = torch.as_tensor(observations, device=self.device, dtype=torch.float)
-            
+
             # Handle actions based on their type (discrete vs continuous)
             if isinstance(self.env.action_space, gym.spaces.Discrete):
                 action_tensor = self._one_hot_encode_actions(actions, self.env.action_space.n)
@@ -300,7 +297,7 @@ class EpisodeRecorder:
 
             # Reshape for reward model if needed based on model's expected input format
             batch_size = obs_tensor.shape[0]
-            
+
             # Add sequence dimension needed by reward model (batch_size, seq_len, ...)
             if len(obs_tensor.shape) == 2:  # (batch_size, obs_dim)
                 obs_tensor = obs_tensor.unsqueeze(1)  # Add sequence dim
@@ -320,11 +317,11 @@ class EpisodeRecorder:
                 action_tensor = action_tensor.expand(self.reward_model.ensemble_count, *action_tensor.shape[1:])
 
                 predictions = self.reward_model(obs_tensor, action_tensor)
-                
+
                 # Reshape predictions to get ensemble rewards per sample
                 # Shape: (ensemble_count, batch_size, 1)
                 predictions = predictions.view(self.reward_model.ensemble_count, batch_size, -1)
-                
+
                 # Calculate mean and std across ensemble models
                 mean_rewards = torch.mean(predictions, dim=0).squeeze(-1)
                 uncertainties = torch.std(predictions, dim=0).squeeze(-1)
@@ -340,11 +337,11 @@ class EpisodeRecorder:
     def _one_hot_encode_actions(self, actions, n_actions):
         """
         Convert discrete actions to one-hot encoding.
-        
+
         Args:
             actions: Numpy array of discrete actions
             n_actions: Number of possible actions
-            
+
         Returns:
             torch.Tensor: One-hot encoded actions
         """
@@ -352,11 +349,11 @@ class EpisodeRecorder:
             actions = torch.from_numpy(actions).long()
         else:
             actions = torch.tensor(actions, dtype=torch.long)
-            
+
         # Handle single action case
         if actions.dim() == 0:
             actions = actions.unsqueeze(0)
-            
+
         one_hot = torch.zeros(actions.shape[0], n_actions, device=self.device)
         one_hot.scatter_(1, actions.unsqueeze(1), 1)
         return one_hot
@@ -465,61 +462,63 @@ class EpisodeRecorder:
             episode_rewards=data["episode_rewards"].tolist(),
             additional_metrics=data["additional_metrics"].item(),
         )
-    
+
     @staticmethod
     def convert_to_feedback_dataset(
-        episodes: EnhancedRecordedEpisodesContainer, 
+        episodes: EnhancedRecordedEpisodesContainer,
         feedback_type: str = "evaluative",
-        human_preds: Optional[List[float]] = None
-    ) -> Dict:
+        human_preds: Optional[list[float]] = None,
+    ) -> dict:
         """
         Convert recorded episodes to a format suitable for FeedbackDataset.
-        
+
         Args:
             episodes: Recorded episodes container
             feedback_type: Type of feedback ('evaluative', 'comparative', etc.)
             human_preds: Human-provided ratings or preferences (optional)
-            
+
         Returns:
             dict: Feedback data structure compatible with FeedbackDataset
         """
         if feedback_type not in ["evaluative", "comparative", "demonstrative", "corrective", "descriptive"]:
             raise ValueError(f"Unsupported feedback type: {feedback_type}")
-        
+
         # Extract episode boundaries
         episode_end_indices = []
         current_idx = 0
         for ep_len in episodes.episode_lengths:
             current_idx += ep_len
             episode_end_indices.append(current_idx - 1)  # -1 because indices are 0-based
-            
+
         # Create segments based on episode boundaries
         segments = []
         start_idx = 0
-        
+
         for end_idx in episode_end_indices:
             # Extract the current episode
-            episode_obs = episodes.obs[start_idx:end_idx+1]
-            episode_actions = episodes.actions[start_idx:end_idx+1]
-            episode_rewards = episodes.rewards[start_idx:end_idx+1]
-            episode_dones = episodes.dones[start_idx:end_idx+1]
-            
+            episode_obs = episodes.obs[start_idx : end_idx + 1]
+            episode_actions = episodes.actions[start_idx : end_idx + 1]
+            episode_rewards = episodes.rewards[start_idx : end_idx + 1]
+            episode_dones = episodes.dones[start_idx : end_idx + 1]
+
             # Create segment tuples (obs, action, reward, done)
             episode_segment = []
             for i in range(len(episode_obs)):
-                episode_segment.append((
-                    np.expand_dims(episode_obs[i], axis=0),  # Add batch dimension
-                    episode_actions[i],
-                    episode_rewards[i],
-                    episode_dones[i]
-                ))
-            
+                episode_segment.append(
+                    (
+                        np.expand_dims(episode_obs[i], axis=0),  # Add batch dimension
+                        episode_actions[i],
+                        episode_rewards[i],
+                        episode_dones[i],
+                    )
+                )
+
             segments.append(episode_segment)
             start_idx = end_idx + 1
-        
+
         # Construct feedback data based on feedback type
         feedback_data = {}
-        
+
         if feedback_type == "evaluative":
             feedback_data["segments"] = segments
             # Use human_preds if provided, otherwise use model predicted rewards
@@ -530,43 +529,43 @@ class EpisodeRecorder:
                 avg_predicted_rewards = []
                 start_idx = 0
                 for ep_len in episodes.episode_lengths:
-                    segment_rewards = episodes.predicted_rewards[start_idx:start_idx+ep_len]
+                    segment_rewards = episodes.predicted_rewards[start_idx : start_idx + ep_len]
                     avg_predicted_rewards.append(float(np.mean(segment_rewards)))
                     start_idx += ep_len
                 feedback_data["ratings"] = avg_predicted_rewards
-                
+
         elif feedback_type == "comparative":
             # For comparative feedback, we need pairs of segments
             # Here we'll create all possible pairs of segments
             if len(segments) < 2:
                 raise ValueError("Need at least 2 segments for comparative feedback")
-                
+
             feedback_data["segments"] = segments
-            
+
             # Create all possible pairs for preferences
             preferences = []
             opt_gaps = []
-            
+
             # Compute "optimality gap" based on predicted rewards
             for i, segment in enumerate(segments):
                 segment_rewards = [s[2] for s in segment]  # Extract rewards
                 total_reward = sum(segment_rewards)
                 opt_gaps.append(-total_reward)  # Negative because lower is better
-            
+
             # Create preference pairs
             for i in range(len(segments)):
-                for j in range(i+1, len(segments)):
+                for j in range(i + 1, len(segments)):
                     # Determine preference based on total reward
                     pref = 0 if opt_gaps[i] < opt_gaps[j] else 1
                     preferences.append((i, j, pref))
-            
+
             feedback_data["preferences"] = preferences
             feedback_data["opt_gaps"] = opt_gaps
-            
+
         elif feedback_type == "demonstrative":
             # For demonstrative feedback, we use the segments as demonstrations
             feedback_data["demos"] = segments
-            
+
         elif feedback_type == "descriptive":
             # For descriptive feedback, create cluster representatives
             description = []
@@ -574,25 +573,25 @@ class EpisodeRecorder:
                 # Take the first state-action pair from each segment as representative
                 first_obs = segment[0][0]
                 first_action = segment[0][1]
-                
+
                 # Compute average reward for the segment
                 avg_reward = np.mean([s[2] for s in segment])
-                
+
                 description.append((first_obs, first_action, float(avg_reward)))
-                
+
             feedback_data["description"] = description
-            
+
             # Also create description preferences
             if len(description) >= 2:
                 description_preference = []
                 for i in range(len(description)):
-                    for j in range(i+1, len(description)):
+                    for j in range(i + 1, len(description)):
                         # Preference based on reward
                         pref = 0 if description[i][2] > description[j][2] else 1
                         description_preference.append((i, j, pref))
-                        
+
                 feedback_data["description_preference"] = description_preference
-        
+
         return feedback_data
 
 

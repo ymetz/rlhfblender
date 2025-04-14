@@ -1,18 +1,18 @@
 import inspect
 import json
-import numpy as np
 import os
-import inspect
 
+import numpy as np
 import umap
-from rlhfblender.projections.parametric_umap import load_ParametricUMAP, ParametricUMAP
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE, LocallyLinearEmbedding
+
+from rlhfblender.projections.parametric_umap import ParametricUMAP, load_ParametricUMAP
 
 
 class ProjectionHandler:
     """
-        Embeddding Visualization Helper
+    Embeddding Visualization Helper
     """
 
     def __init__(self, projection_method: str = "UMAP", projection_props: dict = None, **kwargs):
@@ -31,18 +31,18 @@ class ProjectionHandler:
             # Overwrite the default settings with the stored model
             self.save_embedding_path = kwargs.pop("save_embedding_path")
             # If path is not empty, load the embedding from the path
-            if self.save_embedding_path != "" and (self.embedding_method.__class__.__name__ == "ParametricUMAP"
-                                                   or self.embedding_method.__class__.__name__ == "ParametricAngleUMAP"):
-                self.embedding_method = load_ParametricUMAP(os.path.join("data", "saved_embeddings",
-                                                                         "parametric_embedding",
-                                                                         self.save_embedding_path))
-            
-
+            if self.save_embedding_path != "" and (
+                self.embedding_method.__class__.__name__ == "ParametricUMAP"
+                or self.embedding_method.__class__.__name__ == "ParametricAngleUMAP"
+            ):
+                self.embedding_method = load_ParametricUMAP(
+                    os.path.join("data", "saved_embeddings", "parametric_embedding", self.save_embedding_path)
+                )
 
     def set_embedding_method(self, embedding_method: str, projection_props: dict = None):
         projection_props = projection_props if projection_props else {}
         embedding_class = None
-        
+
         if embedding_method == "UMAP":
             embedding_class = umap.UMAP
         elif embedding_method == "ParametricUMAP":
@@ -55,30 +55,22 @@ class ProjectionHandler:
             embedding_class = PCA
         else:
             raise ValueError(f"Unknown embedding method: {embedding_method}")
-        
+
         # Get valid parameters by inspecting the class signature
         signature = inspect.signature(embedding_class.__init__)
-        valid_params = set(signature.parameters.keys()) - {'self'}
-        
+        valid_params = set(signature.parameters.keys()) - {"self"}
+
         # Filter projection_props to only include valid parameters
         filtered_props = {k: v for k, v in projection_props.items() if k in valid_params}
-        
+
         # Set default n_components if not specified and it's a valid parameter
-        if 'n_components' in valid_params and 'n_components' not in filtered_props:
-            filtered_props['n_components'] = 2
-        
+        if "n_components" in valid_params and "n_components" not in filtered_props:
+            filtered_props["n_components"] = 2
+
         # Initialize the embedding method with the filtered properties
         self.embedding_method = embedding_class(**filtered_props)
 
-    def fit(
-            self,
-            data: np.array,
-            sequence_length: int,
-            step_range=None,
-            episode_indices=None,
-            actions=None,
-            suffix=""
-    ):
+    def fit(self, data: np.array, sequence_length: int, step_range=None, episode_indices=None, actions=None, suffix=""):
         """
         Fit the embedding method to the data.
         :param data:
@@ -89,36 +81,26 @@ class ProjectionHandler:
         :return:
         """
         if step_range:
-            data = data[step_range[0]: step_range[1]]
+            data = data[step_range[0] : step_range[1]]
         if len(data.shape) <= 2:
             # stack multiple sequence steps before t-SNE
             data = np.vstack(
                 np.split(
                     data,
-                    np.array(
-                        [
-                            [i, i + sequence_length]
-                            for i in range(data.shape[0] - data.shape[1])
-                        ]
-                    ).reshape(-1),
+                    np.array([[i, i + sequence_length] for i in range(data.shape[0] - data.shape[1])]).reshape(-1),
                 )
             ).reshape(-1, data.shape[1] * sequence_length)
         # If we have high dimensional data, first apply PCA before the UMAP embedding
-        if (
-                np.prod(data.shape[1:]) > 100
-                and self.embedding_method.__class__.__name__ != "PCA"
-        ):
+        if np.prod(data.shape[1:]) > 100 and self.embedding_method.__class__.__name__ != "PCA":
             pca = PCA(n_components=50)
-            data = pca.fit_transform(
-                data.reshape(data.shape[0], np.prod(data.shape[1:]))
-            )
+            data = pca.fit_transform(data.reshape(data.shape[0], np.prod(data.shape[1:])))
             # data = data.reshape(data.shape[0], np.prod(data.shape[1:]))
         self.in_fitting = True
         if episode_indices is not None:
             data = np.concatenate((data, np.expand_dims(episode_indices, -1)), axis=1)
         if actions is not None:
             pass
-            #data = np.concatenate((data, np.expand_dims(actions, -1)), axis=1)
+            # data = np.concatenate((data, np.expand_dims(actions, -1)), axis=1)
         if self.save_embedding_path != "" and (self.embedding_method.__class__.__name__ == "ParametricUMAP"):
             # If a pre-trained, we do not need to fit the model again, just call the transform
             self.embedding_method.embedding_ = self.embedding_method.transform(np.squeeze(data))
@@ -126,16 +108,19 @@ class ProjectionHandler:
             # Fit the embedding method to the data
             return self.embedding_method.fit_transform(data)
 
-        if self.save_embedding and (self.embedding_method.__class__.__name__ == "ParametricUMAP"
-                                    or self.embedding_method.__class__.__name__ == "ParametricAngleUMAP"):
-            self.embedding_method.save(os.path.join("data", "saved_embeddings",
-                                                    "parametric_embedding",
-                                                    "overwrite_" + self.save_embedding_path+suffix))
-            
+        if self.save_embedding and (
+            self.embedding_method.__class__.__name__ == "ParametricUMAP"
+            or self.embedding_method.__class__.__name__ == "ParametricAngleUMAP"
+        ):
+            self.embedding_method.save(
+                os.path.join(
+                    "data", "saved_embeddings", "parametric_embedding", "overwrite_" + self.save_embedding_path + suffix
+                )
+            )
+
         self.in_fitting = False
 
         return self.embedding_method.embedding_
-            
 
     def get_state(self):
         """
@@ -180,10 +165,7 @@ class ProjectionHandler:
         else:
             raise ValueError(f"Unknown embedding method: {embedding_method}")
         for param in inspect.signature(module.__init__).parameters.values():
-            if (
-                    not param.default == inspect.Signature.empty
-                    and ProjectionHandler.is_jsonable(param.default)
-            ):
+            if not param.default == inspect.Signature.empty and ProjectionHandler.is_jsonable(param.default):
                 param_dict[param.name] = param.default
         return param_dict
 

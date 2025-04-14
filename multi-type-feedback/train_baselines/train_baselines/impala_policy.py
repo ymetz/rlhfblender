@@ -1,7 +1,7 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 
@@ -29,9 +29,7 @@ class ImpalaCNN(BaseFeaturesExtractor):
         return num_str
 
     def conv_layer(self, in_channels, out_channels):
-        return nn.Conv2d(
-            in_channels, out_channels, kernel_size=3, padding=1, **self.conv_kwargs
-        )
+        return nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, **self.conv_kwargs)
 
     def residual_block(self, in_channels):
         return nn.Sequential(

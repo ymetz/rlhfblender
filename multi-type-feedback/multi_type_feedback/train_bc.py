@@ -1,26 +1,18 @@
 """Module for training a behavioral cloning agent using demonstrations."""
 
-import argparse
 import os
 import pickle
-from os import path
 from pathlib import Path
 
 # register custom envs
-import ale_py
 import gymnasium as gym
-import highway_env
-import minigrid
 import numpy as np
-import torch
+import wandb
 from imitation.algorithms import bc
 from imitation.data import rollout
 from imitation.data.types import Trajectory
-from train_baselines.utils import ppo_make_metaworld_env
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.utils import set_random_seed
 
-import wandb
 from multi_type_feedback.utils import TrainingUtils
 
 
@@ -105,21 +97,15 @@ def load_demonstrations(
 
 def main():
     parser = TrainingUtils.setup_base_parser()
-    parser.add_argument(
-        "--n-epochs", type=int, default=20, help="Number of training epochs"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=32, help="Batch size for training"
-    )
+    parser.add_argument("--n-epochs", type=int, default=20, help="Number of training epochs")
+    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for training")
     args = parser.parse_args()
 
     TrainingUtils.set_seeds(args.seed)
     feedback_id, model_id = TrainingUtils.get_model_ids(args)
 
     script_path = Path(__file__).parents[1].resolve()
-    environment = TrainingUtils.setup_environment(
-        args.environment, save_reset_wrapper=False
-    )
+    environment = TrainingUtils.setup_environment(args.environment, save_reset_wrapper=False)
     eval_env = TrainingUtils.setup_environment(args.environment)
 
     TrainingUtils.setup_wandb_logging(
@@ -156,7 +142,7 @@ def main():
         action_space=environment.action_space,
         demonstrations=trajectories,  # We'll manually pass transitions
         batch_size=args.batch_size,
-        rng=rng,
+        rng=np.random.default_rng(args.seed),
         device="cuda:0",
         # learning_rate=args.learning_rate,
     )
@@ -166,16 +152,12 @@ def main():
         stats = bc_trainer.train(n_epochs=1, progress_bar=False)
 
         # Evaluate policy
-        mean_reward, std_reward = evaluate_policy(
-            bc_trainer.policy, eval_env, n_eval_episodes=10
-        )
+        mean_reward, std_reward = evaluate_policy(bc_trainer.policy, eval_env, n_eval_episodes=10)
         print(f"Epoch {epoch}: Mean reward = {mean_reward:.2f} +/- {std_reward:.2f}")
-        wandb.log(
-            {"epoch": epoch, "mean_reward": mean_reward, "std_reward": std_reward}
-        )
+        wandb.log({"epoch": epoch, "mean_reward": mean_reward, "std_reward": std_reward})
 
     # Save the trained policy
-    save_path = os.path.join("agents", f"BC_{MODEL_ID}")
+    save_path = os.path.join("agents", f"BC_{model_id}")
     os.makedirs(save_path, exist_ok=True)
     bc_trainer.policy.save(os.path.join(save_path, "bc_policy"))
 

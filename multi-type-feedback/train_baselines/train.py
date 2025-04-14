@@ -1,5 +1,6 @@
-from train_baselines.train import train
 import minigrid
+
+from train_baselines.train import train
 
 minigrid.register_minigrid_envs()
 

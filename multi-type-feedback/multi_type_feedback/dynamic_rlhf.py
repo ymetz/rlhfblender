@@ -1,73 +1,72 @@
+import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Any, Dict, List, Tuple
 
 import gymnasium as gym
 import numpy as np
+import pytorch_lightning
 import torch
-import uuid
+import wandb
 from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import WandbLogger
 from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 from torch.utils.data import DataLoader
+from train_baselines.exp_manager import ExperimentManager
 
-import wandb
-import pytorch_lightning
-from multi_type_feedback.feedback_dataset import BufferDataset, load_flat_buffer_into_feedback_dataset
+from multi_type_feedback.continuous_wandb_sb3_logger import create_continuous_wandb_logger
+from multi_type_feedback.dynamic_rlhf_callback import RewardModelUpdateCallback
+from multi_type_feedback.feedback_dataset import BufferDataset
 from multi_type_feedback.feedback_oracle import FeedbackOracle
+from multi_type_feedback.multi_head_networks import (
+    MultiHeadNetwork,
+    # MultiHeadCnnNetwork,
+)
 from multi_type_feedback.networks import (
-    SingleNetwork,
     SingleCnnNetwork,
+    SingleNetwork,
     calculate_pairwise_loss,
     calculate_single_reward_loss,
 )
-from multi_type_feedback.multi_head_networks import (
-    MultiHeadNetwork, 
-    #MultiHeadCnnNetwork,
+from multi_type_feedback.unified_dataset import (
+    create_dataloaders_by_type,
+    create_unified_dataloaders,
 )
 from multi_type_feedback.unified_networks import (
-    UnifiedNetwork,
     UnifiedCnnNetwork,
+    UnifiedNetwork,
 )
-from multi_type_feedback.unified_dataset import (
-    UnifiedBufferDataset,
-    create_unified_dataloaders,
-    create_dataloaders_by_type,
-    MultiHeadDataModule
-)
-from multi_type_feedback.utils import TrainingUtils, get_project_root, RewardVecEnvWrapper, L2RegulationCallback
+from multi_type_feedback.utils import L2RegulationCallback, RewardVecEnvWrapper, TrainingUtils, get_project_root
 from multi_type_feedback.wandb_logger import ContinuousWandbLogger
-from multi_type_feedback.continuous_wandb_sb3_logger import create_continuous_wandb_logger
-from multi_type_feedback.dynamic_rlhf_callback import RewardModelUpdateCallback
-from train_baselines.exp_manager import ExperimentManager
+
 
 def one_hot_vector(k, max_val):
     vec = np.zeros(max_val)
     np.put(vec, k, 1)
     return vec
 
+
 def vectorized_one_hot_vector(k, max_val):
     vec = np.zeros((k.size, max_val))
     vec[np.arange(k.size), k] = 1
     return vec
 
+
 def compute_grouped(tensor, k):
     """
     Compute standard deviation for groups of elements spaced k apart.
-    
+
     Args:
         tensor: Input tensor of shape (N,) where N is divisible by k
         k: Number of predictions per input
-    
+
     Returns:
         Tensor of shape (N//k,) containing standard deviations
     """
     # Reshape the tensor to group related predictions together
     n_inputs = tensor.shape[0] // k
     reshaped = tensor.reshape(k, n_inputs).t()  # Shape: (n_inputs, k)
-    
+
     # Compute standard deviation along dimension 1 (across the k predictions)
     return torch.mean(reshaped, dim=1), torch.std(reshaped, dim=1)  # Shape: (n_inputs,)
 
@@ -93,7 +92,7 @@ class DynamicRLHF:
         device: str = "cuda",
         num_ensemble_models: int = 4,
         initial_feedback_count: int = 500,
-        apply_random_response_handling: bool =False,
+        apply_random_response_handling: bool = False,
         callbacks: List[BaseCallback] = None,
         hyperparams: Dict[str, Any] = None,  # Hyperparameters from ExperimentManager
         seed: int = None,
@@ -127,7 +126,7 @@ class DynamicRLHF:
         self.shared_layer_num = shared_layer_num
         self.head_layer_num = head_layer_num
         self.feedback_embedding_dim = feedback_embedding_dim
-        
+
         self.action_one_hot = isinstance(self.env.action_space, gym.spaces.Discrete)
         if self.action_one_hot:
             self.one_hot_dim = self.env.action_space.n
@@ -140,12 +139,12 @@ class DynamicRLHF:
 
         if apply_random_response_handling:
             self._apply_random_response_handling()
-        
+
         # Perform initial reward model training before initializing RL agent
         if self.initial_feedback_count > 0:
-            self.rl_agent = None # need for collect_trajectories
+            self.rl_agent = None  # need for collect_trajectories
             self._initialize_reward_models_with_random_feedback()
-        
+
         # Initialize RL agent
         self.rl_agent = self._init_rl_agent()
 
@@ -155,28 +154,25 @@ class DynamicRLHF:
 
     def _init_rl_agent(self):
         """Initialize the RL agent using hyperparameters from ExperimentManager."""
-        wrapped_env = RewardVecEnvWrapper(
-            self.env, 
-            reward_fn=self.compute_ensemble_reward
-        )
+        wrapped_env = RewardVecEnvWrapper(self.env, reward_fn=self.compute_ensemble_reward)
 
         if self.algorithm == "ppo":
             return PPO(
-                env=wrapped_env, 
-                verbose=1, 
+                env=wrapped_env,
+                verbose=1,
                 seed=self.seed,
                 device=self.device,
-                #tensorboard_log=self.tensorboard_log,
-                **self._hyperparams
+                # tensorboard_log=self.tensorboard_log,
+                **self._hyperparams,
             )
         else:
             return SAC(
-                env=wrapped_env, 
-                verbose=1, 
+                env=wrapped_env,
+                verbose=1,
                 seed=self.seed,
                 device=self.device,
-                #tensorboard_log=self.tensorboard_log,
-                **self._hyperparams
+                # tensorboard_log=self.tensorboard_log,
+                **self._hyperparams,
             )
 
     def _init_reward_models(self):
@@ -194,7 +190,6 @@ class DynamicRLHF:
             return self._init_unified_reward_model()
         else:
             raise ValueError(f"Unknown reward model type: {self.reward_model_type}")
-
 
     def _init_separate_reward_models(self):
         """Initialize separate reward models for each feedback type (original implementation)."""
@@ -265,7 +260,7 @@ class DynamicRLHF:
                 learning_rate=1e-5,
                 ensemble_count=self.num_ensemble_models,
             )
-            
+
         # For multi-head, we return a dictionary with a single key
         # This is to maintain compatibility with the rest of the code
         return {"multi_head": model}
@@ -298,7 +293,7 @@ class DynamicRLHF:
                 ensemble_count=self.num_ensemble_models,
                 feedback_embedding_dim=self.feedback_embedding_dim,
             )
-            
+
         # For unified, we return a dictionary with a single key
         # This is to maintain compatibility with the rest of the code
         return {"unified": model}
@@ -306,40 +301,42 @@ class DynamicRLHF:
     def _initialize_reward_models_with_random_feedback(self):
         """Collect initial random feedback and train reward models before RL training begins."""
         print(f"\nInitializing reward models with {self.initial_feedback_count} random feedback samples...")
-        
+
         # Calculate how many batches of trajectories to collect
         batches_needed = (self.initial_feedback_count + self.n_feedback_per_iteration - 1) // self.n_feedback_per_iteration
         total_feedback_collected = 0
         feedback_counts = defaultdict(int)
-        
+
         for batch in range(batches_needed):
-            
+
             # Collect random trajectories
             trajectories, initial_states = self.collect_trajectories(self.n_feedback_per_iteration)
-            
+
             # Always use random sampling for initial feedback
             feedback, batch_counts = self.sample_feedback_random(trajectories, initial_states)
-            
+
             # Update feedback counts
             for feedback_type, count in batch_counts.items():
                 feedback_counts[feedback_type] += count
                 total_feedback_collected += count
-            
+
             # Update feedback buffers
             self.update_feedback_buffers(feedback)
-            
+
             # Log progress if wandb is available
-            if self.wandb_logger is not None and hasattr(self.wandb, 'run') and self.wandb.run is not None:
+            if self.wandb_logger is not None and hasattr(self.wandb, "run") and self.wandb.run is not None:
                 metrics_to_log = {}
                 for feedback_type, count in feedback_counts.items():
                     metrics_to_log[f"initial_feedback/{feedback_type}_count"] = count
                 metrics_to_log["initial_feedback/total_collected"] = total_feedback_collected
-                metrics_to_log["initial_feedback/percent_complete"] = (total_feedback_collected / self.initial_feedback_count) * 100
+                metrics_to_log["initial_feedback/percent_complete"] = (
+                    total_feedback_collected / self.initial_feedback_count
+                ) * 100
                 self.wandb.log(metrics_to_log)
-            
+
             if total_feedback_collected >= self.initial_feedback_count:
                 break
-        
+
         # Train the reward models with more epochs for initial training
         initial_training_epochs = self.reward_training_epochs * 2  # Train longer initially
         reward_metrics = self._train_reward_models_with_epochs(initial_training_epochs)
@@ -347,80 +344,66 @@ class DynamicRLHF:
         print("\nInitial feedback counts:")
         for feedback_type, count in feedback_counts.items():
             print(f"{feedback_type}: {count}")
-        
+
         print("\nInitial reward model losses:")
         for feedback_type, loss in reward_metrics.items():
             print(f"{feedback_type}: {loss:.4f}")
-        
+
         # Log initial training metrics
-        if self.wandb_logger is not None and hasattr(self.wandb, 'run') and self.wandb.run is not None:
+        if self.wandb_logger is not None and hasattr(self.wandb, "run") and self.wandb.run is not None:
             metrics_to_log = {}
             for feedback_type, loss in reward_metrics.items():
                 metrics_to_log[f"initial_reward_model/{feedback_type}_loss"] = loss
             self.wandb.log(metrics_to_log)
-    
+
     def _train_reward_models_with_epochs(self, max_epochs=None):
         """
         Train reward models with specified number of epochs.
         Modified to handle different reward model architectures.
         """
         reward_metrics = {}
-        
+
         # Use default epochs if not specified
         if max_epochs is None:
             max_epochs = self.reward_training_epochs
-        
+
         if self.reward_model_type == "separate":
             # Original implementation: train separate models for each feedback type
             for feedback_type in self.feedback_types:
                 buffer_data = self.feedback_buffers[feedback_type]
                 if not buffer_data:
                     continue
-    
+
                 print(f"TRAINING REWARD MODEL FOR F.B. TYPE: {feedback_type}")
-                
+
                 # Create dataset from buffer
                 full_dataset = BufferDataset(buffer_data)
-                
+
                 # Split dataset for validation
                 val_size = int(len(full_dataset) * 0.368)
                 train_size = len(full_dataset) - val_size
-                
+
                 if train_size <= 0 or val_size <= 0:
                     print(f"Skipping {feedback_type} training: insufficient data ({len(full_dataset)} samples)")
                     continue
-                    
-                train_dataset, val_dataset = torch.utils.data.random_split(
-                    full_dataset, [train_size, val_size]
-                )
-                
+
+                train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+
                 # Setup data loaders
                 train_loader = DataLoader(
-                    train_dataset,
-                    batch_size=self.num_ensemble_models,
-                    shuffle=True,
-                    pin_memory=True,
-                    drop_last=True
+                    train_dataset, batch_size=self.num_ensemble_models, shuffle=True, pin_memory=True, drop_last=True
                 )
-                
+
                 val_loader = DataLoader(
-                    val_dataset,
-                    batch_size=self.num_ensemble_models,
-                    shuffle=False,
-                    pin_memory=True,
-                    drop_last=True
+                    val_dataset, batch_size=self.num_ensemble_models, shuffle=False, pin_memory=True, drop_last=True
                 )
-                
+
                 # Configure callbacks and trainer
                 callbacks = [
                     L2RegulationCallback(initial_l2=0.01),
-                    pytorch_lightning.callbacks.EarlyStopping(
-                        monitor='val_loss',
-                        patience=3,
-                        mode='min'
-                    )
+                    pytorch_lightning.callbacks.EarlyStopping(monitor="val_loss", patience=3, mode="min"),
                 ]
-                
+
                 trainer = Trainer(
                     max_epochs=max_epochs,
                     accelerator="auto",
@@ -433,59 +416,51 @@ class DynamicRLHF:
                     enable_model_summary=False,
                     enable_checkpointing=False,
                 )
-                
+
                 # Train the model
-                trainer.fit(
-                    self.reward_models[feedback_type],
-                    train_dataloaders=train_loader,
-                    val_dataloaders=val_loader
-                )
-                
+                trainer.fit(self.reward_models[feedback_type], train_dataloaders=train_loader, val_dataloaders=val_loader)
+
                 # Extract final metrics
                 final_metrics = trainer.callback_metrics
                 train_loss = float(final_metrics.get("train_loss", -1.0))
                 val_loss = float(final_metrics.get("val_loss", -1.0))
-                
+
                 reward_metrics[feedback_type] = val_loss
-                
+
                 print(f"{feedback_type} training complete: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}")
-                
+
         elif self.reward_model_type == "multi-head":
             # Get the multi-head model
             model = list(self.reward_models.values())[0]  # Only one model in dict
-            
+
             # Check if we have any data to train on
             has_data = False
             for feedback_type in self.feedback_types:
                 if self.feedback_buffers[feedback_type]:
                     has_data = True
                     break
-                    
+
             if not has_data:
                 print("No data available for training")
                 return {}
-            
+
             # Create data loaders by feedback type
             dataloaders = create_dataloaders_by_type(
                 self.feedback_buffers,
                 batch_size=self.num_ensemble_models,
                 val_split=0.368,
             )
-            
+
             # Skip training if no dataloaders
             if not dataloaders:
                 return {}
-            
+
             # Configure callbacks
             callbacks = [
                 L2RegulationCallback(initial_l2=0.01),
-                pytorch_lightning.callbacks.EarlyStopping(
-                    monitor='val_loss',
-                    patience=3,
-                    mode='min'
-                )
+                pytorch_lightning.callbacks.EarlyStopping(monitor="val_loss", patience=3, mode="min"),
             ]
-            
+
             # Train for each feedback type separately (but using the shared model)
             for feedback_type, (train_loader, val_loader) in dataloaders.items():
                 print(f"Training multi-head model for {feedback_type}")
@@ -496,17 +471,17 @@ class DynamicRLHF:
                     batch_size=train_loader.batch_size,
                     shuffle=True,
                     pin_memory=True,
-                    drop_last=True
+                    drop_last=True,
                 )
-                
+
                 wrapped_val_loader = DataLoader(
                     [(feedback_type, batch) for batch in val_loader.dataset],
                     batch_size=val_loader.batch_size,
                     shuffle=False,
                     pin_memory=True,
-                    drop_last=True
+                    drop_last=True,
                 )
-                
+
                 # Configure trainer
                 trainer = Trainer(
                     max_epochs=max_epochs,
@@ -520,54 +495,46 @@ class DynamicRLHF:
                     enable_model_summary=False,
                     enable_checkpointing=False,
                 )
-                
+
                 # Train the model directly without a wrapper
-                trainer.fit(
-                    model,
-                    train_dataloaders=wrapped_train_loader,
-                    val_dataloaders=wrapped_val_loader
-                )
-                
+                trainer.fit(model, train_dataloaders=wrapped_train_loader, val_dataloaders=wrapped_val_loader)
+
                 # Extract final metrics
                 final_metrics = trainer.callback_metrics
                 val_loss = float(final_metrics.get(f"val_loss_{feedback_type}", -1.0))
                 reward_metrics[feedback_type] = val_loss
-                
+
                 print(f"{feedback_type} training complete: val_loss={val_loss:.4f}")
-            
+
         elif self.reward_model_type == "unified":
 
             # Get the unified model
             model = list(self.reward_models.values())[0]  # Only one model in dict
-            
+
             # Check if we have any data to train on
             has_data = False
             for feedback_type in self.feedback_types:
                 if self.feedback_buffers[feedback_type]:
                     has_data = True
                     break
-                    
+
             if not has_data:
                 print("No data available for training")
                 return {}
-            
+
             # Create unified data module
             train_dataloader, val_dataloader = create_unified_dataloaders(
                 self.feedback_buffers,
                 batch_size=1,
                 val_split=0.368,
             )
-            
+
             # Configure callbacks
             callbacks = [
                 L2RegulationCallback(initial_l2=0.01),
-                pytorch_lightning.callbacks.EarlyStopping(
-                    monitor='val_loss',
-                    patience=3,
-                    mode='min'
-                )
+                pytorch_lightning.callbacks.EarlyStopping(monitor="val_loss", patience=3, mode="min"),
             ]
-            
+
             trainer = Trainer(
                 max_epochs=max_epochs,
                 accelerator="auto",
@@ -580,86 +547,78 @@ class DynamicRLHF:
                 enable_model_summary=False,
                 enable_checkpointing=False,
             )
-            
+
             # Train the model
-            trainer.fit(
-                model,
-                train_dataloaders=train_dataloader,
-                val_dataloaders=val_dataloader
-            )
-            
+            trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
+
             # Extract final metrics for each feedback type
             final_metrics = trainer.callback_metrics
-            
+
             for feedback_type in self.feedback_types:
                 val_loss_key = f"val_loss_{feedback_type}"
                 if val_loss_key in final_metrics:
                     reward_metrics[feedback_type] = float(final_metrics[val_loss_key])
-            
+
             # Also add overall val_loss
             if "val_loss" in final_metrics:
                 reward_metrics["overall"] = float(final_metrics["val_loss"])
-            
+
             print(f"Unified model training complete")
             for fb_type, loss in reward_metrics.items():
                 print(f"  {fb_type}: val_loss={loss:.4f}")
-            
+
         return reward_metrics
 
     def _apply_random_response_handling(self):
         """Apply 10% random response handling to comparative loss functions."""
-        
+
         # Store original loss functions
         original_loss_functions = {}
-        
+
         for feedback_type in self.feedback_types:
             if feedback_type in ["comparative", "descriptive_preference", "demonstrative", "corrective"]:
                 # Save original function
                 original_loss = self.reward_models[feedback_type].loss_function
                 original_loss_functions[feedback_type] = original_loss
-                
+
                 # Create a new loss function that accounts for random responses
                 def modified_loss_function(network, batch, orig_loss=original_loss):
                     # For pairwise comparisons
-                    if hasattr(orig_loss, "__name__") and orig_loss.__name__ == 'calculate_pairwise_loss':
+                    if hasattr(orig_loss, "__name__") and orig_loss.__name__ == "calculate_pairwise_loss":
                         (pair_obs, pair_actions, pair_masks), preferred_indices = batch
-                        
+
                         # Get observations/actions for both trajectories
                         obs1, obs2 = pair_obs[0], pair_obs[1]
                         actions1, actions2 = pair_actions[0], pair_actions[1]
-                        
+
                         # Get rewards from network
                         outputs1 = network(obs1, actions1)
                         outputs2 = network(obs2, actions2)
-                        
+
                         # Sum rewards over trajectory
                         rewards1 = outputs1.sum(dim=1).squeeze(-1)
                         rewards2 = outputs2.sum(dim=1).squeeze(-1)
-                        
+
                         # Calculate reward differences
                         reward_diff = rewards1 - rewards2
-                        
+
                         # Apply 10% random response probability
                         # P(choose 1) = 0.9 * sigmoid(r1-r2) + 0.05
                         probs = 0.9 * torch.sigmoid(reward_diff) + 0.05
-                        
+
                         # Get probability of the chosen trajectory
-                        chosen_probs = torch.where(
-                            preferred_indices == 0,
-                            probs,
-                            1 - probs
-                        )
-                        
+                        chosen_probs = torch.where(preferred_indices == 0, probs, 1 - probs)
+
                         # Negative log likelihood loss
                         loss = -torch.mean(torch.log(chosen_probs + 1e-8))
                         return loss
                     else:
                         # For other loss types, use original
                         return orig_loss(network, batch)
-                
+
                 # Assign modified loss function
                 self.reward_models[feedback_type].loss_function = modified_loss_function
-        
+
         return original_loss_functions
 
     def collect_trajectories(self, n_trajectories: int) -> List[Dict]:
@@ -693,7 +652,6 @@ class DynamicRLHF:
 
         return trajectories, initial_states
 
-    
     def compute_model_uncertainty(
         self,
         trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]],
@@ -703,41 +661,25 @@ class DynamicRLHF:
         reward_model = self.reward_models[feedback_type]
 
         # Stack observations and actions from trajectory
-        states = torch.vstack(
-            [torch.as_tensor(step[0]).float() for step in trajectory]
-        ).to(self.device)
-        actions = torch.vstack(
-            [torch.as_tensor(step[1]).float() for step in trajectory]
-        ).to(self.device)
+        states = torch.vstack([torch.as_tensor(step[0]).float() for step in trajectory]).to(self.device)
+        actions = torch.vstack([torch.as_tensor(step[1]).float() for step in trajectory]).to(self.device)
 
         # Get predictions from all ensemble members
         with torch.no_grad():
             if reward_model.ensemble_count > 1:
-                states_expanded = states.unsqueeze(0).expand(
-                    reward_model.ensemble_count, *states.shape
-                )
-                actions_expanded = actions.unsqueeze(0).expand(
-                    reward_model.ensemble_count, *actions.shape
-                )
-                predictions = reward_model(
-                    states_expanded, actions_expanded
-                )  # Shape: [ensemble_size, traj_len, 1]
+                states_expanded = states.unsqueeze(0).expand(reward_model.ensemble_count, *states.shape)
+                actions_expanded = actions.unsqueeze(0).expand(reward_model.ensemble_count, *actions.shape)
+                predictions = reward_model(states_expanded, actions_expanded)  # Shape: [ensemble_size, traj_len, 1]
 
                 # Compute trajectory-level uncertainty as mean of step-wise uncertainties
-                step_uncertainties = predictions.std(
-                    dim=0
-                )  # Standard deviation across ensemble members
-                trajectory_uncertainty = (
-                    step_uncertainties.mean().item()
-                )  # Mean uncertainty across trajectory
+                step_uncertainties = predictions.std(dim=0)  # Standard deviation across ensemble members
+                trajectory_uncertainty = step_uncertainties.mean().item()  # Mean uncertainty across trajectory
             else:
                 trajectory_uncertainty = 0.0
 
         return trajectory_uncertainty
 
-    def sample_feedback_uncertainty(
-        self, trajectories: List[List], initial_states: List[np.ndarray]
-    ) -> Dict:
+    def sample_feedback_uncertainty(self, trajectories: List[List], initial_states: List[np.ndarray]) -> Dict:
         """Sample feedback types based on ensemble variance for each reward model."""
         # Calculate uncertainties for each trajectory and feedback type
         trajectory_uncertainties = []
@@ -745,12 +687,8 @@ class DynamicRLHF:
         for trajectory in trajectories:
             uncertainties = {}
             for feedback_type in self.feedback_types:
-                if (
-                    len(self.feedback_buffers[feedback_type]) > 0
-                ):  # Only if model has been trained
-                    uncertainty = self.compute_model_uncertainty(
-                        trajectory, feedback_type
-                    )
+                if len(self.feedback_buffers[feedback_type]) > 0:  # Only if model has been trained
+                    uncertainty = self.compute_model_uncertainty(trajectory, feedback_type)
                 else:
                     # If no feedback yet, set high uncertainty to encourage exploration
                     uncertainty = float("inf")
@@ -762,23 +700,15 @@ class DynamicRLHF:
         all_feedback = []
 
         # For each trajectory, sample feedback type with probability proportional to uncertainty
-        for trajectory, initial_state, uncertainties in zip(
-            trajectories, initial_states, trajectory_uncertainties
-        ):
+        for trajectory, initial_state, uncertainties in zip(trajectories, initial_states, trajectory_uncertainties):
             # Normalize uncertainties to probabilities
             total_uncertainty = sum(uncertainties.values())
             if total_uncertainty == float("inf"):
                 # If no feedback yet for some types, sample uniformly from those
-                untrained_types = [
-                    ft
-                    for ft in self.feedback_types
-                    if len(self.feedback_buffers[ft]) == 0
-                ]
+                untrained_types = [ft for ft in self.feedback_types if len(self.feedback_buffers[ft]) == 0]
                 feedback_type = np.random.choice(untrained_types)
             else:
-                probs = [
-                    uncertainties[ft] / total_uncertainty for ft in self.feedback_types
-                ]
+                probs = [uncertainties[ft] / total_uncertainty for ft in self.feedback_types]
                 feedback_type = np.random.choice(self.feedback_types, p=probs)
 
             # Handle different feedback types
@@ -786,28 +716,21 @@ class DynamicRLHF:
             if feedback_type in ["comparative", "descriptive_preference"]:
                 # Need a second trajectory for comparison
                 trajectory2, _ = self.collect_trajectories(1)
-                feedback = self.oracle.get_feedback(
-                    (trajectory, trajectory2[0]), initial_state, feedback_type
-                )
+                feedback = self.oracle.get_feedback((trajectory, trajectory2[0]), initial_state, feedback_type)
             else:
-                feedback = self.oracle.get_feedback(
-                    trajectory, initial_state, feedback_type
-                )
-            
+                feedback = self.oracle.get_feedback(trajectory, initial_state, feedback_type)
+
             feedback_dict[feedback_type] = feedback
             feedback_counts[feedback_type] += 1
             all_feedback.append(feedback_dict)
 
         return all_feedback, feedback_counts
 
-
     def sample_feedback_random(
         self, trajectories: List[List], initial_states: List[np.ndarray]
     ) -> tuple[List[Dict], Dict[str, int]]:
         """Randomly sample feedback types."""
-        feedback_distribution = np.ones(len(self.feedback_types)) / len(
-            self.feedback_types
-        )
+        feedback_distribution = np.ones(len(self.feedback_types)) / len(self.feedback_types)
         selected_types = np.random.choice(
             self.feedback_types,
             size=len(trajectories),
@@ -817,23 +740,17 @@ class DynamicRLHF:
         feedback_counts = defaultdict(int)
         all_feedback = []
 
-        for trajectory, initial_state, feedback_type in zip(
-            trajectories, initial_states, selected_types
-        ):
+        for trajectory, initial_state, feedback_type in zip(trajectories, initial_states, selected_types):
             feedback_dict = {}
-            
+
             # Handle different feedback types
             if feedback_type in ["comparative", "descriptive_preference"]:
                 # Need a second trajectory for comparison
                 trajectory2, _ = self.collect_trajectories(1)
-                feedback = self.oracle.get_feedback(
-                    (trajectory, trajectory2[0]), initial_state, feedback_type
-                )
+                feedback = self.oracle.get_feedback((trajectory, trajectory2[0]), initial_state, feedback_type)
             else:
-                feedback = self.oracle.get_feedback(
-                    trajectory, initial_state, feedback_type
-                )
-            
+                feedback = self.oracle.get_feedback(trajectory, initial_state, feedback_type)
+
             feedback_dict[feedback_type] = feedback
             feedback_counts[feedback_type] += 1
             all_feedback.append(feedback_dict)
@@ -850,14 +767,13 @@ class DynamicRLHF:
                         # so extend instead of append
                         if len(self.feedback_buffers[feedback_type]) >= self.feedback_buffer_size:
                             # Remove oldest feedback
-                            self.feedback_buffers[feedback_type] = self.feedback_buffers[feedback_type][len(feedback):]
-                        self.feedback_buffers[feedback_type].extend(feedback)                    
+                            self.feedback_buffers[feedback_type] = self.feedback_buffers[feedback_type][len(feedback) :]
+                        self.feedback_buffers[feedback_type].extend(feedback)
                     else:
                         if len(self.feedback_buffers[feedback_type]) >= self.feedback_buffer_size:
                             # Remove oldest feedback
                             self.feedback_buffers[feedback_type].pop(0)
                         self.feedback_buffers[feedback_type].append(feedback)
-
 
     def compute_ensemble_reward(self, state: np.ndarray, action: np.ndarray) -> np.ndarray:
         """
@@ -873,15 +789,15 @@ class DynamicRLHF:
         # Add batch dimension to actions if not present
         if len(action.shape) < 2:
             action = np.expand_dims(action, axis=0)
-    
+
         # Convert to torch tensors of shape [batch_size, ...]
         state_tensor = torch.as_tensor(state, device=device, dtype=torch.float32).unsqueeze(1)
         action_tensor = torch.as_tensor(action, device=device, dtype=torch.float32).unsqueeze(1)
-    
+
         # Lists to accumulate each model's reward and uncertainty
         model_rewards = []
         model_uncertainties = []
-    
+
         with torch.no_grad():
             if self.reward_model_type == "separate":
                 # Original implementation: separate models for each feedback type
@@ -889,23 +805,19 @@ class DynamicRLHF:
                     # Only use models which have some feedback
                     if len(self.feedback_buffers[feedback_type]) == 0:
                         continue
-                
+
                     if reward_model.ensemble_count > 1:
                         # Expand along ensemble dimension
-                        st_expanded = state_tensor.repeat(
-                            reward_model.ensemble_count, *[1] * (len(state_tensor.shape) - 1)
-                        )
-                        act_expanded = action_tensor.repeat(
-                            reward_model.ensemble_count, *[1] * (len(action_tensor.shape) - 1)
-                        )
-                
+                        st_expanded = state_tensor.repeat(reward_model.ensemble_count, *[1] * (len(state_tensor.shape) - 1))
+                        act_expanded = action_tensor.repeat(reward_model.ensemble_count, *[1] * (len(action_tensor.shape) - 1))
+
                         # Get predictions
                         predictions = reward_model(st_expanded, act_expanded)
-                
+
                         # Make sure we reduce the final dimension if necessary
                         if predictions.dim() == 3 and predictions.shape[-1] == 1:
                             predictions = predictions.squeeze(-1)
-                
+
                         mean_reward, uncertainty = compute_grouped(predictions, reward_model.ensemble_count)
                     else:
                         # Single model in the ensemble
@@ -914,87 +826,79 @@ class DynamicRLHF:
                             predictions = predictions.squeeze(-1)
                         mean_reward = predictions
                         uncertainty = torch.zeros_like(mean_reward)
-                
+
                     # Collect
                     model_rewards.append(mean_reward)  # shape [batch_size,]
                     model_uncertainties.append(uncertainty)  # shape [batch_size,]
-                    
+
             elif self.reward_model_type == "multi-head":
                 # Multi-head model: get predictions from each head
                 multi_head_model = list(self.reward_models.values())[0]  # Only one model
-                
+
                 # Get predictions for all heads at once
-                st_expanded = state_tensor.repeat(
-                    multi_head_model.ensemble_count, *[1] * (len(state_tensor.shape) - 1)
-                )
-                act_expanded = action_tensor.repeat(
-                    multi_head_model.ensemble_count, *[1] * (len(action_tensor.shape) - 1)
-                )
-                
+                st_expanded = state_tensor.repeat(multi_head_model.ensemble_count, *[1] * (len(state_tensor.shape) - 1))
+                act_expanded = action_tensor.repeat(multi_head_model.ensemble_count, *[1] * (len(action_tensor.shape) - 1))
+
                 # Forward pass with no specific feedback type to get all heads
                 all_outputs = multi_head_model(st_expanded, act_expanded)
-                
+
                 # Process each feedback type's output
                 for feedback_type, outputs in all_outputs.items():
                     # Only use heads which have some feedback
                     if len(self.feedback_buffers[feedback_type]) == 0:
                         continue
-                    
+
                     # Make sure we reduce the final dimension if necessary
                     if outputs.dim() == 3 and outputs.shape[-1] == 1:
                         outputs = outputs.squeeze(-1)
-                    
+
                     mean_reward, uncertainty = compute_grouped(outputs, multi_head_model.ensemble_count)
-                    
+
                     # Collect
                     model_rewards.append(mean_reward)  # shape [batch_size,]
                     model_uncertainties.append(uncertainty)  # shape [batch_size,]
-                    
+
             elif self.reward_model_type == "unified":
                 # Unified model: get predictions for each feedback type
                 unified_model = list(self.reward_models.values())[0]  # Only one model
-                
+
                 # For each feedback type that has data, get predictions
                 for feedback_type in self.feedback_types:
                     # Only use feedback types which have some feedback
                     if len(self.feedback_buffers[feedback_type]) == 0:
                         continue
-                    
+
                     # Expand along ensemble dimension
-                    st_expanded = state_tensor.repeat(
-                        unified_model.ensemble_count, *[1] * (len(state_tensor.shape) - 1)
-                    )
-                    act_expanded = action_tensor.repeat(
-                        unified_model.ensemble_count, *[1] * (len(action_tensor.shape) - 1)
-                    )
-                    
+                    st_expanded = state_tensor.repeat(unified_model.ensemble_count, *[1] * (len(state_tensor.shape) - 1))
+                    act_expanded = action_tensor.repeat(unified_model.ensemble_count, *[1] * (len(action_tensor.shape) - 1))
+
                     # Forward pass with specific feedback type
                     predictions = unified_model(st_expanded, act_expanded, feedback_type)
 
                     mean_reward, uncertainty = compute_grouped(predictions, unified_model.ensemble_count)
-                    
+
                     # Collect
                     model_rewards.append(mean_reward)  # shape [batch_size,]
                     model_uncertainties.append(uncertainty)  # shape [batch_size,]
-    
+
         # If no models have feedback, return zeros for the entire batch
         if not model_rewards:
             return np.zeros(state.shape[0], dtype=np.float32)
-    
+
         # Stack across models => shape (#models, batch_size)
         stacked_rewards = torch.stack(model_rewards, dim=0)
         stacked_uncerts = torch.stack(model_uncertainties, dim=0)
-    
+
         # Calculate final rewards => shape [batch_size,]
         batch_size = state.shape[0]
         final_rewards = torch.zeros(batch_size, device=device, dtype=torch.float32)
-    
+
         # Loop over each environment in the batch
         for i in range(batch_size):
             # For the i-th environment, gather all model rewards/uncertainties
-            r_i = stacked_rewards[:, i]   # shape (#models,)
-            u_i = stacked_uncerts[:, i]   # shape (#models,)
-    
+            r_i = stacked_rewards[:, i]  # shape (#models,)
+            u_i = stacked_uncerts[:, i]  # shape (#models,)
+
             if torch.any(u_i > 0):
                 # If any model has a positive uncertainty, weight by 1 / uncertainty
                 w_i = torch.where(u_i > 0, 1.0 / u_i, torch.ones_like(u_i))
@@ -1004,7 +908,7 @@ class DynamicRLHF:
             else:
                 # Otherwise, just average over the models
                 final_rewards[i] = r_i.mean()
-    
+
         return final_rewards.cpu().numpy()  # shape: [batch_size,]
 
     # Modify the existing method to use the new helper method
@@ -1017,15 +921,12 @@ class DynamicRLHF:
         Run full training loop with a single call to learn() and using callbacks
         for reward model updates.
         """
-        
+
         # Create reward model callback
         reward_model_callback = RewardModelUpdateCallback(
-            drlhf_agent=self,
-            update_freq=self.rl_steps_per_iteration,
-            sampling_strategy=sampling_strategy,
-            verbose=1
+            drlhf_agent=self, update_freq=self.rl_steps_per_iteration, sampling_strategy=sampling_strategy, verbose=1
         )
-        
+
         # Combine with other callbacks
         if self.external_callbacks:
             if isinstance(self.external_callbacks, list):
@@ -1036,19 +937,16 @@ class DynamicRLHF:
                 callback = CallbackList([reward_model_callback, self.external_callbacks])
         else:
             callback = reward_model_callback
-            
+
         # Train with a single call to learn()
-        self.rl_agent.learn(
-            total_timesteps=total_timesteps,
-            callback=callback,
-            reset_num_timesteps=True
-        )
-        
+        self.rl_agent.learn(total_timesteps=total_timesteps, callback=callback, reset_num_timesteps=True)
+
         # Clean up wandb if needed
-        if self.wandb_logger is not None and hasattr(self.wandb_logger, 'experiment'):
+        if self.wandb_logger is not None and hasattr(self.wandb_logger, "experiment"):
             # Only finish if we own the wandb run
             if self.wandb_logger.experiment is self.wandb.run:
                 self.wandb.finish()
+
 
 def main():
     parser = TrainingUtils.setup_base_parser()
@@ -1121,23 +1019,15 @@ def main():
         default=5000,
         help="Maximum size of the feedback buffer",
     )
-    parser.add_argument(
-        "--top-n-models", 
-        type=int, 
-        default=3,
-        help="Top N models to use"
-    )
+    parser.add_argument("--top-n-models", type=int, default=3, help="Top N models to use")
     parser.add_argument(
         "--random-response-handling",
         action="store_true",
         default=False,
-        help="Disable the 10% random response handling from Christiano et al."
+        help="Disable the 10% random response handling from Christiano et al.",
     )
     parser.add_argument(
-        "--expert-model-base-path", 
-        type=str, 
-        default="train_baselines/gt_agents", 
-        help="Expert model base path"
+        "--expert-model-base-path", type=str, default="train_baselines/gt_agents", help="Expert model base path"
     )
     parser.add_argument(
         "--num-ensemble-models",
@@ -1180,7 +1070,7 @@ def main():
         noise_level=args.noise_level,
     )
     unique_id = str(uuid.uuid4())[:8]
-    
+
     # Initialize wandb
     wandb.init(
         name=f"DYNAMIC_RL_{args.algorithm}_{args.environment}_{','.join(args.feedback_types)}_{unique_id}",
@@ -1252,6 +1142,7 @@ def main():
     # Train with the new approach
     n_timesteps = args.n_timesteps if args.n_timesteps > 0 else exp_manager.n_timesteps
     drlhf.train(total_timesteps=n_timesteps, sampling_strategy=args.sampling_strategy)
+
 
 if __name__ == "__main__":
     main()

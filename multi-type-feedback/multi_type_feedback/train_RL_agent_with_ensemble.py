@@ -1,28 +1,21 @@
 """Module for training an RL agent with weighted ensemble of reward functions."""
 
-import argparse
 import os
-import sys
 import typing
-from os import path
-from pathlib import Path
-import gymnasium as gym
+
 import numpy
 import pytorch_lightning as pl
 import torch
-from imitation.rewards.reward_function import RewardFn
-from train_baselines.exp_manager import ExperimentManager
-from train_baselines.utils import ALGOS, StoreDict
-from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.utils import set_random_seed
-from multi_type_feedback.utils import TrainingUtils
-
 import wandb
-from multi_type_feedback.datatypes import FeedbackType
+from imitation.rewards.reward_function import RewardFn
+from stable_baselines3.common.utils import set_random_seed
+from train_baselines.exp_manager import ExperimentManager
+
 from multi_type_feedback.networks import (
-    LightningCnnNetwork,
-    LightningNetwork,
+    SingleCnnNetwork,
+    SingleNetwork,
 )
+from multi_type_feedback.utils import TrainingUtils
 
 
 class CustomReward(RewardFn):
@@ -30,7 +23,7 @@ class CustomReward(RewardFn):
 
     def __init__(
         self,
-        reward_model_cls: typing.Union[LightningNetwork, LightningCnnNetwork] = None,
+        reward_model_cls: typing.Union[SingleNetwork, SingleCnnNetwork] = None,
         reward_model_paths: list[str] = [],
         vec_env_norm_fn: typing.Callable = None,
         device: str = "cuda",
@@ -40,10 +33,7 @@ class CustomReward(RewardFn):
         super().__init__()
         self.device = device
 
-        self.reward_models = [
-            reward_model_cls.load_from_checkpoint(path, map_location=device)
-            for path in reward_model_paths
-        ]
+        self.reward_models = [reward_model_cls.load_from_checkpoint(path, map_location=device) for path in reward_model_paths]
 
         self.rewards = []
         self.expert_rewards = []
@@ -81,9 +71,7 @@ class CustomReward(RewardFn):
             self.squared_distance_from_mean += difference * new_difference
 
             if self.counter > 1:
-                standard_deviation = (
-                    self.squared_distance_from_mean / (self.counter - 1)
-                ).sqrt()
+                standard_deviation = (self.squared_distance_from_mean / (self.counter - 1)).sqrt()
 
             rewards[reward_index] = (reward - self.reward_mean) / standard_deviation
 
@@ -98,22 +86,14 @@ class CustomReward(RewardFn):
     ) -> list:
         """Return reward given the current state."""
         with torch.no_grad():
-            rewards = torch.empty(len(self.reward_models), state.shape[0]).to(
-                self.device
-            )
-            state = torch.as_tensor(state, device=self.device, dtype=torch.float).unsqueeze(
-                0
-            )
-            actions = torch.as_tensor(
-                actions, device=self.device, dtype=torch.float
-            ).unsqueeze(0)
+            rewards = torch.empty(len(self.reward_models), state.shape[0]).to(self.device)
+            state = torch.as_tensor(state, device=self.device, dtype=torch.float).unsqueeze(0)
+            actions = torch.as_tensor(actions, device=self.device, dtype=torch.float).unsqueeze(0)
 
             for model_index, reward_model in enumerate(self.reward_models):
                 if reward_model.ensemble_count > 1:
                     model_state = state.expand(reward_model.ensemble_count, *state.shape[1:])
-                    model_actions = actions.expand(
-                        reward_model.ensemble_count, *actions.shape[1:]
-                    )
+                    model_actions = actions.expand(reward_model.ensemble_count, *actions.shape[1:])
                     model_rewards = reward_model(
                         model_state,
                         model_actions,
@@ -127,9 +107,7 @@ class CustomReward(RewardFn):
             # Weight the reward predictions by the inverse of the standard deviation of the models
             if self.inverse_scaling:
                 inverse_standard_deviations = 1 / rewards.std(dim=1, keepdim=True)
-                weighted_rewards = (inverse_standard_deviations * rewards).sum(
-                    dim=1
-                ) / inverse_standard_deviations.sum(dim=1)
+                weighted_rewards = (inverse_standard_deviations * rewards).sum(dim=1) / inverse_standard_deviations.sum(dim=1)
             else:
                 weighted_rewards = torch.mean(rewards, dim=1)
 
@@ -206,9 +184,9 @@ def main():
 
     # ================ Load correct reward function model =================
     if "ALE/" in args.environment or "procgen" in args.environment:
-        architecture_cls = LightningCnnNetwork
+        architecture_cls = SingleCnnNetwork
     else:
-        architecture_cls = LightningNetwork
+        architecture_cls = SingleNetwork
 
     # ================ Load correct reward function model ===================
     exp_manager = ExperimentManager(

@@ -1,46 +1,38 @@
 import argparse
 import bisect
 import os
-import pickle
 import random
 import re
 from pathlib import Path
 from typing import List, Type, Union
 
 # necessary to import ale_py/procgen, otherwise it will not be found
-import ale_py
 import cv2
 import gymnasium as gym
 import numpy as np
 import pandas as pd
-import procgen
 import torch
 from gymnasium.wrappers.stateful_observation import FrameStackObservation
 from gymnasium.wrappers.transform_observation import TransformObservation
 from minigrid.wrappers import FlatObsWrapper
-from procgen import ProcgenGym3Env
-from train_baselines.wrappers import Gym3ToGymnasium
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.atari_wrappers import AtariWrapper
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from torch import Tensor
+from train_baselines.wrappers import Gym3ToGymnasium
 
 from multi_type_feedback.datatypes import FeedbackDataset
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 
 
-def predict_expert_value(
-    expert_model: Union[PPO, SAC], observation: np.ndarray, actions: Tensor = None
-) -> Tensor:
+def predict_expert_value(expert_model: Union[PPO, SAC], observation: np.ndarray, actions: Tensor = None) -> Tensor:
     """Return the value from the expert's value function for a given observation and actions."""
 
     observation = expert_model.policy.obs_to_tensor(observation)[0]
     with torch.no_grad():
         return torch.min(
             (
-                torch.cat(
-                    expert_model.policy.critic_target(observation, actions), dim=1
-                )
+                torch.cat(expert_model.policy.critic_target(observation, actions), dim=1)
                 if isinstance(expert_model, SAC)
                 else expert_model.policy.predict_values(observation)
             ),
@@ -117,19 +109,13 @@ def generate_feedback(
 ) -> FeedbackDataset:
     """Generate agent's observations and feedback in the training environment."""
     feedback_id = f"{algorithm}_{environment_name.replace('/', '-')}"
-    checkpoints_dir = os.path.join(
-        checkpoints_path, algorithm, f"{environment_name.replace('/', '-')}_1"
-    )
+    checkpoints_dir = os.path.join(checkpoints_path, algorithm, f"{environment_name.replace('/', '-')}_1")
 
     print(f"Generating feedback for: {feedback_id}")
 
     checkpoint_files = [
         sorted(
-            [
-                file
-                for file in os.listdir(checkpoints_dir)
-                if re.search(r"rl_model_.*\.zip", file)
-            ]
+            [file for file in os.listdir(checkpoints_dir) if re.search(r"rl_model_.*\.zip", file)]
             or [f"{environment_name}.zip"],
             key=lambda x: int(re.search(r"\d+", x).group()),
         )[1]
@@ -138,9 +124,7 @@ def generate_feedback(
     total_steps = (
         n_feedback * total_steps_factor
     )  # how many steps we want to generate to sample from, a natural choice is the segment length
-    num_checkpoints = (
-        len(checkpoint_files) + 1
-    )  # also sample steps from random actios as the 0th checkpoint
+    num_checkpoints = len(checkpoint_files) + 1  # also sample steps from random actios as the 0th checkpoint
     steps_per_checkpoint = total_steps // num_checkpoints
     feedback_per_checkpoint = n_feedback // num_checkpoints
     gamma = expert_models[0][0].gamma
@@ -170,9 +154,7 @@ def generate_feedback(
         feedback = []
         # we already sample the indices for the number of generated feedback instances/segments (last segment_len steps should
         # not be sampled from)
-        fb_indices = random.choices(
-            range(0, steps_per_checkpoint + 1 - segment_len), k=feedback_per_checkpoint
-        )
+        fb_indices = random.choices(range(0, steps_per_checkpoint + 1 - segment_len), k=feedback_per_checkpoint)
         final_segment_indices = list(set(fb_indices))
 
         if model_file != "random":
@@ -196,14 +178,10 @@ def generate_feedback(
                 actions, _ = model.predict(observation, deterministic=True)
             else:
                 actions = environment.action_space.sample()
-            next_observation, reward, terminated, truncated, _ = environment.step(
-                actions
-            )
+            next_observation, reward, terminated, truncated, _ = environment.step(actions)
             done = terminated | truncated
 
-            feedback.append(
-                (np.expand_dims(observation, axis=0), actions, reward, done, render)
-            )
+            feedback.append((np.expand_dims(observation, axis=0), actions, reward, done, render))
 
             observation = next_observation if not done else environment.reset()[0]
 
@@ -227,10 +205,7 @@ def generate_feedback(
     single_final_preds = []  # for debugging
     for seg in segments:
         # predict the initial value
-        initial_vals = [
-            predict_expert_value(expert_model[0], np.array(seg[0][0])).item()
-            for expert_model in expert_models
-        ]
+        initial_vals = [predict_expert_value(expert_model[0], np.array(seg[0][0])).item() for expert_model in expert_models]
         initial_val = np.mean(initial_vals)
         single_initial_preds.append(initial_vals)
 
@@ -238,10 +213,7 @@ def generate_feedback(
         discounted_rew_sum = discounted_sum_numpy([s[2] for s in seg[:-1]], gamma)
 
         # get the final value
-        final_vals = [
-            predict_expert_value(expert_model[0], np.array(seg[-1][0])).item()
-            for expert_model in expert_models
-        ]
+        final_vals = [predict_expert_value(expert_model[0], np.array(seg[-1][0])).item() for expert_model in expert_models]
         final_val = np.mean(final_vals)
         single_final_preds.append(final_vals)
 
@@ -279,20 +251,14 @@ def generate_feedback(
     opt_gaps_instructive = []
     for i, (seg, demo) in enumerate(corrections):
         # predict the initial value
-        initial_vals = [
-            predict_expert_value(expert_model[0], np.array(demo[0][0])).item()
-            for expert_model in expert_models
-        ]
+        initial_vals = [predict_expert_value(expert_model[0], np.array(demo[0][0])).item() for expert_model in expert_models]
         initial_val = np.mean(initial_vals)
 
         # sum the discounted rewards, don't add reward for last step because we use it to calculate final value
         discounted_rew_sum = discounted_sum_numpy([s[2] for s in demo[:-1]], gamma)
 
         # get the final value
-        final_vals = [
-            predict_expert_value(expert_model[0], np.array(seg[-1][0])).item()
-            for expert_model in expert_models
-        ]
+        final_vals = [predict_expert_value(expert_model[0], np.array(seg[-1][0])).item() for expert_model in expert_models]
         final_val = np.mean(final_vals)
 
         # opt gap is the expected returns - actual returns
@@ -333,9 +299,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=int, default=0, help="Experiment number")
     parser.add_argument("--algorithm", type=str, default="ppo", help="RL algorithm")
-    parser.add_argument(
-        "--environment", type=str, default="HalfCheetah-v5", help="Environment"
-    )
+    parser.add_argument("--environment", type=str, default="HalfCheetah-v5", help="Environment")
     parser.add_argument(
         "--n-steps-factor",
         type=int,
@@ -348,18 +312,14 @@ def main():
         default=int(30),
         help="How many feedback instances should be generated",
     )
-    parser.add_argument(
-        "--seed", type=int, default=1337, help="TODO: Seed for env and stuff"
-    )
+    parser.add_argument("--seed", type=int, default=1337, help="TODO: Seed for env and stuff")
     parser.add_argument(
         "--segment-len",
         type=int,
         default=50,
         help="How long is the segment we generate feedback for",
     )
-    parser.add_argument(
-        "--save-folder", type=str, default="feedback", help="Where to save the feedback"
-    )
+    parser.add_argument("--save-folder", type=str, default="feedback", help="Where to save the feedback")
     parser.add_argument("--top-n-models", type=int, default=1)
     args = parser.parse_args()
 
@@ -370,19 +330,11 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     feedback_id = f"{args.algorithm}_{args.environment}"
-    feedback_path = (
-        Path(__file__).parents[1].resolve()
-        / args.save_folder
-        / f"{feedback_id}_{args.seed}.pkl"
-    )
+    feedback_path = Path(__file__).parents[1].resolve() / args.save_folder / f"{feedback_id}_{args.seed}.pkl"
     checkpoints_path = "../main/gt_agents"
 
     # load "ensemble" of expert agents
-    env_name = (
-        args.environment
-        if "ALE" not in args.environment
-        else args.environment.replace("/", "-")
-    )
+    env_name = args.environment if "ALE" not in args.environment else args.environment.replace("/", "-")
     expert_model_paths = [
         os.path.join(checkpoints_path, args.algorithm, model)
         for model in os.listdir(os.path.join(checkpoints_path, args.algorithm))
@@ -392,9 +344,7 @@ def main():
     orig_len = len(expert_model_paths)
 
     try:
-        run_eval_scores = pd.read_csv(
-            os.path.join(checkpoints_path, "collected_results.csv")
-        )
+        run_eval_scores = pd.read_csv(os.path.join(checkpoints_path, "collected_results.csv"))
         run_eval_scores = (
             run_eval_scores.loc[run_eval_scores["env"] == args.environment]
             .sort_values(by=["eval_score"], ascending=False)
@@ -402,43 +352,31 @@ def main():
             .to_list()
         )
         print(run_eval_scores)
-        expert_model_paths = [
-            path
-            for path in expert_model_paths
-            if path.split(os.path.sep)[-1] in run_eval_scores
-        ]
+        expert_model_paths = [path for path in expert_model_paths if path.split(os.path.sep)[-1] in run_eval_scores]
     except:
-        print(
-            "[WARN] No eval benchmark results are available. Check you eval benchmarks"
-        )
+        print("[WARN] No eval benchmark results are available. Check you eval benchmarks")
 
     if "procgen" in args.environment:
+        from procgen import ProcgenGym3Env
+
         _, short_name, _ = args.environment.split("-")
         environment = Gym3ToGymnasium(ProcgenGym3Env(num=1, env_name=short_name))
         environment = SaveResetEnvWrapper(
-            TransformObservation(
-                environment, lambda obs: obs["rgb"], environment.observation_space
-            )
+            TransformObservation(environment, lambda obs: obs["rgb"], environment.observation_space)
         )
     elif "ALE/" in args.environment:
         environment = FrameStackObservation(AtariWrapper(gym.make(args.environment)), 4)
         environment = SaveResetEnvWrapper(
-            TransformObservation(
-                environment, lambda obs: obs.squeeze(-1), environment.observation_space
-            )
+            TransformObservation(environment, lambda obs: obs.squeeze(-1), environment.observation_space)
         )
     elif "MiniGrid" in args.environment:
         environment = SaveResetEnvWrapper(FlatObsWrapper(gym.make(args.environment)))
     else:
-        environment = SaveResetEnvWrapper(
-            gym.make(args.environment, render_mode="rgb_array")
-        )
+        environment = SaveResetEnvWrapper(gym.make(args.environment, render_mode="rgb_array"))
 
     expert_models = []
     for expert_model_path in expert_model_paths:
-        if os.path.isfile(
-            os.path.join(expert_model_path, env_name, "vecnormalize.pkl")
-        ):
+        if os.path.isfile(os.path.join(expert_model_path, env_name, "vecnormalize.pkl")):
             norm_env = VecNormalize.load(
                 os.path.join(expert_model_path, env_name, "vecnormalize.pkl"),
                 DummyVecEnv([lambda: environment]),
@@ -447,9 +385,7 @@ def main():
             norm_env = None
         expert_models.append(
             (
-                (PPO if args.algorithm == "ppo" else SAC).load(
-                    os.path.join(expert_model_path, "best_model.zip")
-                ),
+                (PPO if args.algorithm == "ppo" else SAC).load(os.path.join(expert_model_path, "best_model.zip")),
                 norm_env,
             )
         )

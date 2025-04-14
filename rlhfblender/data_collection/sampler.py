@@ -112,14 +112,12 @@ class Sampler:
 
         self.reset()
 
-
     def step_sampler(self, updated_experiment: Experiment, online_sampling: bool = True) -> None:
-
         """
         Step the sampler to the next checkpoint.
         Is called when a new model checkpoint has been created and episodes were saved.
         """
-        
+
         # check if the database experiment has an updated checkpoint list, set episodes just from the new checkpoint(s)..so ignore the old ones
         if updated_experiment.checkpoint_list != self.exp_checkpoint_list:
 
@@ -127,7 +125,7 @@ class Sampler:
             if online_sampling:
                 new_checkpoints = list(set(updated_experiment.checkpoint_list) - set(self.exp_checkpoint_list))
             else:
-                new_checkpoints = updated_experiment.checkpoint_list # sample from all checkpoints if not online sampling
+                new_checkpoints = updated_experiment.checkpoint_list  # sample from all checkpoints if not online sampling
             self.exp_checkpoint_list = updated_experiment.checkpoint_list
 
             # get the new episodes from the new checkpoint(s)
@@ -156,9 +154,7 @@ class Sampler:
                 self.episode_buffer = self.episode_buffer[: self.max_episode_count]
 
             self.episode_pointer = 0
-            self.exp = updated_experiment # update the experiment object with the new one, so next time we can get the new checkpoint list
-
-
+            self.exp = updated_experiment  # update the experiment object with the new one, so next time we can get the new checkpoint list
 
     def get_full_episode_list(self) -> list[EpisodeID]:
         """

@@ -92,9 +92,7 @@ def download_from_hub(
     shutil.copy(config_path, os.path.join(config_folder, "config.yml"))
     shutil.copy(env_kwargs, os.path.join(config_folder, "env_kwargs.yml"))
     if vec_normalize_stats is not None:
-        shutil.copy(
-            vec_normalize_stats, os.path.join(config_folder, "vecnormalize.pkl")
-        )
+        shutil.copy(vec_normalize_stats, os.path.join(config_folder, "vecnormalize.pkl"))
 
     # Extract monitor file and evaluation file
     with zipfile.ZipFile(train_eval_metrics, "r") as zip_ref:
@@ -103,13 +101,9 @@ def download_from_hub(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--env", help="environment ID", type=EnvironmentName, required=True
-    )
+    parser.add_argument("--env", help="environment ID", type=EnvironmentName, required=True)
     parser.add_argument("-f", "--folder", help="Log folder", type=str, required=True)
-    parser.add_argument(
-        "-orga", "--organization", help="Huggingface hub organization", default="sb3"
-    )
+    parser.add_argument("-orga", "--organization", help="Huggingface hub organization", default="sb3")
     parser.add_argument(
         "-name",
         "--repo-name",
@@ -129,9 +123,7 @@ if __name__ == "__main__":
         default=0,
         type=int,
     )
-    parser.add_argument(
-        "--verbose", help="Verbose mode (0: no output, 1: INFO)", default=1, type=int
-    )
+    parser.add_argument("--verbose", help="Verbose mode (0: no output, 1: INFO)", default=1, type=int)
     parser.add_argument(
         "--force",
         action="store_true",

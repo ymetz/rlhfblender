@@ -12,18 +12,10 @@ from scipy.spatial import distance_matrix
 
 def all_plots():  # noqa: C901
     parser = argparse.ArgumentParser("Gather results, plot them and create table")
-    parser.add_argument(
-        "-a", "--algos", help="Algorithms to include", nargs="+", type=str
-    )
-    parser.add_argument(
-        "-e", "--env", help="Environments to include", nargs="+", type=str
-    )
-    parser.add_argument(
-        "-f", "--exp-folders", help="Folders to include", nargs="+", type=str
-    )
-    parser.add_argument(
-        "-l", "--labels", help="Label for each folder", nargs="+", type=str
-    )
+    parser.add_argument("-a", "--algos", help="Algorithms to include", nargs="+", type=str)
+    parser.add_argument("-e", "--env", help="Environments to include", nargs="+", type=str)
+    parser.add_argument("-f", "--exp-folders", help="Folders to include", nargs="+", type=str)
+    parser.add_argument("-l", "--labels", help="Label for each folder", nargs="+", type=str)
     parser.add_argument(
         "-k",
         "--key",
@@ -65,9 +57,7 @@ def all_plots():  # noqa: C901
         default=False,
         help="Do not convert x-axis to million",
     )
-    parser.add_argument(
-        "--no-display", action="store_true", default=False, help="Do not show the plots"
-    )
+    parser.add_argument("--no-display", action="store_true", default=False, help="Do not show the plots")
     parser.add_argument(
         "-print",
         "--print-n-trials",
@@ -166,26 +156,17 @@ def all_plots():  # noqa: C901
                     # Downsample if needed
                     for trial_idx, n_timesteps in enumerate(merged_timesteps):
                         # We assume they are the same, or they will be discarded in the next step
-                        if (
-                            len(n_timesteps) == min_
-                            or n_timesteps[-1] < args.min_timesteps
-                        ):
+                        if len(n_timesteps) == min_ or n_timesteps[-1] < args.min_timesteps:
                             pass
                         else:
                             new_merged_results = []
                             # Nearest neighbour
-                            distance_mat = distance_matrix(
-                                n_timesteps.reshape(-1, 1), timesteps.reshape(-1, 1)
-                            )
+                            distance_mat = distance_matrix(n_timesteps.reshape(-1, 1), timesteps.reshape(-1, 1))
                             closest_indices = distance_mat.argmin(axis=0)
                             for closest_idx in closest_indices:
-                                new_merged_results.append(
-                                    merged_results_[trial_idx][closest_idx]
-                                )
+                                new_merged_results.append(merged_results_[trial_idx][closest_idx])
                             merged_results[trial_idx] = new_merged_results
-                            last_eval[trial_idx] = merged_results_[trial_idx][
-                                closest_indices[-1]
-                            ]
+                            last_eval[trial_idx] = merged_results_[trial_idx][closest_indices[-1]]
 
                 # Remove incomplete runs
                 merged_results_tmp, last_eval_tmp = [], []
@@ -227,9 +208,7 @@ def all_plots():  # noqa: C901
                     std_error_last_eval = std_last_eval / np.sqrt(n_trials)
 
                     if args.median:
-                        results[env][
-                            f"{algo}-{args.labels[folder_idx]}"
-                        ] = f"{np.median(last_evals):.0f}"
+                        results[env][f"{algo}-{args.labels[folder_idx]}"] = f"{np.median(last_evals):.0f}"
                     else:
                         results[env][
                             f"{algo}-{args.labels[folder_idx]}"

@@ -23,9 +23,7 @@ seaborn.set()
 
 def plot_train():
     parser = argparse.ArgumentParser("Gather results, plot training reward/success")
-    parser.add_argument(
-        "-a", "--algo", help="Algorithm to include", type=str, required=True
-    )
+    parser.add_argument("-a", "--algo", help="Algorithm to include", type=str, required=True)
     parser.add_argument(
         "-e",
         "--env",
@@ -34,9 +32,7 @@ def plot_train():
         type=str,
         required=True,
     )
-    parser.add_argument(
-        "-f", "--exp-folder", help="Folders to include", type=str, required=True
-    )
+    parser.add_argument("-f", "--exp-folder", help="Folders to include", type=str, required=True)
     parser.add_argument(
         "--figsize",
         help="Figure size, width, height in inches.",
@@ -45,9 +41,7 @@ def plot_train():
         default=[6.4, 4.8],
     )
     parser.add_argument("--fontsize", help="Font size", type=int, default=14)
-    parser.add_argument(
-        "-max", "--max-timesteps", help="Max number of timesteps to display", type=int
-    )
+    parser.add_argument("-max", "--max-timesteps", help="Max number of timesteps to display", type=int)
     parser.add_argument(
         "-x",
         "--x-axis",
@@ -64,9 +58,7 @@ def plot_train():
         type=str,
         default="reward",
     )
-    parser.add_argument(
-        "-w", "--episode-window", help="Rolling window size", type=int, default=100
-    )
+    parser.add_argument("-w", "--episode-window", help="Rolling window size", type=int, default=100)
 
     args = parser.parse_args()
 
@@ -101,9 +93,7 @@ def plot_train():
     for env in envs:
         # Sort by last modification
         entries = sorted(os.scandir(log_path), key=lambda entry: entry.stat().st_mtime)
-        dirs.extend(
-            entry.path for entry in entries if env in entry.name and entry.is_dir()
-        )
+        dirs.extend(entry.path for entry in entries if env in entry.name and entry.is_dir())
 
     plt.figure(y_label, figsize=args.figsize)
     plt.title(y_label, fontsize=args.fontsize)

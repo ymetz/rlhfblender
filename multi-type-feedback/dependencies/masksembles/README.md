@@ -37,7 +37,7 @@ To install this package, use:
 pip install git+http://github.com/nikitadurasov/masksembles
 ```
 
-In addition, Masksembles requires installing at least one of the backends: torch or tensorflow2 / keras.
+In addition, Masksembles requires installing at least one of the backends: torch.
 Please follow official installation instructions for [torch](https://pytorch.org/) or [tensorflow](https://www.tensorflow.org/install)
 accordingly.
 
@@ -48,12 +48,12 @@ accordingly.
 
 [comment]: <> (support different shapes of input vectors &#40;1, 2 and 3-dimentional accordingly&#41;)
 
-This package provides implementations for `Masksembles{1|2|3}D` layers in `masksembles.{torch|keras}` 
+This package provides implementations for `Masksembles{1|2|3}D` layers in `masksembles.{torch}` 
 where `{1|2|3}` refers to dimensionality of input tensors (1-, 2- and 3-dimensional 
 accordingly).
 
 * `Masksembles1D`: works with 1-dim inputs,`[B, C]` shaped tensors
-* `Masksembles2D`: works with 2-dim inputs,`[B, H, W, C]` (keras) or `[B, C, H, W]` (torch) shaped tensors
+* `Masksembles2D`: works with 2-dim inputs, `[B, C, H, W]` (torch) shaped tensors
 * `Masksembles3D` : TBD
 
 In a Nutshell, Masksembles applies binary masks to inputs via multiplying them both channel-wise. For more efficient
@@ -74,46 +74,6 @@ tensor([[0., 1., 0., 0., 1., 0., 1., 1., 1., 1.],
         [1., 0., 1., 1., 0., 0., 1., 0., 1., 1.],
         [1., 0., 0., 1., 1., 1., 0., 1., 1., 0.]], dtype=torch.float64)
 
-```
-
-### Tensorflow / Keras
-
-```python 
-import tensorflow as tf 
-from masksembles.keras import Masksembles1D
-
-layer = Masksembles1D(4, 2.)
-layer(tf.ones([4, 10]))
-```
-```bash
-<tf.Tensor: shape=(4, 10), dtype=float32, numpy=
-array([[0., 1., 1., 0., 1., 1., 1., 0., 1., 0.],
-       [0., 1., 0., 1., 1., 0., 1., 1., 0., 1.],
-       [1., 1., 1., 1., 0., 0., 1., 0., 0., 1.],
-       [1., 0., 0., 1., 0., 1., 1., 0., 1., 1.]], dtype=float32)>
-```
-
-### Model example
-```python 
-import tensorflow as tf 
-from masksembles.keras import Masksembles1D, Masksembles2D
-
-model = keras.Sequential(
-    [
-        keras.Input(shape=input_shape),
-        layers.Conv2D(32, kernel_size=(3, 3), activation="elu"),
-        Masksembles2D(4, 2.0),
-        layers.MaxPooling2D(pool_size=(2, 2)),
-     
-        layers.Conv2D(64, kernel_size=(3, 3), activation="elu"),
-        Masksembles2D(4, 2.0),
-        layers.MaxPooling2D(pool_size=(2, 2)),
-     
-        layers.Flatten(),
-        Masksembles1D(4, 2.),
-        layers.Dense(num_classes, activation="softmax"),
-    ]
-)
 ```
 
 ## Citation

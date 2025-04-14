@@ -19,12 +19,8 @@ from train_baselines.utils import (
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--env", help="Environment ID", type=EnvironmentName, default="CartPole-v1"
-    )
-    parser.add_argument(
-        "-f", "--folder", help="Log folder", type=str, default="rl-trained-agents"
-    )
+    parser.add_argument("--env", help="Environment ID", type=EnvironmentName, default="CartPole-v1")
+    parser.add_argument("-f", "--folder", help="Log folder", type=str, default="rl-trained-agents")
     parser.add_argument("-o", "--output-folder", help="Output folder", type=str)
     parser.add_argument(
         "--algo",
@@ -34,9 +30,7 @@ if __name__ == "__main__":
         required=False,
         choices=list(ALGOS.keys()),
     )
-    parser.add_argument(
-        "-n", "--n-timesteps", help="Number of timesteps", default=1000, type=int
-    )
+    parser.add_argument("-n", "--n-timesteps", help="Number of timesteps", default=1000, type=int)
     parser.add_argument("--n-envs", help="Number of environments", default=1, type=int)
     parser.add_argument(
         "--deterministic",
@@ -175,9 +169,7 @@ if __name__ == "__main__":
 
     print(f"Loading {model_path}")
 
-    model = ALGOS[algo].load(
-        model_path, env=env, custom_objects=custom_objects, **kwargs
-    )
+    model = ALGOS[algo].load(model_path, env=env, custom_objects=custom_objects, **kwargs)
 
     # Deterministic by default except for atari games
     stochastic = args.stochastic or (is_atari or is_minigrid) and not args.deterministic

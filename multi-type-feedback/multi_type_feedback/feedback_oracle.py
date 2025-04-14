@@ -1,18 +1,20 @@
 import pickle
 from typing import Any, List, Tuple, Union
 
+import gymnasium as gym
 import numpy as np
 import torch
-import gymnasium as gym
 from scipy.spatial.distance import cdist
 from sklearn.cluster import MiniBatchKMeans
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.vec_env import VecNormalize
 
+
 def one_hot_vector(k, max_val):
     vec = np.zeros(max_val)
     np.put(vec, k, 1)
     return vec
+
 
 class FeedbackOracle:
 
@@ -50,23 +52,17 @@ class FeedbackOracle:
         # Store reference optimality gaps for evaluative feedback calibration
         self.reference_opt_gaps = reference_data["opt_gaps"]
         max_rating = 10
-        self.ratings_bins = np.linspace(
-            min(self.reference_opt_gaps), max(self.reference_opt_gaps), max_rating + 1
-        )
+        self.ratings_bins = np.linspace(min(self.reference_opt_gaps), max(self.reference_opt_gaps), max_rating + 1)
 
         # Process state-action pairs for clustering (descriptive feedback)
         states_actions = []
         for segment in reference_data["segments"]:
-            states_actions.extend(
-                [np.concatenate((step[0].squeeze(0), step[1])) for step in segment]
-            )
+            states_actions.extend([np.concatenate((step[0].squeeze(0), step[1])) for step in segment])
         states_actions = np.array(states_actions)
 
         # Fit clustering model
         batch_size = min(1000, len(states_actions) // 100)
-        self.kmeans = MiniBatchKMeans(
-            n_clusters=self.n_clusters, batch_size=batch_size, random_state=42
-        )
+        self.kmeans = MiniBatchKMeans(n_clusters=self.n_clusters, batch_size=batch_size, random_state=42)
         self.kmeans.fit(states_actions)
 
         # Store cluster representatives and their average returns
@@ -114,17 +110,9 @@ class FeedbackOracle:
         Returns:
             Feedback of the specified type
         """
-        if feedback_type in [
-            "evaluative",
-            "demonstrative",
-            "corrective",
-            "descriptive",
-            "supervised"
-        ]:
+        if feedback_type in ["evaluative", "demonstrative", "corrective", "descriptive", "supervised"]:
             if not isinstance(trajectory_data, list):
-                raise ValueError(
-                    f"{feedback_type} feedback requires a single trajectory"
-                )
+                raise ValueError(f"{feedback_type} feedback requires a single trajectory")
 
             if feedback_type == "evaluative":
                 return self.get_evaluative_feedback(trajectory_data)
@@ -136,41 +124,45 @@ class FeedbackOracle:
                 return self.get_descriptive_feedback(trajectory_data)
             elif feedback_type == "supervised":
                 return self.get_supervised_feedback(trajectory_data)
-                
 
         elif feedback_type in ["comparative", "descriptive_preference"]:
             if not isinstance(trajectory_data, tuple) or len(trajectory_data) != 2:
-                raise ValueError(
-                    f"{feedback_type} feedback requires a pair of trajectories"
-                )
+                raise ValueError(f"{feedback_type} feedback requires a pair of trajectories")
 
             trajectory1, trajectory2 = trajectory_data
 
             if feedback_type == "comparative":
                 return self.get_comparative_feedback(trajectory1, trajectory2)
             elif feedback_type == "descriptive_preference":
-                return self.get_descriptive_preference_feedback(
-                    trajectory1, trajectory2
-                )
+                return self.get_descriptive_preference_feedback(trajectory1, trajectory2)
 
         else:
             raise ValueError(f"Unknown feedback type: {feedback_type}")
 
-    
     def get_supervised_feedback(
         self, trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]]
     ) -> List[Tuple[Tuple[torch.Tensor, torch.Tensor], float]]:
         """
-            Ground-Truth Fully Supervised Rewards
+        Ground-Truth Fully Supervised Rewards
         """
-        return [((torch.as_tensor(p[0]).unsqueeze(0).float(), torch.as_tensor(p[1]).unsqueeze(0).float(), torch.ones(1).unsqueeze(-1)), torch.as_tensor(p[2]).float()) for p in trajectory]
-    
+        return [
+            (
+                (
+                    torch.as_tensor(p[0]).unsqueeze(0).float(),
+                    torch.as_tensor(p[1]).unsqueeze(0).float(),
+                    torch.ones(1).unsqueeze(-1),
+                ),
+                torch.as_tensor(p[2]).float(),
+            )
+            for p in trajectory
+        ]
+
     def get_evaluative_feedback(
         self, trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]]
     ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], int]:
         obs = torch.vstack([torch.as_tensor(p[0]).float() for p in trajectory])
         actions = torch.vstack([torch.as_tensor(p[1]).float() for p in trajectory])
-        
+
         # Pad if necessary
         mask = torch.ones(len(trajectory)).unsqueeze(-1)
         if len(trajectory) < self.segment_len:
@@ -181,26 +173,30 @@ class FeedbackOracle:
 
         # Calculate rating
         opt_gap = -self._compute_discounted_return(trajectory)
-        
+
         if self.noise_level > 0:
             opt_gap += np.random.normal(0, self.noise_level * np.std(self.reference_opt_gaps))
-            
+
         bin_index = np.digitize(opt_gap, self.ratings_bins) - 1
         rating = 10 - bin_index
         rating = max(0, min(10, rating))
 
         # for simplicity, we normalize the rating form 0-0.9
-        
+
         return (obs, actions, mask), rating / 10
 
-    def get_comparative_feedback(self, trajectory1: List[Tuple[np.ndarray, np.ndarray, float, bool]], trajectory2: List[Tuple[np.ndarray, np.ndarray, float, bool]]):
+    def get_comparative_feedback(
+        self,
+        trajectory1: List[Tuple[np.ndarray, np.ndarray, float, bool]],
+        trajectory2: List[Tuple[np.ndarray, np.ndarray, float, bool]],
+    ):
         return1 = self._compute_discounted_return(trajectory1)
         return2 = self._compute_discounted_return(trajectory2)
 
         # trajectory 1
         trajectory1_obs = torch.vstack([torch.as_tensor(p[0]).float() for p in trajectory1])
         trajectory1_actions = torch.vstack([torch.as_tensor(p[1]).float() for p in trajectory1])
-        
+
         # trajectory 2
         trajectory2_obs = torch.vstack([torch.as_tensor(p[0]).float() for p in trajectory2])
         trajectory2_actions = torch.vstack([torch.as_tensor(p[1]).float() for p in trajectory2])
@@ -213,14 +209,18 @@ class FeedbackOracle:
         if len(trajectory1) < self.segment_len:
             pad_size = self.segment_len - len(trajectory1)
             trajectory1_obs = torch.cat([trajectory1_obs, torch.zeros(pad_size, *trajectory1_obs.shape[1:])], dim=0)
-            trajectory1_actions = torch.cat([trajectory1_actions, torch.zeros(pad_size, *trajectory1_actions.shape[1:])], dim=0)
+            trajectory1_actions = torch.cat(
+                [trajectory1_actions, torch.zeros(pad_size, *trajectory1_actions.shape[1:])], dim=0
+            )
             mask1 = torch.cat([mask1, torch.zeros(pad_size, 1)], dim=0)
-            
+
         mask2 = torch.ones(len(trajectory2)).unsqueeze(-1)
         if len(trajectory2) < self.segment_len:
             pad_size = self.segment_len - len(trajectory2)
             trajectory2_obs = torch.cat([trajectory2_obs, torch.zeros(pad_size, *trajectory2_obs.shape[1:])], dim=0)
-            trajectory2_actions = torch.cat([trajectory2_actions, torch.zeros(pad_size, *trajectory2_actions.shape[1:])], dim=0)
+            trajectory2_actions = torch.cat(
+                [trajectory2_actions, torch.zeros(pad_size, *trajectory2_actions.shape[1:])], dim=0
+            )
             mask2 = torch.cat([mask2, torch.zeros(pad_size, 1)], dim=0)
 
         total_return = abs(return1) + abs(return2)
@@ -239,15 +239,15 @@ class FeedbackOracle:
         """Return demonstration and random trajectory pair with preference label 1."""
         demo = self._get_best_demonstration(initial_state)
         random_trajectory = self.get_random_trajectory()
-        
+
         # Convert demo to tensor format
         obs_demo = torch.vstack([torch.as_tensor(p[0]).float() for p in demo])
         actions_demo = torch.vstack([torch.as_tensor(p[1]).float() for p in demo])
-        
+
         # Convert random trajectory to tensor format
         obs_rand = torch.vstack([torch.as_tensor(p[0]).float() for p in random_trajectory])
         actions_rand = torch.vstack([torch.as_tensor(p[1]).float() for p in random_trajectory])
-        
+
         # Pad both trajectories if necessary
         mask_demo = torch.ones(len(demo)).unsqueeze(-1)
         if len(demo) < self.segment_len:
@@ -255,14 +255,14 @@ class FeedbackOracle:
             obs_demo = torch.cat([obs_demo, torch.zeros(pad_size, *obs_demo.shape[1:])], dim=0)
             actions_demo = torch.cat([actions_demo, torch.zeros(pad_size, *actions_demo.shape[1:])], dim=0)
             mask_demo = torch.cat([mask_demo, torch.zeros(pad_size, 1)], dim=0)
-            
+
         mask_rand = torch.ones(len(random_trajectory)).unsqueeze(-1)
         if len(random_trajectory) < self.segment_len:
             pad_size = self.segment_len - len(random_trajectory)
             obs_rand = torch.cat([obs_rand, torch.zeros(pad_size, *obs_rand.shape[1:])], dim=0)
             actions_rand = torch.cat([actions_rand, torch.zeros(pad_size, *actions_rand.shape[1:])], dim=0)
             mask_rand = torch.cat([mask_rand, torch.zeros(pad_size, 1)], dim=0)
-            
+
         return ((obs_rand, actions_rand, mask_rand), (obs_demo, actions_demo, mask_demo)), 1
 
     def get_corrective_feedback(
@@ -280,19 +280,19 @@ class FeedbackOracle:
         # Convert trajectories to tensor format
         obs_orig = torch.vstack([torch.as_tensor(p[0]).float() for p in trajectory])
         actions_orig = torch.vstack([torch.as_tensor(p[1]).float() for p in trajectory])
-        
+
         obs_expert = torch.vstack([torch.as_tensor(p[0]).float() for p in expert_demo])
         actions_expert = torch.vstack([torch.as_tensor(p[1]).float() for p in expert_demo])
-        
+
         # Pad if necessary
-        mask_traj = torch.ones(len(trajectory)).unsqueeze(-1)        
+        mask_traj = torch.ones(len(trajectory)).unsqueeze(-1)
         if len(trajectory) < self.segment_len:
             pad_size = self.segment_len - len(trajectory)
             obs_orig = torch.cat([obs_orig, torch.zeros(pad_size, *obs_orig.shape[1:])], dim=0)
             actions_orig = torch.cat([actions_orig, torch.zeros(pad_size, *actions_orig.shape[1:])], dim=0)
             mask_traj = torch.cat([mask_traj, torch.zeros(pad_size, 1)], dim=0)
-            
-        mask_demo = torch.ones(len(expert_demo)).unsqueeze(-1) 
+
+        mask_demo = torch.ones(len(expert_demo)).unsqueeze(-1)
         if len(expert_demo) < self.segment_len:
             pad_size = self.segment_len - len(expert_demo)
             obs_expert = torch.cat([obs_expert, torch.zeros(pad_size, *obs_expert.shape[1:])], dim=0)
@@ -308,9 +308,7 @@ class FeedbackOracle:
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         """Return the most similar cluster representative and its average reward."""
         # Compute average state-action for the trajectory
-        states_actions = np.array(
-            [np.concatenate((step[0].squeeze(0), step[1])) for step in trajectory]
-        )
+        states_actions = np.array([np.concatenate((step[0].squeeze(0), step[1])) for step in trajectory])
         avg_state_action = np.mean(states_actions, axis=0)
 
         # Find closest cluster
@@ -323,15 +321,14 @@ class FeedbackOracle:
 
         # Add noise to reward if specified
         if self.noise_level > 0:
-            reward += np.random.normal(
-                0, self.noise_level * np.std(self.cluster_rewards)
-            )
+            reward += np.random.normal(0, self.noise_level * np.std(self.cluster_rewards))
 
         # Split into state and action components
         obs_dim = trajectory[0][0].squeeze(0).shape[0]
-        return (torch.as_tensor(representative[:obs_dim]).unsqueeze(0).float(),  # state
-            torch.as_tensor(representative[obs_dim:]).unsqueeze(0).float(), # action
-            torch.ones(1).unsqueeze(-1) # mask (for compatability) 
+        return (
+            torch.as_tensor(representative[:obs_dim]).unsqueeze(0).float(),  # state
+            torch.as_tensor(representative[obs_dim:]).unsqueeze(0).float(),  # action
+            torch.ones(1).unsqueeze(-1),  # mask (for compatability)
         ), reward
 
     def get_descriptive_preference_feedback(
@@ -341,12 +338,8 @@ class FeedbackOracle:
     ) -> Tuple[int, int, int]:
         """Compare two trajectories based on their closest cluster representatives."""
         # Get cluster information for both trajectories
-        states_actions1 = np.array(
-            [np.concatenate((step[0].squeeze(0), step[1])) for step in trajectory1]
-        )
-        states_actions2 = np.array(
-            [np.concatenate((step[0].squeeze(0), step[1])) for step in trajectory2]
-        )
+        states_actions1 = np.array([np.concatenate((step[0].squeeze(0), step[1])) for step in trajectory1])
+        states_actions2 = np.array([np.concatenate((step[0].squeeze(0), step[1])) for step in trajectory2])
 
         avg_state_action1 = np.mean(states_actions1, axis=0)
         avg_state_action2 = np.mean(states_actions2, axis=0)
@@ -370,28 +363,33 @@ class FeedbackOracle:
             reward1 += np.random.normal(0, noise_scale)
             reward2 += np.random.normal(0, noise_scale)
 
-        # Compare cluster rewards
-        reward_diff = reward1 - reward2
-        total_reward = abs(reward1) + abs(reward2)
-        diff = abs(reward_diff) / total_reward
-
         obs_dim = trajectory1[0][0].squeeze(0).shape[0]
         if reward1 > reward2:
-            return ((torch.as_tensor(representative2[:obs_dim]).unsqueeze(0).float(),  # state
-            torch.as_tensor(representative2[obs_dim:]).unsqueeze(0).float(), # action,
-            torch.ones(1).unsqueeze(-1) # mask (for compatability) 
-        ), (torch.as_tensor(representative1[:obs_dim]).unsqueeze(0).float(),  # state
-            torch.as_tensor(representative1[obs_dim:]).unsqueeze(0).float(), # action
-            torch.ones(1).unsqueeze(-1) # mask (for compatability)
-        )), 1
+            return (
+                (
+                    torch.as_tensor(representative2[:obs_dim]).unsqueeze(0).float(),  # state
+                    torch.as_tensor(representative2[obs_dim:]).unsqueeze(0).float(),  # action,
+                    torch.ones(1).unsqueeze(-1),  # mask (for compatability)
+                ),
+                (
+                    torch.as_tensor(representative1[:obs_dim]).unsqueeze(0).float(),  # state
+                    torch.as_tensor(representative1[obs_dim:]).unsqueeze(0).float(),  # action
+                    torch.ones(1).unsqueeze(-1),  # mask (for compatability)
+                ),
+            ), 1
         else:
-            return ((torch.as_tensor(representative1[:obs_dim]).unsqueeze(0).float(),  # state
-            torch.as_tensor(representative1[obs_dim:]).unsqueeze(0).float(), # action
-            torch.ones(1).unsqueeze(-1) # mask (for compatability) 
-        ), (torch.as_tensor(representative2[:obs_dim]).unsqueeze(0).float(),  # state
-            torch.as_tensor(representative2[obs_dim:]).unsqueeze(0).float(), # action
-            torch.ones(1).unsqueeze(-1) # mask (for compatability) 
-        )), 1
+            return (
+                (
+                    torch.as_tensor(representative1[:obs_dim]).unsqueeze(0).float(),  # state
+                    torch.as_tensor(representative1[obs_dim:]).unsqueeze(0).float(),  # action
+                    torch.ones(1).unsqueeze(-1),  # mask (for compatability)
+                ),
+                (
+                    torch.as_tensor(representative2[:obs_dim]).unsqueeze(0).float(),  # state
+                    torch.as_tensor(representative2[obs_dim:]).unsqueeze(0).float(),  # action
+                    torch.ones(1).unsqueeze(-1),  # mask (for compatability)
+                ),
+            ), 1
 
     def get_random_trajectory(self):
         """Existing implementation..."""
@@ -418,12 +416,12 @@ class FeedbackOracle:
         """Helper method to get the best demonstration from expert models."""
         best_demo = None
         best_return = float("-inf")
-    
+
         for exp_model_index, (expert_model, exp_norm_env) in enumerate(self.expert_models):
             self.environment.reset()
             obs = self.environment.load_state(initial_state)
             demo = []
-    
+
             for _ in range(self.segment_len):
                 action, _ = expert_model.predict(
                     exp_norm_env.normalize_obs(obs) if exp_norm_env else obs,
@@ -437,10 +435,10 @@ class FeedbackOracle:
                 if done:
                     break
                 obs = next_obs
-    
+
             demo_return = self._compute_discounted_return(demo)
             if demo_return > best_return:
                 best_return = demo_return
                 best_demo = demo
-    
+
         return best_demo
