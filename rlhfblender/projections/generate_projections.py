@@ -1,8 +1,8 @@
 """
-Generate projections for RLHFBlender
+Generate projections and inverse projections for RLHFBlender
 
-This script loads episodes and computes projections using the same methods
-as the web interface, but can be run standalone without FastAPI.
+This script loads episodes, computes projections, and also computes inverse projections
+with a grid of samples. The results are cached for use in the web interface.
 """
 
 import argparse
@@ -13,17 +13,32 @@ import traceback
 import glob
 import numpy as np
 import networkx as nx
+import torch
+import json
+import hashlib
 from scipy import spatial
 from sklearn.cluster import DBSCAN
 from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel
 from databases import Database
+from pathlib import Path
 
 from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.projections.projection_handler import ProjectionHandler
 from rlhfblender.data_models.global_models import Experiment
 
+# Import the InverseProjectionHandler
+from inverse_projection_handler import InverseProjectionHandler
+
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
+
+# Create directory for saving inverse projection models
+INVERSE_MODELS_DIR = Path("models/inverse_projections")
+INVERSE_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Create directory for caching inverse projection results
+INVERSE_CACHE_DIR = Path("cache/inverse_projections")
+INVERSE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class EpisodeID(BaseModel):
@@ -37,7 +52,24 @@ class EpisodeID(BaseModel):
     episode_num: int = -1  # e.g.: 0
 
 
-# Function to process environment name (from your utils)
+class InverseProjectionOptions(BaseModel):
+    """
+    Options for inverse projection computation.
+    """
+    model_type: str = "auto"  # Options: "auto", "mlp", "cnn", "vae"
+    num_epochs: int = 50
+    learning_rate: float = 0.001
+    batch_size: int = 64
+    validation_split: float = 0.1
+    grid_resolution: int = 20
+    auto_grid_range: bool = True
+    x_range: Tuple[float, float] = (-5.0, 5.0)
+    y_range: Tuple[float, float] = (-5.0, 5.0)
+    grid_margin: float = 1.5
+    force_retrain: bool = False
+
+
+# Function to process environment name
 def process_env_name(env_name: str) -> str:
     """Process environment name to be compatible with filesystem."""
     return env_name.replace("/", "_").replace(":", "_")
@@ -54,7 +86,6 @@ def get_available_episodes(
     Args:
         env_name: Environment name
         benchmark_type: Type of benchmark (e.g., 'trained', 'random')
-        benchmark_id: Benchmark ID
         checkpoint_step: Checkpoint step
         
     Returns:
@@ -395,7 +426,7 @@ def compute_projections_and_clusters(
     )
     
     print("Computing feature projection")
-    if feature_input and feature_input.shape[0] > 0:
+    if feature_input is not None and feature_input.shape[0] > 0:
         feature_projection = handler.fit(
             feature_input,
             sequence_length=sequence_length,
@@ -701,9 +732,196 @@ async def compute_projection(
         }
 
 
+# Function to compute inverse projection
+def compute_inverse_projection(
+    original_data: np.ndarray,
+    coords_2d: np.ndarray,
+    inverse_options: InverseProjectionOptions,
+    cache_key: str
+) -> Dict[str, Any]:
+    """
+    Compute inverse projection and grid of samples.
+    
+    Args:
+        original_data: Original high-dimensional data
+        coords_2d: 2D coordinates from forward projection
+        inverse_options: Options for inverse projection
+        cache_key: Cache key for storing results
+        
+    Returns:
+        Dictionary with inverse projection results
+    """
+    try:
+        cache_file = INVERSE_CACHE_DIR / f"{cache_key}.json"
+        model_file = INVERSE_MODELS_DIR / f"{cache_key}.pth"
+        
+        # Check if we can use cached results
+        if not inverse_options.force_retrain and cache_file.exists() and model_file.exists():
+            print(f"Loading cached inverse projection from {cache_file}")
+            with open(cache_file, "r") as f:
+                return json.load(f)
+        
+        print("Computing inverse projection")
+        
+        # Set up the inverse projection handler
+        handler = InverseProjectionHandler(
+            model_type=inverse_options.model_type,
+            learning_rate=inverse_options.learning_rate,
+            batch_size=inverse_options.batch_size,
+            num_epochs=inverse_options.num_epochs,
+            save_model=True,
+            save_dir=str(INVERSE_MODELS_DIR),
+            device=None  # Auto-detect
+        )
+        
+        # Determine suitable model type based on data shape
+        if len(original_data.shape) > 2:  # Image-like data
+            model_type = "cnn" if inverse_options.model_type == "auto" else inverse_options.model_type
+        else:  # Vector data
+            model_type = "mlp" if inverse_options.model_type == "auto" else inverse_options.model_type
+            handler.model_type = model_type
+        
+        # Train the inverse projection model
+        print(f"Training inverse projection model with {inverse_options.num_epochs} epochs")
+        history = handler.fit(
+            data=original_data,
+            coords=coords_2d,
+            validation_split=inverse_options.validation_split,
+            verbose=True
+        )
+        
+        # Determine grid ranges
+        if inverse_options.auto_grid_range:
+            x_min, x_max = coords_2d[:, 0].min(), coords_2d[:, 0].max()
+            y_min, y_max = coords_2d[:, 1].min(), coords_2d[:, 1].max()
+            
+            # Add margin
+            x_margin = (x_max - x_min) * (inverse_options.grid_margin - 1) / 2
+            y_margin = (y_max - y_min) * (inverse_options.grid_margin - 1) / 2
+            
+            x_range = (x_min - x_margin, x_max + x_margin)
+            y_range = (y_min - y_margin, y_max + y_margin)
+        else:
+            x_range = inverse_options.x_range
+            y_range = inverse_options.y_range
+        
+        # Generate grid samples
+        print(f"Generating grid samples with resolution {inverse_options.grid_resolution}")
+        grid_recon, coords, (grid_x, grid_y) = handler.create_latent_space_grid(
+            x_range=x_range,
+            y_range=y_range,
+            resolution=inverse_options.grid_resolution,
+            return_coords=True
+        )
+        
+        # Extract model info
+        inverse_model_info = {
+            "model_type": model_type,
+            "training_history": {
+                "train_loss": [float(loss) for loss in history["train_loss"]],
+                "val_loss": [float(loss) for loss in history["val_loss"]] if "val_loss" in history else []
+            },
+            "data_shape": list(original_data.shape),
+            "num_epochs": inverse_options.num_epochs,
+            "learning_rate": inverse_options.learning_rate,
+            "batch_size": inverse_options.batch_size
+        }
+        
+        # Convert grid data to JSON-serializable format
+        grid_samples = {
+            "reconstructions": grid_recon.tolist(),
+            "coords": coords.tolist(),
+            "grid_x": grid_x.tolist(),
+            "grid_y": grid_y.tolist(),
+            "x_range": x_range,
+            "y_range": y_range,
+            "resolution": inverse_options.grid_resolution
+        }
+        
+        # Cache the results
+        results = {
+            "inverse_model_info": inverse_model_info,
+            "grid_samples": grid_samples,
+            "model_path": str(model_file)
+        }
+        
+        with open(cache_file, "w") as f:
+            json.dump(results, f)
+        
+        # Save model with the cache key as filename
+        torch.save({
+            'model_state_dict': handler.model.state_dict(),
+            'model_type': model_type,
+            'data_shape': original_data.shape,
+            'hidden_dims': handler.hidden_dims
+        }, model_file)
+        
+        print(f"Inverse projection model and grid samples saved to {cache_file}")
+        return results
+        
+    except Exception as e:
+        print(f"Error computing inverse projection: {e}")
+        traceback.print_exc()
+        return {
+            "inverse_model_info": {},
+            "grid_samples": {},
+            "model_path": ""
+        }
+
+
+# Function to generate cache key for inverse projection
+def generate_inverse_cache_key(
+    env_name: str,
+    benchmark_id: int,
+    checkpoint_step: int,
+    projection_method: str,
+    sequence_length: int,
+    step_range: str,
+    inverse_model_type: str,
+    num_epochs: int,
+    original_data: np.ndarray,
+    coords_2d: np.ndarray
+) -> str:
+    """
+    Generate a cache key for inverse projection.
+    
+    Args:
+        env_name: Environment name
+        benchmark_id: Benchmark ID
+        checkpoint_step: Checkpoint step
+        projection_method: Projection method
+        sequence_length: Sequence length
+        step_range: Step range
+        inverse_model_type: Inverse model type
+        num_epochs: Number of training epochs
+        original_data: Original data
+        coords_2d: 2D coordinates
+        
+    Returns:
+        Cache key string
+    """
+    # Create a hash of the request parameters and data shape
+    key_dict = {
+        "env_name": env_name,
+        "benchmark_id": benchmark_id,
+        "checkpoint_step": checkpoint_step,
+        "projection_method": projection_method,
+        "sequence_length": sequence_length,
+        "step_range": step_range,
+        "inverse_model_type": inverse_model_type,
+        "num_epochs": num_epochs,
+        "data_shape": list(original_data.shape),
+        "data_hash": hashlib.md5(original_data.tobytes()).hexdigest(),
+        "coords_hash": hashlib.md5(coords_2d.tobytes()).hexdigest()
+    }
+    
+    key_str = json.dumps(key_dict, sort_keys=True)
+    return hashlib.md5(key_str.encode()).hexdigest()
+
+
 # Main function
 async def generate_projections(
-    experiment_id: int,
+    experiment_id: str,
     checkpoint_step: int,
     projection_method: str = "UMAP",
     sequence_length: int = 1,
@@ -714,14 +932,14 @@ async def generate_projections(
     projection_props: Dict[str, Any] = {},
     transition_embedding: bool = True,
     feature_embedding: bool = True,
+    compute_inverse: bool = False,
+    inverse_options: InverseProjectionOptions = InverseProjectionOptions(),
 ) -> Dict[str, Any]:
     """
     Generate projections for episodes matching the given parameters.
     
     Args:
-        env_name: Environment name
-        benchmark_type: Type of benchmark (e.g., 'trained', 'random')
-        benchmark_id: Benchmark ID
+        experiment_id: Experiment/Benchmark ID
         checkpoint_step: Checkpoint step
         projection_method: Name of projection method to use
         sequence_length: Sequence length for projection
@@ -730,15 +948,20 @@ async def generate_projections(
         use_one_d_projection: Whether to use 1D projection
         append_time: Whether to append time information
         projection_props: Additional projection properties
+        transition_embedding: Whether to compute transition embeddings
+        feature_embedding: Whether to compute feature embeddings
+        compute_inverse: Whether to compute inverse projection
+        inverse_options: Options for inverse projection
         
     Returns:
-        Projection results
+        Projection results and optionally inverse projection results
     """
 
     db_experiment = await get_single_entry(
         database,
         Experiment,
-        experiment_id
+        experiment_id,
+        key_column="exp_name",
     )
     env_name = process_env_name(db_experiment.env_id)
 
@@ -758,6 +981,7 @@ async def generate_projections(
             "connections": [],
             "feature_projection": [],
             "transition_projection": [],
+            "inverse_results": None,
         }
     
     print(f"Found {len(episode_nums)} episodes: {episode_nums}")
@@ -767,7 +991,7 @@ async def generate_projections(
         EpisodeID(
             env_name=env_name,
             benchmark_type="random" if db_experiment.framework == "random" else "trained",
-            benchmark_id=experiment_id,
+            benchmark_id=db_experiment.id,
             checkpoint_step=checkpoint_step,
             episode_num=episode_num
         )
@@ -778,10 +1002,10 @@ async def generate_projections(
     episode_data = await load_episode_data(episodes)
 
     # Create projection hash for caching
-    projection_hash = f"{process_env_name(env_name)}_{experiment_id}_{checkpoint_step}"
+    projection_hash = f"{process_env_name(env_name)}_{experiment_id}_{checkpoint_step}_{projection_method}"
     
     # Compute projection
-    return await compute_projection(
+    projection_results = await compute_projection(
         episode_data=episode_data,
         projection_method=projection_method,
         sequence_length=sequence_length,
@@ -795,17 +1019,52 @@ async def generate_projections(
         transition_embedding=transition_embedding,
         feature_embedding=feature_embedding
     )
+    
+    # Compute inverse projection if requested
+    inverse_results = None
+    if compute_inverse and len(projection_results["projection"]) > 0:
+        print("Computing inverse projection...")
+        
+        # Convert projection coordinates to numpy array
+        coords_2d = np.array(projection_results["projection"])
+        
+        # Get original data for inverse mapping
+        original_data = episode_data["obs"]
+        
+        # Generate cache key for inverse projection
+        inverse_cache_key = generate_inverse_cache_key(
+            env_name=env_name,
+            benchmark_id=experiment_id,
+            checkpoint_step=checkpoint_step,
+            projection_method=projection_method,
+            sequence_length=sequence_length,
+            step_range=step_range,
+            inverse_model_type=inverse_options.model_type,
+            num_epochs=inverse_options.num_epochs,
+            original_data=original_data,
+            coords_2d=coords_2d
+        )
+        
+        # Compute inverse projection
+        inverse_results = compute_inverse_projection(
+            original_data=original_data,
+            coords_2d=coords_2d,
+            inverse_options=inverse_options,
+            cache_key=inverse_cache_key
+        )
+    
+    # Add inverse results to projection results
+    projection_results["inverse_results"] = inverse_results
+    
+    return projection_results
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate projections for RLHFBlender")
+    parser = argparse.ArgumentParser(description="Generate projections and inverse projections for RLHFBlender")
     
     # Episode identification parameters
-    parser.add_argument("--env", type=str, help="The environment id", required=True)
-    parser.add_argument("--benchmark-type", type=str, default="trained", 
-                       help="Type of benchmark (trained, random, etc.)")
-    parser.add_argument("--benchmark-id", type=int, default=1, 
-                       help="Benchmark ID")
+    parser.add_argument("--experiment-name", type=str, required=True, 
+                       help="Benchmark/Experiment ID")
     parser.add_argument("--checkpoint-step", type=int, default=-1, 
                        help="Checkpoint step")
     
@@ -837,30 +1096,96 @@ if __name__ == "__main__":
     parser.add_argument("--no-feature", action="store_true",
                        help="Skip feature embedding computation")
     
+    # Inverse projection parameters
+    parser.add_argument("--compute-inverse", action="store_true",
+                       help="Compute inverse projection")
+    parser.add_argument("--inverse-model-type", type=str, default="auto",
+                       help="Inverse model type ('auto', 'mlp', 'cnn', 'vae')")
+    parser.add_argument("--inverse-epochs", type=int, default=50,
+                       help="Number of epochs for inverse model training")
+    parser.add_argument("--inverse-lr", type=float, default=0.001,
+                       help="Learning rate for inverse model")
+    parser.add_argument("--inverse-batch-size", type=int, default=64,
+                       help="Batch size for inverse model training")
+    parser.add_argument("--grid-resolution", type=int, default=20,
+                       help="Resolution of the grid for inverse projection")
+    parser.add_argument("--auto-grid-range", action="store_true",
+                       help="Automatically determine grid range")
+    parser.add_argument("--grid-margin", type=float, default=1.5,
+                       help="Margin to add around the data when auto-computing grid range")
+    parser.add_argument("--x-range", type=str, default="-5,5",
+                       help="Range for x-axis in grid, format: 'min,max'")
+    parser.add_argument("--y-range", type=str, default="-5,5",
+                       help="Range for y-axis in grid, format: 'min,max'")
+    parser.add_argument("--force-retrain", action="store_true",
+                       help="Force retraining of inverse model even if cached")
+    
     args = parser.parse_args()
     
     # Build projection properties from relevant arguments
-    projection_props = {
-        #"n_neighbors": args.n_neighbors,
-        #"min_dist": args.min_dist,
-        #"metric": args.metric,
+    params = {
+        "UMAP": {
+            "n_neighbors": args.n_neighbors,
+            "min_dist": args.min_dist,
+            "n_components": 2,
+            "metric": args.metric
+        },
+        "PCA": {
+            "n_components": 2
+        },
+        "t-SNE": {
+            "perplexity": 30,
+            "early_exaggeration": 12,
+            "learning_rate": 200,
+            "n_components": 2
+        },
+        "ParametricAngleUMAP": {
+            "n_neighbors": args.n_neighbors,
+            "min_dist": args.min_dist,
+            "n_components": 2,
+            "metric": args.metric,
+            "action_angle_weight": 0.5
+        }
     }
+    
+    # Parse x and y range for grid
+    x_range = tuple(float(x) for x in args.x_range.split(","))
+    y_range = tuple(float(y) for y in args.y_range.split(","))
+    
+    # Create inverse projection options
+    inverse_options = InverseProjectionOptions(
+        model_type=args.inverse_model_type,
+        num_epochs=args.inverse_epochs,
+        learning_rate=args.inverse_lr,
+        batch_size=args.inverse_batch_size,
+        grid_resolution=args.grid_resolution,
+        auto_grid_range=args.auto_grid_range,
+        x_range=x_range,
+        y_range=y_range,
+        grid_margin=args.grid_margin,
+        force_retrain=args.force_retrain
+    )
     
     # Determine save path
     save_path = args.save_to
     if save_path is None:
         # Build default path from parameters
-        save_path = f"{process_env_name(args.env)}_{args.benchmark_id}_{args.checkpoint_step}"
+        save_path = f"{args.experiment_name}_{args.checkpoint_step}_{args.projection_method}"
     
     # Run the projection generation
     try:
-        print(f"Generating projections for {args.env} (benchmark_id={args.benchmark_id}, checkpoint_step={args.checkpoint_step})")
+        print(f"Generating projections for experiment_name={args.experiment_name}, checkpoint_step={args.checkpoint_step}")
         print(f"Using method: {args.projection_method}, sequence length: {args.sequence_length}")
         print(f"Additional options: reproject={args.reproject}, 1D={args.one_d_projection}, append_time={args.append_time}")
         
+        if args.compute_inverse:
+            print(f"Computing inverse projection with model type: {args.inverse_model_type}")
+            print(f"Inverse training parameters: epochs={args.inverse_epochs}, batch_size={args.inverse_batch_size}")
+            print(f"Grid parameters: resolution={args.grid_resolution}, auto_range={args.auto_grid_range}")
+        
         # Run the main projection generation function
         projection_results = asyncio.run(generate_projections(
-            experiment_id=args.benchmark_id,
+            experiment_id=args.experiment_name,
             checkpoint_step=args.checkpoint_step,
             projection_method=args.projection_method,
             sequence_length=args.sequence_length,
@@ -868,14 +1193,28 @@ if __name__ == "__main__":
             reproject=args.reproject,
             use_one_d_projection=args.one_d_projection,
             append_time=args.append_time,
-            projection_props=projection_props,
+            projection_props=params[args.projection_method],
             transition_embedding=not args.no_transition,
             feature_embedding=not args.no_feature,
+            compute_inverse=args.compute_inverse,
+            inverse_options=inverse_options,
         ))
         
         # Check if we got valid results
         if projection_results["projection"] and len(projection_results["projection"]) > 0:
             print(f"Projection generated with {len(projection_results['projection'])} points")
+            
+            # Check inverse results
+            if args.compute_inverse and projection_results["inverse_results"]:
+                print("Inverse projection successfully computed")
+                inverse_model_info = projection_results["inverse_results"]["inverse_model_info"]
+                grid_samples = projection_results["inverse_results"]["grid_samples"]
+                model_path = projection_results["inverse_results"]["model_path"]
+                
+                print(f"Inverse model type: {inverse_model_info.get('model_type', 'unknown')}")
+                print(f"Final training loss: {inverse_model_info.get('training_history', {}).get('train_loss', [])[-1] if inverse_model_info.get('training_history', {}).get('train_loss', []) else 'N/A'}")
+                print(f"Grid samples: {grid_samples.get('resolution', 0)}x{grid_samples.get('resolution', 0)} grid")
+                print(f"Model saved at: {model_path}")
             
             # Save as JSON for easier analysis (optional)
             import json
@@ -885,17 +1224,19 @@ if __name__ == "__main__":
             # Convert numpy arrays to lists for JSON serialization
             json_results = {}
             for key, value in projection_results.items():
-                if hasattr(value, 'tolist'):  # Convert numpy arrays to lists
+                if key == "inverse_results":
+                    # Already in JSON-serializable format
+                    json_results[key] = value
+                elif hasattr(value, 'tolist'):  # Convert numpy arrays to lists
                     json_results[key] = value.tolist()
                 else:
                     json_results[key] = value
             
             with open(json_path, 'w') as f:
                 json.dump(json_results, f)
-            print(f"Results also saved as JSON to {json_path}")
+            print(f"Results saved as JSON to {json_path}")
             
             print("Projection generation completed successfully.")
-            print(f"Results saved to data/saved_projections/{save_path}.npz")
         else:
             print("Warning: Projection generated empty results. Check input data and parameters.")
         
