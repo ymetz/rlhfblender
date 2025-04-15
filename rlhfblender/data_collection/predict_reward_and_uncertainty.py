@@ -11,7 +11,9 @@ To achieve this:
 import argparse
 import json
 import os
+import time as import_time
 from typing import Dict, Optional, Tuple
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -171,9 +173,13 @@ class RewardUncertaintyPredictor:
 
             # Get predictions
             if hasattr(self.reward_model, "ensemble_count") and self.reward_model.ensemble_count > 1:
-                # For ensemble models, expand inputs to ensemble_count
-                obs_tensor = obs_tensor.expand(self.reward_model.ensemble_count, *obs_tensor.shape[1:])
-                action_tensor = action_tensor.expand(self.reward_model.ensemble_count, *action_tensor.shape[1:])
+
+                # determine shape for tiling: ensemble count, then ones for following dimensions
+                obs_tile_shape = (self.reward_model.ensemble_count, ) + (1,) * (len(obs_tensor.shape) - 1)
+                obs_tensor = torch.tile(obs_tensor, obs_tile_shape)
+
+                action_tile_shape = (self.reward_model.ensemble_count, ) + (1,) * (len(action_tensor.shape) - 1)
+                action_tensor = torch.tile(action_tensor, action_tile_shape)
 
                 predictions = self.reward_model(obs_tensor, action_tensor)
 
@@ -219,16 +225,17 @@ class RewardUncertaintyPredictor:
 
     def predict_for_inverse_projections(
         self, inverse_projection_file: str, action_space_size: int = None
-    ) -> Dict[str, np.ndarray]:
+    ) -> Dict[str, any]:
         """
         Load inverse projections and predict rewards and uncertainty
+        for both original data points and grid reconstructions
 
         Args:
             inverse_projection_file: Path to the inverse projection file
             action_space_size: Size of discrete action space (if applicable)
 
         Returns:
-            Dictionary with grid coordinates, predicted rewards, and uncertainty
+            Dictionary with predictions for both original data and grid data
         """
         # Load inverse projection data
         with open(inverse_projection_file, "r") as f:
@@ -237,85 +244,174 @@ class RewardUncertaintyPredictor:
         if "inverse_results" not in projection_data or not projection_data["inverse_results"]:
             raise ValueError("No inverse projection results found in file.")
 
+        # Extract grid data
         grid_samples = projection_data["inverse_results"]["grid_samples"]
-
         if "reconstructions" not in grid_samples:
             raise ValueError("No reconstructions found in inverse projection results.")
 
-        # Extract reconstructed observations
-        reconstructions = np.array(grid_samples["reconstructions"])
-        coords = np.array(grid_samples["coords"])
+        # Extract original data from the projection data
+        original_obs = np.array(projection_data.get("obs", []))
+        original_actions = np.array(projection_data.get("actions", []))
+        original_coordinates = np.array(projection_data.get("projection", []))
+        
+        # Extract grid reconstructions
+        grid_reconstructions = np.array(grid_samples["reconstructions"])
+        grid_coordinates = np.array(grid_samples["coords"])
         grid_x = np.array(grid_samples["grid_x"])
         grid_y = np.array(grid_samples["grid_y"])
 
-        # Predict rewards and uncertainty
+        results = {
+            "grid_coordinates": grid_coordinates.tolist(),
+            "grid_x": grid_x.tolist(),
+            "grid_y": grid_y.tolist(),
+        }
+        
+        # Predict for original data if available
+        if len(original_obs) > 0:
+            print(f"Predicting rewards and uncertainty for {len(original_obs)} original data points")
+            # If actions are available, use them; otherwise predict
+            if len(original_actions) == len(original_obs):
+                original_rewards, original_uncertainties = self.predict_rewards_and_uncertainty(
+                    original_obs, original_actions, action_space_size
+                )
+            else:
+                if self.policy_model is not None:
+                    original_actions = self.predict_actions(original_obs)
+                    original_rewards, original_uncertainties = self.predict_rewards_and_uncertainty(
+                        original_obs, original_actions, action_space_size
+                    )
+                else:
+                    print("No policy model available and no actions provided for original data. Skipping predictions.")
+                    original_rewards, original_uncertainties = np.array([]), np.array([])
+            
+            results["original_coordinates"] = original_coordinates.tolist()
+            results["original_predictions"] = original_rewards.tolist()
+            results["original_uncertainties"] = original_uncertainties.tolist()
+            results["original_actions"] = original_actions.tolist() if isinstance(original_actions, np.ndarray) else original_actions
+        else:
+            print("No original observations found in the projection data.")
+            results["original_coordinates"] = []
+            results["original_predictions"] = []
+            results["original_uncertainties"] = []
+            results["original_actions"] = []
+        
+        # Predict for grid data
+        print(f"Predicting rewards and uncertainty for {len(grid_reconstructions)} grid points")
         if self.policy_model is not None:
             # Predict actions for each reconstructed observation
-            actions = self.predict_actions(reconstructions)
+            grid_actions = self.predict_actions(grid_reconstructions)
         else:
             # Use random actions if no policy model is available
             if action_space_size is None:
                 # Assume a default action space size
                 action_space_size = 4
 
-            if len(reconstructions.shape) > 3:  # Image observations
+            if len(grid_reconstructions.shape) > 3:  # Image observations
                 # Probably a discrete action space
-                actions = np.random.randint(0, action_space_size, size=reconstructions.shape[0])
+                grid_actions = np.random.randint(0, action_space_size, size=grid_reconstructions.shape[0])
             else:
                 # Probably a continuous action space with dim=1
-                actions = np.random.uniform(-1, 1, size=(reconstructions.shape[0], 1))
+                grid_actions = np.random.uniform(-1, 1, size=(grid_reconstructions.shape[0], 1))
 
-        rewards, uncertainty = self.predict_rewards_and_uncertainty(reconstructions, actions, action_space_size)
-
-        return {
-            "coords": coords,
-            "grid_x": grid_x,
-            "grid_y": grid_y,
-            "rewards": rewards,
-            "uncertainty": uncertainty,
-            "actions": actions,
-        }
+        grid_rewards, grid_uncertainties = self.predict_rewards_and_uncertainty(
+            grid_reconstructions, grid_actions, action_space_size
+        )
+        
+        results["grid_predictions"] = grid_rewards.tolist()
+        results["grid_uncertainties"] = grid_uncertainties.tolist()
+        results["grid_actions"] = grid_actions.tolist() if isinstance(grid_actions, np.ndarray) else grid_actions
+        
+        # Include file info for reference
+        results["source_file"] = os.path.basename(inverse_projection_file)
+        results["prediction_timestamp"] = import_time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        return results
 
     def save_predictions(
-        self, predictions: Dict[str, np.ndarray], output_dir: str, filename_prefix: str = "predictions"
+        self, predictions: Dict[str, any], output_dir: str, filename_prefix: str = "predictions", 
+        source_file: str = None
     ) -> str:
         """
-        Save predictions to output directory
+        Save predictions to output directory in JSON format
 
         Args:
             predictions: Dictionary with prediction results
             output_dir: Directory to save predictions
             filename_prefix: Prefix for output files
+            source_file: Original source file path (for inverse projections)
 
         Returns:
             Path to saved predictions file
         """
         os.makedirs(output_dir, exist_ok=True)
-
-        # Save as NPZ file
-        output_path = os.path.join(output_dir, f"{filename_prefix}.npz")
-        np.savez(output_path, **predictions)
-
-        # Also save a JSON summary with basic stats
-        summary = {
-            "reward_mean": float(np.mean(predictions["rewards"])),
-            "reward_std": float(np.std(predictions["rewards"])),
-            "reward_min": float(np.min(predictions["rewards"])),
-            "reward_max": float(np.max(predictions["rewards"])),
-            "uncertainty_mean": float(np.mean(predictions["uncertainty"])) if "uncertainty" in predictions else 0,
-            "uncertainty_std": float(np.std(predictions["uncertainty"])) if "uncertainty" in predictions else 0,
-            "num_samples": len(predictions["rewards"]),
-            "prediction_keys": list(predictions.keys()),
-        }
-
-        summary_path = os.path.join(output_dir, f"{filename_prefix}_summary.json")
-        with open(summary_path, "w") as f:
-            json.dump(summary, f, indent=2)
-
-        print(f"Saved predictions to {output_path}")
-        print(f"Saved summary to {summary_path}")
-
-        return output_path
+        
+        # For inverse projections, use the source filename with an appendix
+        if source_file and "source_file" in predictions:
+            base_name = os.path.splitext(predictions["source_file"])[0]
+            output_json_path = os.path.join(output_dir, f"{base_name}_inverse_predictions.json")
+        else:
+            output_json_path = os.path.join(output_dir, f"{filename_prefix}.json")
+        
+        # Create a JSON-serializable version of the predictions
+        json_predictions = {}
+        
+        # Handle different prediction types
+        if "grid_predictions" in predictions:
+            # This is an inverse projection result with grid and possibly original data
+            json_predictions = predictions  # Already JSON-ready from predict_for_inverse_projections
+            
+            # Add some summary statistics
+            summary = {
+                "grid_rewards_mean": float(np.mean(predictions["grid_predictions"])),
+                "grid_rewards_std": float(np.std(predictions["grid_predictions"])),
+                "grid_rewards_min": float(np.min(predictions["grid_predictions"])),
+                "grid_rewards_max": float(np.max(predictions["grid_predictions"])),
+                "grid_uncertainty_mean": float(np.mean(predictions["grid_uncertainties"])),
+                "grid_uncertainty_std": float(np.std(predictions["grid_uncertainties"])),
+                "grid_samples": len(predictions["grid_predictions"]),
+            }
+            
+            if predictions["original_predictions"] and len(predictions["original_predictions"]) > 0:
+                summary.update({
+                    "original_rewards_mean": float(np.mean(predictions["original_predictions"])),
+                    "original_rewards_std": float(np.std(predictions["original_predictions"])),
+                    "original_rewards_min": float(np.min(predictions["original_predictions"])),
+                    "original_rewards_max": float(np.max(predictions["original_predictions"])),
+                    "original_uncertainty_mean": float(np.mean(predictions["original_uncertainties"])),
+                    "original_uncertainty_std": float(np.std(predictions["original_uncertainties"])),
+                    "original_samples": len(predictions["original_predictions"]),
+                })
+            
+            json_predictions["summary"] = summary
+        else:
+            # This is a regular episode prediction
+            # Convert numpy arrays to lists
+            for key, value in predictions.items():
+                if isinstance(value, np.ndarray):
+                    json_predictions[key] = value.tolist()
+                else:
+                    json_predictions[key] = value
+            
+            # Add summary statistics
+            if "rewards" in predictions:
+                summary = {
+                    "reward_mean": float(np.mean(predictions["rewards"])),
+                    "reward_std": float(np.std(predictions["rewards"])),
+                    "reward_min": float(np.min(predictions["rewards"])),
+                    "reward_max": float(np.max(predictions["rewards"])),
+                    "uncertainty_mean": float(np.mean(predictions["uncertainty"])) if "uncertainty" in predictions else 0,
+                    "uncertainty_std": float(np.std(predictions["uncertainty"])) if "uncertainty" in predictions else 0,
+                    "num_samples": len(predictions["rewards"]),
+                }
+                json_predictions["summary"] = summary
+        
+        # Save JSON file
+        with open(output_json_path, "w") as f:
+            json.dump(json_predictions, f, indent=2)
+        
+        print(f"Saved predictions to {output_json_path}")
+        
+        return output_json_path
 
 
 def load_episodes(episode_path: str) -> Dict[str, np.ndarray]:
@@ -409,9 +505,12 @@ def main():
             inverse_projection_file=args.inverse_projection, action_space_size=args.action_space_size
         )
 
-        # Save predictions
+        # Save predictions, using the original filename pattern
         predictor.save_predictions(
-            predictions=predictions, output_dir=args.output_dir, filename_prefix="inverse_projection_predictions"
+            predictions=predictions,
+            output_dir=args.output_dir,
+            filename_prefix="inverse_projection_predictions",
+            source_file=args.inverse_projection
         )
 
     elif args.episode_path:
