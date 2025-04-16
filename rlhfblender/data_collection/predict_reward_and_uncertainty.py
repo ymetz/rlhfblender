@@ -268,7 +268,7 @@ class RewardUncertaintyPredictor:
         
         # Predict for original data if available
         if len(original_obs) > 0:
-            print(f"Predicting rewards and uncertainty for {len(original_obs)} original data points")
+            print(f"Predicting rewards and uncertainty for {len(original_obs)} original data points from inverse projection")
             # If actions are available, use them; otherwise predict
             if len(original_actions) == len(original_obs):
                 original_rewards, original_uncertainties = self.predict_rewards_and_uncertainty(
@@ -326,6 +326,73 @@ class RewardUncertaintyPredictor:
         results["prediction_timestamp"] = import_time.strftime("%Y-%m-%d %H:%M:%S")
         
         return results
+    
+    def combine_predictions(
+        self, grid_predictions: Dict[str, any], episode_data: Dict[str, np.ndarray], action_space_size: int = None
+    ) -> Dict[str, any]:
+        """
+        Combine grid predictions from inverse projections with original data from episode
+        
+        Args:
+            grid_predictions: Dictionary with grid prediction results
+            episode_data: Dictionary with episode data
+            action_space_size: Size of discrete action space (if applicable)
+            
+        Returns:
+            Combined dictionary with both grid and original data predictions
+        """
+        # Start with grid predictions as base
+        combined_results = grid_predictions.copy()
+        
+        # Process episode data for original predictions
+        if "obs" in episode_data:
+            original_obs = episode_data["obs"]
+            original_actions = episode_data.get("actions", None)
+            
+            print(f"Predicting rewards and uncertainty for {len(original_obs)} original data points from episode")
+            
+            # If no actions provided, predict them
+            if original_actions is None:
+                if self.policy_model is not None:
+                    original_actions = self.predict_actions(original_obs)
+                else:
+                    raise ValueError("No policy model available and no actions provided for episode data.")
+            
+            # Predict rewards and uncertainty
+            original_rewards, original_uncertainties = self.predict_rewards_and_uncertainty(
+                original_obs, original_actions, action_space_size
+            )
+            
+            # Update the combined results
+            combined_results["original_predictions"] = original_rewards.tolist()
+            combined_results["original_uncertainties"] = original_uncertainties.tolist()
+            combined_results["original_actions"] = original_actions.tolist() if isinstance(original_actions, np.ndarray) else original_actions
+            
+            # Generate some placeholder coordinates if not available
+            # This is needed since we don't have projection coordinates for episode data
+            # We'll just use a simple 2D embedding (could be improved with actual projection)
+            num_samples = len(original_obs)
+            if "original_coordinates" not in combined_results or not combined_results["original_coordinates"]:
+                # Create simple placeholder coordinates in a grid pattern
+                grid_size = int(np.ceil(np.sqrt(num_samples)))
+                coords = []
+                for i in range(min(num_samples, grid_size * grid_size)):
+                    row = i // grid_size
+                    col = i % grid_size
+                    # Normalize to range similar to grid coordinates
+                    x = col / max(1, grid_size - 1) * 2 - 1  
+                    y = row / max(1, grid_size - 1) * 2 - 1
+                    coords.append([float(x), float(y)])
+                combined_results["original_coordinates"] = coords
+            
+            # Add episode data source info
+            if "episode_info" not in combined_results:
+                combined_results["episode_info"] = {
+                    "num_samples": num_samples,
+                    "timestamp": import_time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+        
+        return combined_results
 
     def save_predictions(
         self, predictions: Dict[str, any], output_dir: str, filename_prefix: str = "predictions", 
@@ -425,12 +492,36 @@ def load_episodes(episode_path: str) -> Dict[str, np.ndarray]:
         Dictionary with episode data
     """
     print(f"Loading episode data from {episode_path}")
-    data = np.load(episode_path, allow_pickle=True)
 
-    # Convert to dict to make it easier to work with
-    episode_data = {}
-    for key in data.files:
-        episode_data[key] = data[key]
+
+    # either episode_path is a directory or a file:
+    # if it is a file load it directly
+    # if it is a directory, the episodes are saved as benchmark_<episode_num>.npz (in this case load all in order and concatenate)
+    if os.path.isdir(episode_path):
+        # Get all NPZ files in the directory
+        episode_files = sorted(Path(episode_path).glob("benchmark_*.npz"))
+        if not episode_files:
+            raise ValueError(f"No NPZ files found in directory: {episode_path}")
+
+        # Load all episodes and concatenate
+        episode_data = []
+        for file in episode_files:
+            data = np.load(file, allow_pickle=True)
+            episode_data.append(data)
+
+        # Concatenate all loaded data, be aware that the npz has multiple keys and arrays
+        # We will concatenate the arrays for each key
+        concatenated_data = {}
+        for key in episode_data[0].files:
+            concatenated_data[key] = np.concatenate([data[key] for data in episode_data], axis=0)
+        episode_data = concatenated_data
+    elif os.path.isfile(episode_path):
+        data = np.load(episode_path, allow_pickle=True)
+
+        # Convert to dict to make it easier to work with
+        episode_data = {}
+        for key in data.files:
+            episode_data[key] = data[key]
 
     return episode_data
 
@@ -475,15 +566,12 @@ def main():
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device to use for predictions"
     )
 
-    # Input data source (mutually exclusive group)
-    input_group = parser.add_mutually_exclusive_group(required=True)
-    input_group.add_argument("--episode-path", type=str, help="Path to episode NPZ file")
-    input_group.add_argument("--inverse-projection", type=str, help="Path to inverse projection JSON file")
-    input_group.add_argument(
-        "--env-name", type=str, help="Environment name (used with --benchmark-id, --checkpoint-step, --episode-num)"
-    )
+    # Input data sources - no longer mutually exclusive
+    parser.add_argument("--episode-path", type=str, help="Path to episode NPZ file")
+    parser.add_argument("--inverse-projection", type=str, help="Path to inverse projection JSON file")
 
     # Episode identification (required if --env-name is used)
+    parser.add_argument("--env-name", type=str, help="Environment name")
     parser.add_argument("--benchmark-id", type=int, help="Benchmark ID")
     parser.add_argument("--checkpoint-step", type=int, help="Checkpoint step")
     parser.add_argument("--episode-num", type=int, help="Episode number")
@@ -498,58 +586,97 @@ def main():
         device=args.device
     )
 
-    # Load data and predict based on input source
-    if args.inverse_projection:
-        # Predict for inverse projections
-        predictions = predictor.predict_for_inverse_projections(
-            inverse_projection_file=args.inverse_projection, action_space_size=args.action_space_size
+    # Check if we need to process both inverse projection and episode data
+    if args.inverse_projection and (args.episode_path or (args.env_name and args.benchmark_id and args.checkpoint_step and args.episode_num)):
+        # We have both inverse projection and episode data
+        
+        # First, get predictions from inverse projection
+        grid_predictions = predictor.predict_for_inverse_projections(
+            inverse_projection_file=args.inverse_projection, 
+            action_space_size=args.action_space_size
         )
-
-        # Save predictions, using the original filename pattern
+        
+        # Now, load episode data
+        if args.episode_path:
+            episode_data = load_episodes(args.episode_path)
+        else:
+            # Generate episode path from env parameters
+            episode_path = get_episode_file_path(
+                env_name=args.env_name,
+                benchmark_id=args.benchmark_id,
+                checkpoint_step=args.checkpoint_step,
+                episode_num=args.episode_num,
+            )
+            episode_data = load_episodes(episode_path)
+        
+        # Combine predictions from both sources
+        combined_predictions = predictor.combine_predictions(
+            grid_predictions=grid_predictions,
+            episode_data=episode_data,
+            action_space_size=args.action_space_size
+        )
+        
+        # Save combined predictions
         predictor.save_predictions(
-            predictions=predictions,
+            predictions=combined_predictions,
             output_dir=args.output_dir,
-            filename_prefix="inverse_projection_predictions",
+            filename_prefix="combined_predictions",
             source_file=args.inverse_projection
         )
+        
+    else:
+        # Process each source individually (original behavior)
+        if args.inverse_projection:
+            # Predict for inverse projections
+            predictions = predictor.predict_for_inverse_projections(
+                inverse_projection_file=args.inverse_projection, action_space_size=args.action_space_size
+            )
 
-    elif args.episode_path:
-        # Load episode data
-        episode_data = load_episodes(args.episode_path)
+            # Save predictions, using the original filename pattern
+            predictor.save_predictions(
+                predictions=predictions,
+                output_dir=args.output_dir,
+                filename_prefix="inverse_projection_predictions",
+                source_file=args.inverse_projection
+            )
 
-        # Predict for observations in the episode
-        predictions = predictor.predict_for_states(
-            observations=episode_data["obs"],
-            actions=episode_data["actions"] if "actions" in episode_data else None,
-            action_space_size=args.action_space_size,
-        )
+        if args.episode_path:
+            # Load episode data
+            episode_data = load_episodes(args.episode_path)
 
-        # Save predictions
-        predictor.save_predictions(predictions=predictions, output_dir=args.output_dir, filename_prefix="episode_predictions")
+            # Predict for observations in the episode
+            predictions = predictor.predict_for_states(
+                observations=episode_data["obs"],
+                actions=episode_data["actions"] if "actions" in episode_data else None,
+                action_space_size=args.action_space_size,
+            )
 
-    elif args.env_name and args.benchmark_id and args.checkpoint_step and args.episode_num:
-        # Generate episode path
-        episode_path = get_episode_file_path(
-            env_name=args.env_name,
-            benchmark_id=args.benchmark_id,
-            checkpoint_step=args.checkpoint_step,
-            episode_num=args.episode_num,
-        )
+            # Save predictions
+            predictor.save_predictions(predictions=predictions, output_dir=args.output_dir, filename_prefix="episode_predictions")
 
-        # Load episode data
-        episode_data = load_episodes(episode_path)
+        elif args.env_name and args.benchmark_id is not None and args.checkpoint_step is not None and args.episode_num is not None:
+            # Generate episode path
+            episode_path = get_episode_file_path(
+                env_name=args.env_name,
+                benchmark_id=args.benchmark_id,
+                checkpoint_step=args.checkpoint_step,
+                episode_num=args.episode_num,
+            )
 
-        # Predict for observations in the episode
-        predictions = predictor.predict_for_states(
-            observations=episode_data["obs"],
-            actions=episode_data["actions"] if "actions" in episode_data else None,
-            action_space_size=args.action_space_size,
-        )
+            # Load episode data
+            episode_data = load_episodes(episode_path)
 
-        # Save predictions
-        predictor.save_predictions(
-            predictions=predictions, output_dir=args.output_dir, filename_prefix=f"episode_{args.episode_num}_predictions"
-        )
+            # Predict for observations in the episode
+            predictions = predictor.predict_for_states(
+                observations=episode_data["obs"],
+                actions=episode_data["actions"] if "actions" in episode_data else None,
+                action_space_size=args.action_space_size,
+            )
+
+            # Save predictions
+            predictor.save_predictions(
+                predictions=predictions, output_dir=args.output_dir, filename_prefix=f"episode_{args.episode_num}_predictions"
+            )
 
     print("Predictions completed successfully!")
 

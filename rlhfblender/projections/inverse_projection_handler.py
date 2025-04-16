@@ -7,6 +7,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
+from scipy.interpolate import griddata, Rbf
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+import json
+import base64
+from io import BytesIO
 
 from rlhfblender.projections.inverse_projection_architectures import get_inverse_model
 
@@ -343,6 +349,105 @@ class InverseProjectionHandler:
         if return_coords:
             return reconstructions, coords, (grid_x, grid_y)
         return reconstructions
+
+    @staticmethod
+    def precompute_interpolated_surface(grid_coords, grid_values, 
+                                    additional_coords=None, additional_values=None,
+                                    resolution=400, method='cubic'):
+        """
+        Creates an interpolated surface from both grid points and additional data points.
+        
+        Parameters:
+        -----------
+        grid_coords : list of [x,y] coordinates for the grid points
+        grid_values : list of values at the grid points
+        additional_coords : list of [x,y] coordinates for off-grid points (optional)
+        additional_values : list of values at the off-grid points (optional)
+        resolution : output image resolution
+        method : interpolation method ('cubic', 'linear', 'nearest', or 'rbf')
+        
+        Returns:
+        --------
+        Dictionary with the interpolated surface as a base64 encoded image and metadata
+        """
+        # Combine all data points (grid and additional)
+        points = np.array(grid_coords)
+        values = np.array(grid_values)
+        
+        if additional_coords is not None and additional_values is not None:
+            additional_points = np.array(additional_coords)
+            additional_values = np.array(additional_values)
+            
+            # Combine the data
+            points = np.vstack((points, additional_points))
+            values = np.append(values, additional_values)
+        
+        # Create a regular grid for interpolation output
+        x_min, x_max = min(points[:,0]), max(points[:,0])
+        y_min, y_max = min(points[:,1]), max(points[:,1])
+        
+        # Add a small buffer to avoid edge effects
+        x_buffer = (x_max - x_min) * 0.05
+        y_buffer = (y_max - y_min) * 0.05
+        
+        xi = np.linspace(x_min - x_buffer, x_max + x_buffer, resolution)
+        yi = np.linspace(y_min - y_buffer, y_max + y_buffer, resolution)
+        xi_grid, yi_grid = np.meshgrid(xi, yi)
+        
+        # Perform the interpolation
+        if method == 'rbf':
+            # Radial Basis Function interpolation - often better for scattered data
+            rbf = Rbf(points[:,0], points[:,1], values, function='multiquadric')
+            zi_grid = rbf(xi_grid, yi_grid)
+        else:
+            # Standard grid interpolation methods
+            zi_grid = griddata(points, values, (xi_grid, yi_grid), method=method)
+            
+            # Fill NaN values that might occur at the edges
+            if np.any(np.isnan(zi_grid)):
+                # Use nearest neighbor to fill NaN values
+                zi_grid_nearest = griddata(points, values, (xi_grid, yi_grid), method='nearest')
+                zi_grid = np.where(np.isnan(zi_grid), zi_grid_nearest, zi_grid)
+        
+        # Create a color-mapped image
+        fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution/8)
+        
+        # Draw the interpolated surface
+        norm = Normalize(vmin=min(values), vmax=max(values))
+        im = ax.pcolormesh(xi_grid, yi_grid, zi_grid, shading='auto', cmap='viridis', norm=norm)
+        
+        # Optionally, mark the data points on the surface
+        # ax.scatter(points[:,0], points[:,1], s=10, c='white', alpha=0.5)
+        
+        # Add contour lines for better readability
+        #contour = ax.contour(xi_grid, yi_grid, zi_grid, 10, colors='white', alpha=0.3, linewidths=0.5)
+        
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(x_min - x_buffer, x_max + x_buffer)
+        ax.set_ylim(y_min - y_buffer, y_max + y_buffer)
+        ax.set_aspect('equal')
+        plt.tight_layout()
+        plt.axis('off')
+
+
+        # Save to a base64-encoded PNG
+        buf = BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+        buf.seek(0)
+        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close()
+        
+        # Return metadata along with the image
+        return {
+            'image': img_str,
+            'min_value': float(min(values)),
+            'max_value': float(max(values)),
+            'x_range': [float(x_min), float(x_max)],
+            'y_range': [float(y_min), float(y_max)],
+            'point_count': len(points),
+            'interpolation_method': method
+        }
 
 
 # Example usage

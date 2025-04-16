@@ -128,19 +128,6 @@ async def generate_projection(
     Returns:
         Projection results
     """
-    print(
-        "PARAMS",
-        benchmark_id,
-        checkpoint_step,
-        projection_method,
-        sequence_length,
-        step_range,
-        reproject,
-        use_one_d_projection,
-        append_time,
-        projection_props,
-    )
-
     # exp from benchmark_id
     db_experiment = await get_single_entry(database, Experiment, benchmark_id)
     env_name = process_env_name(db_experiment.env_id)
@@ -460,16 +447,11 @@ async def get_projection_method_params(projection_method: str = "UMAP"):
     return params.get(projection_method, {})
 
 
-@router.get("/load_grid_projection_data", response_model=Dict[str, Any], tags=["PROJECTION"])
+@router.post("/load_grid_projection_data", response_model=Dict[str, Any], tags=["PROJECTION"])
 async def load_grid_projection_data(
     benchmark_id: int,
     checkpoint_step: int,
     projection_method: str = "UMAP",
-    sequence_length: int = 1,
-    step_range: str = "[]",
-    reproject: bool = False,
-    use_one_d_projection: bool = False,
-    append_time: bool = False
 ):
     """
     Load pre-computed reward and uncertainty predictions for grid projections.
@@ -494,6 +476,7 @@ async def load_grid_projection_data(
         
         # Generate projection filename (same as in generate_projection)
         projection_hash = f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}_{projection_method}"
+        projection_hash = "Ant-v4_random_experiment_-1_UMAP"
         
         # First check for a file with the expected naming convention from our script
         prediction_file = Path("data", "saved_projections", f"{projection_hash}_inverse_predictions.json")
@@ -543,6 +526,48 @@ async def load_grid_projection_data(
             status_code=500, 
             detail=f"Error loading grid projection data: {str(e)}"
         )
+
+
+@router.post("/load_grid_projection_image", response_model=Dict[str, Any], tags=["PROJECTION"])
+async def load_grid_projection_image(
+    benchmark_id: int,
+    checkpoint_step: int,
+    projection_method: str = "UMAP",
+    map_type: str = "prediction", # Options: "prediction", "uncertainty", "both"
+):
+    """
+    Load pre-computed grid projection image. Check if a cached image exists, otherwise compute it
+    """
+
+    # load the grid projection data
+    prediction_data = await load_grid_projection_data(
+        benchmark_id=benchmark_id,
+        checkpoint_step=checkpoint_step,
+        projection_method=projection_method,
+    )
+
+    # Check if the image is already cached
+    data_path = CACHE_DIR / f"{benchmark_id}_{checkpoint_step}_{projection_method}_{map_type}.json"
+    if data_path.exists():
+        return json.loads(data_path.read_text())
+    else:
+        grid_value_name = "grid_predictions" if map_type == "prediction" else "grid_uncertainties"
+        original_value_name = "original_predictions" if map_type == "prediction" else "original_uncertainties"
+        image_data = InverseProjectionHandler.precompute_interpolated_surface(
+            grid_coords=prediction_data["grid_coordinates"],
+            grid_values=prediction_data[grid_value_name],
+            resolution=500,
+            additional_coords=prediction_data["original_coordinates"],
+            additional_values=prediction_data[original_value_name],
+        )
+
+        # Save the image
+        with open(data_path, "w") as f:
+            json.dump(image_data, f)
+
+        return image_data
+    
+
 
 
 def generate_cache_key(
