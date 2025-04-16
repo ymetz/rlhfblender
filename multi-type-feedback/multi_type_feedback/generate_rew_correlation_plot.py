@@ -84,9 +84,15 @@ def generate_correlation_data(
     device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 
     def reward_fn(reward_model_path):
-        return lambda input: SingleNetwork.load_from_checkpoint(reward_model_path, map_location=device)(
-            torch.as_tensor(np.array([input[0]] * 4), device=device, dtype=torch.float).unsqueeze((1)),
-            torch.as_tensor(np.array([input[1]] * 4), device=device, dtype=torch.float).unsqueeze(1),
+        return lambda input: SingleNetwork.load_from_checkpoint(
+            reward_model_path, map_location=device
+        )(
+            torch.as_tensor(
+                np.array([input[0]] * 4), device=device, dtype=torch.float
+            ).unsqueeze((1)),
+            torch.as_tensor(
+                np.array([input[1]] * 4), device=device, dtype=torch.float
+            ).unsqueeze(1),
         )
 
     n_functions = len(reward_functions)

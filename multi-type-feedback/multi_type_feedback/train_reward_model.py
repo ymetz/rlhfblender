@@ -125,7 +125,11 @@ def main():
     feedback_id, model_id = TrainingUtils.get_model_ids(args)
 
     # Setup reward model
-    reward_model = (SingleCnnNetwork if "procgen" in args.environment or "ALE" in args.environment else SingleNetwork)(
+    reward_model = (
+        SingleCnnNetwork
+        if "procgen" in args.environment or "ALE" in args.environment
+        else SingleNetwork
+    )(
         input_spaces=(environment.observation_space, environment.action_space),
         hidden_dim=256,
         action_hidden_dim=(16 if "procgen" in args.environment or "ALE" in args.environment else 32),

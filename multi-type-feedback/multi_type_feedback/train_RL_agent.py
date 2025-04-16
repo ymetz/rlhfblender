@@ -109,7 +109,11 @@ def main():
 
     TrainingUtils.setup_wandb_logging(f"RL_{model_id}", args, wandb_project_name=args.wandb_project_name)
 
-    architecture_cls = SingleCnnNetwork if "ALE/" in args.environment or "procgen" in args.environment else SingleNetwork
+    architecture_cls = (
+        SingleCnnNetwork
+        if "ALE/" in args.environment or "procgen" in args.environment
+        else SingleNetwork
+    )
 
     exp_manager = ExperimentManager(
         args,
