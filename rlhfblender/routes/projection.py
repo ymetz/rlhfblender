@@ -151,7 +151,6 @@ async def generate_projection(
                 "episode_indices": cached_projection["episode_indices"].tolist(),
             }
 
-
     # Find available episodes
     episode_nums = get_available_episodes(experiment=db_experiment, checkpoint_step=checkpoint_step)
 
@@ -475,7 +474,7 @@ async def load_grid_projection_data(
 ):
     """
     Load pre-computed reward and uncertainty predictions for grid projections.
-    
+
     Args:
         benchmark_id: Benchmark ID
         checkpoint_step: Checkpoint step
@@ -485,7 +484,7 @@ async def load_grid_projection_data(
         reproject: Whether reprojection was used
         use_one_d_projection: Whether 1D projection was used
         append_time: Whether time was appended
-        
+
     Returns:
         Dictionary with prediction data for grid and original data points
     """
@@ -493,17 +492,17 @@ async def load_grid_projection_data(
         # Get experiment info
         db_experiment = await get_single_entry(database, Experiment, benchmark_id)
         env_name = process_env_name(db_experiment.env_id)
-        
+
         # Generate projection filename (same as in generate_projection)
         projection_hash = f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}_{projection_method}"
         projection_hash = "Ant-v4_random_experiment_-1_UMAP"
-        
+
         # First check for a file with the expected naming convention from our script
         prediction_file = Path("data", "saved_projections", f"{projection_hash}_inverse_predictions.json")
-        
-        # Also check in the output directory that might have been specified 
+
+        # Also check in the output directory that might have been specified
         alt_prediction_file = Path("results", f"{projection_hash}_inverse_predictions.json")
-        
+
         # Check if prediction file exists
         if prediction_file.exists():
             with open(prediction_file, "r") as f:
@@ -515,13 +514,8 @@ async def load_grid_projection_data(
                 return prediction_data
         else:
             # Check for any files with similar names in common directories
-            possible_locations = [
-                Path("data", "saved_projections"),
-                Path("results"),
-                Path("predictions"),
-                Path("output")
-            ]
-            
+            possible_locations = [Path("data", "saved_projections"), Path("results"), Path("predictions"), Path("output")]
+
             for location in possible_locations:
                 if location.exists():
                     # Look for files that contain the projection_hash and end with _inverse_predictions.json
@@ -531,21 +525,18 @@ async def load_grid_projection_data(
                         with open(matching_files[0], "r") as f:
                             prediction_data = json.load(f)
                             return prediction_data
-            
+
             # If we get here, no file was found
             raise HTTPException(
-                status_code=404, 
+                status_code=404,
                 detail=f"No prediction data found for benchmark_id={benchmark_id}, checkpoint_step={checkpoint_step}. "
-                       f"Run predict_reward_and_uncertainty.py script first to generate predictions."
+                f"Run predict_reward_and_uncertainty.py script first to generate predictions.",
             )
-    
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error loading grid projection data: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error loading grid projection data: {str(e)}")
 
 
 @router.post("/load_grid_projection_image", response_model=Dict[str, Any], tags=["PROJECTION"])
@@ -553,7 +544,7 @@ async def load_grid_projection_image(
     benchmark_id: int,
     checkpoint_step: int,
     projection_method: str = "UMAP",
-    map_type: str = "prediction", # Options: "prediction", "uncertainty", "both"
+    map_type: str = "prediction",  # Options: "prediction", "uncertainty", "both"
 ):
     """
     Load pre-computed grid projection image. Check if a cached image exists, otherwise compute it
@@ -586,8 +577,6 @@ async def load_grid_projection_image(
             json.dump(image_data, f)
 
         return image_data
-    
-
 
 
 def generate_cache_key(

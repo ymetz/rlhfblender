@@ -123,11 +123,7 @@ def main():
             )
 
             # Set up reward model
-            reward_model = (
-                SingleCnnNetwork
-                if "procgen" in args.env or "ALE" in args.env
-                else SingleNetwork
-            )(
+            reward_model = (SingleCnnNetwork if "procgen" in args.env or "ALE" in args.env else SingleNetwork)(
                 input_spaces=(environment.observation_space, environment.action_space),
                 hidden_dim=256,
                 action_hidden_dim=(16 if "procgen" in args.env or "ALE" in args.env else 32),

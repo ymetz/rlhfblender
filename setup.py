@@ -43,7 +43,7 @@ setup(
         "minigrid>=2.0.0",
         "highway-env>=1.8.2",
         "sb3-contrib>=2.0.0",
-        #"imitation>=1.0.0",
+        # "imitation>=1.0.0",
         "fastapi",
         "uvicorn",
         "databases[sqlite]",

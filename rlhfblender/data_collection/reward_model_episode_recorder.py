@@ -1,29 +1,29 @@
-from dataclasses import dataclass
+import argparse
+import asyncio
 import os
 import random
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, Optional
 
-import argparse
 import gymnasium as gym
 import numpy as np
 import torch
+from databases import Database
 from multi_type_feedback.networks import SingleCnnNetwork, SingleNetwork
 from pydantic import BaseModel
 from stable_baselines3.common.vec_env import VecEnv, VecMonitor, is_vecenv_wrapped
-from databases import Database
-import asyncio
 
 from rlhfblender.data_collection import RecordedEpisodesContainer
-from rlhfblender.data_collection.metrics_processor import process_metrics
-from rlhfblender.data_models.agent import BaseAgent, RandomAgent, TrainedAgent
-from multi_type_feedback.networks import SingleCnnNetwork, SingleNetwork
-from rlhfblender.data_handling import database_handler as db_handler
-from rlhfblender.data_models.global_models import Experiment, Environment
 from rlhfblender.data_collection.environment_handler import get_environment
+from rlhfblender.data_collection.metrics_processor import process_metrics
+from rlhfblender.data_handling import database_handler as db_handler
+from rlhfblender.data_models.agent import BaseAgent, RandomAgent, TrainedAgent
+from rlhfblender.data_models.global_models import Environment, Experiment
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
+
 
 class BenchmarkSummary(BaseModel):
     benchmark_steps: int = 0
@@ -128,11 +128,8 @@ class EpisodeRecorder:
         else:
             # This is likely a vector observation space (e.g., MuJoCo tasks)
             reward_model_cls = SingleNetwork
-            
-        self.reward_model = reward_model_cls.load_from_checkpoint(
-            self.reward_model_path, 
-            map_location=self.device
-        )
+
+        self.reward_model = reward_model_cls.load_from_checkpoint(self.reward_model_path, map_location=self.device)
         self.reward_model.eval()  # Set to evaluation mode
         print(f"Loaded reward model from {self.reward_model_path}")
 
@@ -659,25 +656,30 @@ if __name__ == "__main__":
         # Load experiment from database
         async def get_exp_and_env():
             db_experiment = await db_handler.get_single_entry(
-                database, 
-                Experiment, 
-                key=args.exp, 
+                database,
+                Experiment,
+                key=args.exp,
                 key_column="exp_name",
             )
             db_env = await db_handler.get_single_entry(
-                database, 
+                database,
                 Environment,
-                key=db_experiment.env_id, 
+                key=db_experiment.env_id,
                 key_column="env_name",
             )
-            env = get_environment(db_env.registration_id, n_envs=1, environment_config=db_experiment.environment_config, additional_packages=db_env.additional_gym_packages, gym_entry_point=db_env.gym_entry_point)
+            env = get_environment(
+                db_env.registration_id,
+                n_envs=1,
+                environment_config=db_experiment.environment_config,
+                additional_packages=db_env.additional_gym_packages,
+                gym_entry_point=db_env.gym_entry_point,
+            )
             return db_experiment, env
-        
+
         db_env, env = asyncio.run(get_exp_and_env())
-    
+
     else:
         env = get_environment(args.env)
-        
 
     if args.random_reward_model:
         args.reward_model_path = None
