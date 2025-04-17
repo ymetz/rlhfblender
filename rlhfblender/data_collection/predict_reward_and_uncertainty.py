@@ -223,7 +223,13 @@ class RewardUncertaintyPredictor:
 
         return {"rewards": rewards, "uncertainty": uncertainty, "actions": actions}
 
-    def predict_for_inverse_projections(self, inverse_projection_file: str, action_space_size: int = None) -> Dict[str, any]:
+    def predict_for_inverse_projections(
+        self,
+        inverse_projection_file: str,
+        original_obs: np.ndarray,
+        original_actions: np.ndarray,
+        action_space_size: int = None,
+    ) -> Dict[str, any]:
         """
         Load inverse projections and predict rewards and uncertainty
         for both original data points and grid reconstructions
@@ -236,6 +242,7 @@ class RewardUncertaintyPredictor:
             Dictionary with predictions for both original data and grid data
         """
         # Load inverse projection data
+        print(f"Loading inverse projection data from {inverse_projection_file}")
         with open(inverse_projection_file, "r") as f:
             projection_data = json.load(f)
 
@@ -248,8 +255,6 @@ class RewardUncertaintyPredictor:
             raise ValueError("No reconstructions found in inverse projection results.")
 
         # Extract original data from the projection data
-        original_obs = np.array(projection_data.get("obs", []))
-        original_actions = np.array(projection_data.get("actions", []))
         original_coordinates = np.array(projection_data.get("projection", []))
 
         # Extract grid reconstructions
@@ -325,76 +330,9 @@ class RewardUncertaintyPredictor:
         results["source_file"] = os.path.basename(inverse_projection_file)
         results["prediction_timestamp"] = import_time.strftime("%Y-%m-%d %H:%M:%S")
 
+        print("RESULTS", results.keys(), results["original_coordinates"])
+
         return results
-
-    def combine_predictions(
-        self, grid_predictions: Dict[str, any], episode_data: Dict[str, np.ndarray], action_space_size: int = None
-    ) -> Dict[str, any]:
-        """
-        Combine grid predictions from inverse projections with original data from episode
-
-        Args:
-            grid_predictions: Dictionary with grid prediction results
-            episode_data: Dictionary with episode data
-            action_space_size: Size of discrete action space (if applicable)
-
-        Returns:
-            Combined dictionary with both grid and original data predictions
-        """
-        # Start with grid predictions as base
-        combined_results = grid_predictions.copy()
-
-        # Process episode data for original predictions
-        if "obs" in episode_data:
-            original_obs = episode_data["obs"]
-            original_actions = episode_data.get("actions", None)
-
-            print(f"Predicting rewards and uncertainty for {len(original_obs)} original data points from episode")
-
-            # If no actions provided, predict them
-            if original_actions is None:
-                if self.policy_model is not None:
-                    original_actions = self.predict_actions(original_obs)
-                else:
-                    raise ValueError("No policy model available and no actions provided for episode data.")
-
-            # Predict rewards and uncertainty
-            original_rewards, original_uncertainties = self.predict_rewards_and_uncertainty(
-                original_obs, original_actions, action_space_size
-            )
-
-            # Update the combined results
-            combined_results["original_predictions"] = original_rewards.tolist()
-            combined_results["original_uncertainties"] = original_uncertainties.tolist()
-            combined_results["original_actions"] = (
-                original_actions.tolist() if isinstance(original_actions, np.ndarray) else original_actions
-            )
-
-            # Generate some placeholder coordinates if not available
-            # This is needed since we don't have projection coordinates for episode data
-            # We'll just use a simple 2D embedding (could be improved with actual projection)
-            num_samples = len(original_obs)
-            if "original_coordinates" not in combined_results or not combined_results["original_coordinates"]:
-                # Create simple placeholder coordinates in a grid pattern
-                grid_size = int(np.ceil(np.sqrt(num_samples)))
-                coords = []
-                for i in range(min(num_samples, grid_size * grid_size)):
-                    row = i // grid_size
-                    col = i % grid_size
-                    # Normalize to range similar to grid coordinates
-                    x = col / max(1, grid_size - 1) * 2 - 1
-                    y = row / max(1, grid_size - 1) * 2 - 1
-                    coords.append([float(x), float(y)])
-                combined_results["original_coordinates"] = coords
-
-            # Add episode data source info
-            if "episode_info" not in combined_results:
-                combined_results["episode_info"] = {
-                    "num_samples": num_samples,
-                    "timestamp": import_time.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-
-        return combined_results
 
     def save_predictions(
         self, predictions: Dict[str, any], output_dir: str, filename_prefix: str = "predictions", source_file: str = None
@@ -436,7 +374,6 @@ class RewardUncertaintyPredictor:
                 "grid_rewards_max": float(np.max(predictions["grid_predictions"])),
                 "grid_uncertainty_mean": float(np.mean(predictions["grid_uncertainties"])),
                 "grid_uncertainty_std": float(np.std(predictions["grid_uncertainties"])),
-                "grid_samples": len(predictions["grid_predictions"]),
             }
 
             if predictions["original_predictions"] and len(predictions["original_predictions"]) > 0:
@@ -448,7 +385,6 @@ class RewardUncertaintyPredictor:
                         "original_rewards_max": float(np.max(predictions["original_predictions"])),
                         "original_uncertainty_mean": float(np.mean(predictions["original_uncertainties"])),
                         "original_uncertainty_std": float(np.std(predictions["original_uncertainties"])),
-                        "original_samples": len(predictions["original_predictions"]),
                     }
                 )
 
@@ -592,14 +528,7 @@ def main():
     if args.inverse_projection and (
         args.episode_path or (args.env_name and args.benchmark_id and args.checkpoint_step and args.episode_num)
     ):
-        # We have both inverse projection and episode data
 
-        # First, get predictions from inverse projection
-        grid_predictions = predictor.predict_for_inverse_projections(
-            inverse_projection_file=args.inverse_projection, action_space_size=args.action_space_size
-        )
-
-        # Now, load episode data
         if args.episode_path:
             episode_data = load_episodes(args.episode_path)
         else:
@@ -612,14 +541,20 @@ def main():
             )
             episode_data = load_episodes(episode_path)
 
-        # Combine predictions from both sources
-        combined_predictions = predictor.combine_predictions(
-            grid_predictions=grid_predictions, episode_data=episode_data, action_space_size=args.action_space_size
+        original_obs = episode_data["obs"]
+        original_actions = episode_data["actions"]
+
+        # First, get predictions from inverse projection
+        grid_predictions = predictor.predict_for_inverse_projections(
+            inverse_projection_file=args.inverse_projection,
+            original_obs=original_obs,
+            original_actions=original_actions,
+            action_space_size=args.action_space_size,
         )
 
         # Save combined predictions
         predictor.save_predictions(
-            predictions=combined_predictions,
+            predictions=grid_predictions,
             output_dir=args.output_dir,
             filename_prefix="combined_predictions",
             source_file=args.inverse_projection,

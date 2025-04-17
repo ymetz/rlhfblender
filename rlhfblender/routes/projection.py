@@ -131,7 +131,7 @@ async def generate_projection(
     env_name = process_env_name(db_experiment.env_id)
 
     # check if cached file exists (file name: data/saved_projections/envname_exp_id_checkpoint_step_projection_method.json)
-    projection_hash = f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}_{projection_method}"
+    projection_hash = f"{process_env_name(env_name)}_{db_experiment.id}_{checkpoint_step}_{projection_method}"
 
     if projection_hash is not None:
         projection_save_path = os.path.join("data", "saved_projections", f"{projection_hash}.npz")
@@ -494,8 +494,7 @@ async def load_grid_projection_data(
         env_name = process_env_name(db_experiment.env_id)
 
         # Generate projection filename (same as in generate_projection)
-        projection_hash = f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}_{projection_method}"
-        projection_hash = "Ant-v4_random_experiment_-1_UMAP"
+        projection_hash = f"{process_env_name(env_name)}_{db_experiment.id}_{checkpoint_step}_{projection_method}"
 
         # First check for a file with the expected naming convention from our script
         prediction_file = Path("data", "saved_projections", f"{projection_hash}_inverse_predictions.json")
@@ -556,6 +555,10 @@ async def load_grid_projection_image(
         checkpoint_step=checkpoint_step,
         projection_method=projection_method,
     )
+
+    # grid_coordianates are lists of lists, convert to numpy array
+    prediction_data["grid_coordinates"] = np.array(prediction_data["grid_coordinates"])
+    prediction_data["original_coordinates"] = np.array(prediction_data["original_coordinates"])
 
     # Check if the image is already cached
     data_path = CACHE_DIR / f"{benchmark_id}_{checkpoint_step}_{projection_method}_{map_type}.json"

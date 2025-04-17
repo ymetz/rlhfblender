@@ -843,56 +843,6 @@ def compute_inverse_projection(
         return {"inverse_model_info": {}, "grid_samples": {}, "model_path": ""}
 
 
-# Function to generate cache key for inverse projection
-def generate_inverse_cache_key(
-    env_name: str,
-    benchmark_id: int,
-    checkpoint_step: int,
-    projection_method: str,
-    sequence_length: int,
-    step_range: str,
-    inverse_model_type: str,
-    num_epochs: int,
-    original_data: np.ndarray,
-    coords_2d: np.ndarray,
-) -> str:
-    """
-    Generate a cache key for inverse projection.
-
-    Args:
-        env_name: Environment name
-        benchmark_id: Benchmark ID
-        checkpoint_step: Checkpoint step
-        projection_method: Projection method
-        sequence_length: Sequence length
-        step_range: Step range
-        inverse_model_type: Inverse model type
-        num_epochs: Number of training epochs
-        original_data: Original data
-        coords_2d: 2D coordinates
-
-    Returns:
-        Cache key string
-    """
-    # Create a hash of the request parameters and data shape
-    key_dict = {
-        "env_name": env_name,
-        "benchmark_id": benchmark_id,
-        "checkpoint_step": checkpoint_step,
-        "projection_method": projection_method,
-        "sequence_length": sequence_length,
-        "step_range": step_range,
-        "inverse_model_type": inverse_model_type,
-        "num_epochs": num_epochs,
-        "data_shape": list(original_data.shape),
-        "data_hash": hashlib.md5(original_data.tobytes()).hexdigest(),
-        "coords_hash": hashlib.md5(coords_2d.tobytes()).hexdigest(),
-    }
-
-    key_str = json.dumps(key_dict, sort_keys=True)
-    return hashlib.md5(key_str.encode()).hexdigest()
-
-
 # Main function
 async def generate_projections(
     experiment_id: str,
@@ -943,7 +893,7 @@ async def generate_projections(
     episode_nums = get_available_episodes(experiment=db_experiment, checkpoint_step=checkpoint_step)
 
     if not episode_nums:
-        print(f"No episodes found for {env_name} (benchmark_id={experiment_id}, checkpoint_step={checkpoint_step})")
+        print(f"No episodes found for {env_name} (benchmark_id={db_experiment.id}, checkpoint_step={checkpoint_step})")
         return {
             "projection": [],
             "labels": [],
@@ -973,7 +923,7 @@ async def generate_projections(
     episode_data = await load_episode_data(episodes)
 
     # Create projection hash for caching
-    projection_hash = f"{process_env_name(env_name)}_{experiment_id}_{checkpoint_step}_{projection_method}"
+    projection_hash = f"{process_env_name(env_name)}_{db_experiment.id}_{checkpoint_step}_{projection_method}"
 
     # Compute projection
     projection_results = await compute_projection(
@@ -1002,29 +952,18 @@ async def generate_projections(
         # Get original data for inverse mapping
         original_data = episode_data["obs"]
 
-        # Generate cache key for inverse projection
-        inverse_cache_key = generate_inverse_cache_key(
-            env_name=env_name,
-            benchmark_id=experiment_id,
-            checkpoint_step=checkpoint_step,
-            projection_method=projection_method,
-            sequence_length=sequence_length,
-            step_range=step_range,
-            inverse_model_type=inverse_options.model_type,
-            num_epochs=inverse_options.num_epochs,
-            original_data=original_data,
-            coords_2d=coords_2d,
-        )
-
         # Compute inverse projection
         inverse_results = compute_inverse_projection(
-            original_data=original_data, coords_2d=coords_2d, inverse_options=inverse_options, cache_key=inverse_cache_key
+            original_data=original_data,
+            coords_2d=coords_2d,
+            inverse_options=inverse_options,
+            cache_key=projection_hash + "_inverse",
         )
 
     # Add inverse results to projection results
     projection_results["inverse_results"] = inverse_results
 
-    return projection_results
+    return projection_results, projection_hash
 
 
 if __name__ == "__main__":
@@ -1100,12 +1039,6 @@ if __name__ == "__main__":
         force_retrain=args.force_retrain,
     )
 
-    # Determine save path
-    save_path = args.save_to
-    if save_path is None:
-        # Build default path from parameters
-        save_path = f"{args.experiment_name}_{args.checkpoint_step}_{args.projection_method}"
-
     # Run the projection generation
     try:
         print(f"Generating projections for experiment_name={args.experiment_name}, checkpoint_step={args.checkpoint_step}")
@@ -1118,7 +1051,7 @@ if __name__ == "__main__":
             print(f"Grid parameters: resolution={args.grid_resolution}, auto_range={args.auto_grid_range}")
 
         # Run the main projection generation function
-        projection_results = asyncio.run(
+        projection_results, save_path = asyncio.run(
             generate_projections(
                 experiment_id=args.experiment_name,
                 checkpoint_step=args.checkpoint_step,
