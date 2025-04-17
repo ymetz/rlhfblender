@@ -32,11 +32,11 @@ database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender
 router = APIRouter(prefix="/projection")
 
 # Create directory for saving inverse projection models
-INVERSE_MODELS_DIR = Path("models/inverse_projections")
+INVERSE_MODELS_DIR = Path("data/saved_projections/models")
 INVERSE_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Create directory for caching results
-CACHE_DIR = Path("cache/inverse_projections")
+CACHE_DIR = Path("data/saved_projections")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -108,7 +108,6 @@ async def generate_projection(
     use_one_d_projection: bool = False,
     append_time: bool = False,
     projection_props: Dict[str, Any] = {},
-    projection_hash: Optional[int] = None,
 ):
     """
     Compute projection for all episodes matching the given parameters.
@@ -123,7 +122,6 @@ async def generate_projection(
         use_one_d_projection: Whether to use 1D projection
         append_time: Whether to append time information
         projection_props: Additional projection properties
-        projection_hash: Hash for caching projections
 
     Returns:
         Projection results
@@ -131,6 +129,28 @@ async def generate_projection(
     # exp from benchmark_id
     db_experiment = await get_single_entry(database, Experiment, benchmark_id)
     env_name = process_env_name(db_experiment.env_id)
+
+    # check if cached file exists (file name: data/saved_projections/envname_exp_id_checkpoint_step_projection_method.json)
+    projection_hash = f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}_{projection_method}"
+
+    if projection_hash is not None:
+        projection_save_path = os.path.join("data", "saved_projections", f"{projection_hash}.npz")
+        if os.path.exists(projection_save_path):
+            print(f"Loading cached projection from {projection_save_path}")
+            cached_projection = np.load(projection_save_path, allow_pickle=True)
+            return {
+                "projection": cached_projection["projection_array"].tolist(),
+                "labels": cached_projection["labels"].tolist(),
+                "centroids": cached_projection["centroids"].tolist(),
+                "merged_points": cached_projection["merged_points"].tolist(),
+                "connections": cached_projection["connections"].tolist(),
+                "feature_projection": cached_projection["feature_projection"].tolist(),
+                "transition_projection": cached_projection["transition_projection"].tolist(),
+                "actions": cached_projection["actions"].tolist(),
+                "dones": cached_projection["dones"].tolist(),
+                "episode_indices": cached_projection["episode_indices"].tolist(),
+            }
+
 
     # Find available episodes
     episode_nums = get_available_episodes(experiment=db_experiment, checkpoint_step=checkpoint_step)

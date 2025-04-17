@@ -17,15 +17,11 @@ import asyncio
 
 from rlhfblender.data_collection import RecordedEpisodesContainer
 from rlhfblender.data_collection.metrics_processor import process_metrics
-<<<<<<< HEAD
-from rlhfblender.data_models.agent import BaseAgent
-=======
 from rlhfblender.data_models.agent import BaseAgent, RandomAgent, TrainedAgent
 from multi_type_feedback.networks import SingleCnnNetwork, SingleNetwork
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.global_models import Experiment, Environment
 from rlhfblender.data_collection.environment_handler import get_environment
->>>>>>> cfc56d8739e82855d6edd2907101cacab4c84c38
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -36,13 +32,6 @@ class BenchmarkSummary(BaseModel):
     additional_metrics: dict
 
 
-<<<<<<< HEAD
-class EnhancedRecordedEpisodesContainer(RecordedEpisodesContainer):
-    """Extended version of RecordedEpisodesContainer that includes reward model predictions."""
-
-    predicted_rewards: np.ndarray = []
-    uncertainties: np.ndarray = []
-=======
 @dataclass
 class EnhancedRecordedEpisodesContainer:
     obs: np.ndarray
@@ -58,7 +47,6 @@ class EnhancedRecordedEpisodesContainer:
     episode_rewards: np.ndarray
     episode_lengths: np.ndarray
     additional_metrics: dict[str, Any]
->>>>>>> cfc56d8739e82855d6edd2907101cacab4c84c38
 
 
 class EpisodeRecorder:
@@ -140,16 +128,11 @@ class EpisodeRecorder:
         else:
             # This is likely a vector observation space (e.g., MuJoCo tasks)
             reward_model_cls = SingleNetwork
-<<<<<<< HEAD
-
-        self.reward_model = reward_model_cls.load_from_checkpoint(self.reward_model_path, map_location=self.device)
-=======
             
         self.reward_model = reward_model_cls.load_from_checkpoint(
             self.reward_model_path, 
             map_location=self.device
         )
->>>>>>> cfc56d8739e82855d6edd2907101cacab4c84c38
         self.reward_model.eval()  # Set to evaluation mode
         print(f"Loaded reward model from {self.reward_model_path}")
 
@@ -652,8 +635,6 @@ def convert_infos(infos: np.ndarray):
         out_info["episode step"] = i
         out_infos.append(out_info)
     return out_infos
-<<<<<<< HEAD
-=======
 
 
 if __name__ == "__main__":
@@ -743,4 +724,3 @@ if __name__ == "__main__":
         episodes, 
         feedback_type="evaluative"
     )"""
->>>>>>> cfc56d8739e82855d6edd2907101cacab4c84c38

@@ -34,11 +34,11 @@ from rlhfblender.projections.projection_handler import ProjectionHandler
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 # Create directory for saving inverse projection models
-INVERSE_MODELS_DIR = Path("models/inverse_projections")
+INVERSE_MODELS_DIR = Path("data/saved_projections/models")
 INVERSE_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Create directory for caching inverse projection results
-INVERSE_CACHE_DIR = Path("cache/inverse_projections")
+INVERSE_CACHE_DIR = Path("data/saved_projections")
 INVERSE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 

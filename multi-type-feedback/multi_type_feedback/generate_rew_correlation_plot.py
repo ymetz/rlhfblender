@@ -3,13 +3,8 @@ import os
 import pickle
 import pickle as pkl
 import random
-
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 import torch
-from scipy.stats import pearsonr
-from sklearn.cluster import MiniBatchKMeans
 
 from multi_type_feedback.networks import SingleNetwork
 
