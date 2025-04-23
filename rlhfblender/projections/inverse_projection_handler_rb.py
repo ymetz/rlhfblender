@@ -402,10 +402,12 @@ class InverseProjectionHandler:
         zi_pred_norm = norm_pred(zi_pred)
         zi_unc_norm = norm_unc(zi_unc)
 
-        rgb = np.zeros((zi_pred.shape[0], zi_pred.shape[1], 3))
-        rgb[..., 0] = zi_pred_norm
-        rgb[..., 1] = zi_unc_norm
-        rgb[..., 2] = zi_unc_norm
+        # Load inline bivariate colormap (resolution = 256)
+        bimap = generate_bivariate_colormap(256)
+        idx_x = (zi_pred_norm * 255).astype(int).clip(0, 255)
+        idx_y = (zi_unc_norm * 255).astype(int).clip(0, 255)
+        rgb = bimap[idx_y, idx_x]
+
 
         fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution // 8)
         ax.imshow(rgb, origin="lower", extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer])
@@ -430,6 +432,33 @@ class InverseProjectionHandler:
             "y_range": [float(y_min), float(y_max)],
             "point_count": len(coords),
         }
+def generate_bivariate_colormap(resolution=256):
+    """
+    Generate a bivariate colormap from:
+    - Blue (high prediction) to Yellow (low prediction)
+    - Certainty shown via saturation (high certainty = vivid, low = grayscale)
+
+    Output:
+        colormap: (resolution x resolution x 3) RGB values in [0, 1]
+    """
+    # Define corner colors and convert to float for interpolation
+    top_left = np.array([255, 255, 169], dtype=float) / 255.0    # high certainty, low prediction
+    top_right = np.array([0, 150, 255], dtype=float) / 255.0     # high certainty, high prediction
+    bottom_left = np.array([140, 140, 140], dtype=float) / 255.0 # low certainty, low prediction
+    bottom_right = np.array([0, 0, 0], dtype=float) / 255.0      # low certainty, high prediction
+
+    # Interpolate grid
+    grid = np.zeros((resolution, resolution, 3))
+    for i in range(resolution):
+        for j in range(resolution):
+            v = i / (resolution - 1)  # certainty
+            h = j / (resolution - 1)  # prediction
+            top = (1 - h) * top_left + h * top_right
+            bottom = (1 - h) * bottom_left + h * bottom_right
+            grid[i, j] = v * top + (1 - v) * bottom
+
+    return grid
+
 
 def show_bivariate_legend(resolution=300):
     import matplotlib.pyplot as plt
@@ -439,20 +468,35 @@ def show_bivariate_legend(resolution=300):
     y = np.linspace(0, 1, resolution)
     xx, yy = np.meshgrid(x, y)
 
+    # Define base prediction colors
+    yellow = np.array([1.0, 1.0, 0.0])
+    blue = np.array([0.0, 0.5, 1.0])
+    gray = np.array([0.7, 0.7, 0.7])  # neutral gray for zero certainty
+
     rgb = np.zeros((resolution, resolution, 3))
-    rgb[..., 0] = xx              # Red: prediction
-    rgb[..., 1] = yy              # Green: uncertainty
-    rgb[..., 2] = yy              # Blue: same as uncertainty for visibility
+    for i in range(resolution):
+        for j in range(resolution):
+            pred_val = xx[i, j]  # 0 (yellow) → 1 (blue)
+            certainty = yy[i, j]  # 0 (gray) → 1 (color)
+
+            # Interpolate base color along prediction axis
+            base_color = (1 - pred_val) * yellow + pred_val * blue
+            # Blend with gray based on certainty (0 → gray, 1 → base_color)
+            final_color = (1 - certainty) * gray + certainty * base_color
+
+            rgb[i, j] = final_color
 
     fig, ax = plt.subplots(figsize=(4, 4))
     ax.imshow(rgb, origin='lower', extent=[0, 1, 0, 1])
-    ax.set_xlabel("Prediction (mean)")
-    ax.set_ylabel("Uncertainty (std)")
+    ax.set_xlabel("Prediction (low → high)", fontsize=10)
+    ax.set_ylabel("Certainty (low → high)", fontsize=10)
     ax.set_xticks([0, 0.5, 1])
     ax.set_yticks([0, 0.5, 1])
-    ax.set_title("Bivariate Color Legend")
+    ax.set_title("Bivariate Color Legend", fontsize=11)
     plt.tight_layout()
     plt.show()
+
+
 
 # Example usage
 if __name__ == "__main__":
