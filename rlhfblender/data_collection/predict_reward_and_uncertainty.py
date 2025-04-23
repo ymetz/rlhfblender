@@ -511,7 +511,7 @@ def main():
     # Episode identification (required if --env-name is used)
     parser.add_argument("--env-name", type=str, help="Environment name")
     parser.add_argument("--benchmark-id", type=int, help="Benchmark ID")
-    parser.add_argument("--checkpoint-step", type=int, help="Checkpoint step")
+    parser.add_argument("--checkpoint", type=int, help="Checkpoint step")
     parser.add_argument("--episode-num", type=int, help="Episode number")
 
     args = parser.parse_args()
@@ -526,7 +526,7 @@ def main():
 
     # Check if we need to process both inverse projection and episode data
     if args.inverse_projection and (
-        args.episode_path or (args.env_name and args.benchmark_id and args.checkpoint_step and args.episode_num)
+        args.episode_path or (args.env_name and args.benchmark_id and args.checkpoint and args.episode_num)
     ):
 
         if args.episode_path:
@@ -536,7 +536,7 @@ def main():
             episode_path = get_episode_file_path(
                 env_name=args.env_name,
                 benchmark_id=args.benchmark_id,
-                checkpoint_step=args.checkpoint_step,
+                checkpoint_step=args.checkpoint,
                 episode_num=args.episode_num,
             )
             episode_data = load_episodes(episode_path)
@@ -595,14 +595,14 @@ def main():
         elif (
             args.env_name
             and args.benchmark_id is not None
-            and args.checkpoint_step is not None
+            and args.checkpoint is not None
             and args.episode_num is not None
         ):
             # Generate episode path
             episode_path = get_episode_file_path(
                 env_name=args.env_name,
                 benchmark_id=args.benchmark_id,
-                checkpoint_step=args.checkpoint_step,
+                checkpoint_step=args.checkpoint,
                 episode_num=args.episode_num,
             )
 

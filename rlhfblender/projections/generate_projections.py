@@ -962,8 +962,9 @@ async def generate_projections(
 
     # Add inverse results to projection results
     projection_results["inverse_results"] = inverse_results
+    projection_results["projection_hash"] = projection_hash
 
-    return projection_results, projection_hash
+    return projection_results
 
 
 if __name__ == "__main__":
@@ -971,7 +972,7 @@ if __name__ == "__main__":
 
     # Episode identification parameters
     parser.add_argument("--experiment-name", type=str, required=True, help="Benchmark/Experiment ID")
-    parser.add_argument("--checkpoint-step", type=int, default=-1, help="Checkpoint step")
+    parser.add_argument("--checkpoint", type=int, default=-1, help="Checkpoint step")
 
     # Projection parameters
     parser.add_argument("--projection-method", type=str, default="UMAP", help="Projection method to use")
@@ -1041,7 +1042,7 @@ if __name__ == "__main__":
 
     # Run the projection generation
     try:
-        print(f"Generating projections for experiment_name={args.experiment_name}, checkpoint_step={args.checkpoint_step}")
+        print(f"Generating projections for experiment_name={args.experiment_name}, checkpoint_step={args.checkpoint}")
         print(f"Using method: {args.projection_method}, sequence length: {args.sequence_length}")
         print(f"Additional options: reproject={args.reproject}, 1D={args.one_d_projection}, append_time={args.append_time}")
 
@@ -1051,10 +1052,10 @@ if __name__ == "__main__":
             print(f"Grid parameters: resolution={args.grid_resolution}, auto_range={args.auto_grid_range}")
 
         # Run the main projection generation function
-        projection_results, save_path = asyncio.run(
+        projection_results = asyncio.run(
             generate_projections(
                 experiment_id=args.experiment_name,
-                checkpoint_step=args.checkpoint_step,
+                checkpoint_step=args.checkpoint,
                 projection_method=args.projection_method,
                 sequence_length=args.sequence_length,
                 step_range=args.step_range,
@@ -1068,6 +1069,7 @@ if __name__ == "__main__":
                 inverse_options=inverse_options,
             )
         )
+        save_path = projection_results.get("projection_hash", args.save_to) if args.save_to else args.experiment_name
 
         # Check if we got valid results
         if projection_results["projection"] and len(projection_results["projection"]) > 0:
