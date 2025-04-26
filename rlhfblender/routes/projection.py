@@ -563,23 +563,47 @@ async def load_grid_projection_image(
     # Check if the image is already cached
     data_path = CACHE_DIR / f"{benchmark_id}_{checkpoint_step}_{projection_method}_{map_type}.json"
     if data_path.exists():
-        return json.loads(data_path.read_text())
+        image_data = json.loads(data_path.read_text())
     else:
-        grid_value_name = "grid_predictions" if map_type == "prediction" else "grid_uncertainties"
-        original_value_name = "original_predictions" if map_type == "prediction" else "original_uncertainties"
-        image_data = InverseProjectionHandler.precompute_interpolated_surface(
-            grid_coords=prediction_data["grid_coordinates"],
-            grid_values=prediction_data[grid_value_name],
-            resolution=500,
-            additional_coords=prediction_data["original_coordinates"],
-            additional_values=prediction_data[original_value_name],
-        )
+        if map_type == "both":
+            # Load both prediction and uncertainty data
+            grid_predictions = prediction_data["grid_predictions"]
+            grid_uncertainties = prediction_data["grid_uncertainties"]
+            original_predictions = prediction_data["original_predictions"]
+            original_uncertainties = prediction_data["original_uncertainties"]
+            image_data = InverseProjectionHandler.precompute_bivariate_interpolated_surface(
+                grid_coords=prediction_data["grid_coordinates"],
+                grid_predictions=grid_predictions,
+                grid_uncertainties=grid_uncertainties,
+                additional_coords=prediction_data["original_coordinates"],
+                additional_predictions=original_predictions,
+                additional_uncertainties=original_uncertainties,
+                resolution=500,
+            ) 
+        else:
+            grid_value_name = "grid_predictions" if map_type == "prediction" else "grid_uncertainties"
+            original_value_name = "original_predictions" if map_type == "prediction" else "original_uncertainties"
+            image_data = InverseProjectionHandler.precompute_interpolated_surface(
+                grid_coords=prediction_data["grid_coordinates"],
+                grid_values=prediction_data[grid_value_name],
+                resolution=500,
+                additional_coords=prediction_data["original_coordinates"],
+                additional_values=prediction_data[original_value_name],
+            )
 
         # Save the image
         with open(data_path, "w") as f:
             json.dump(image_data, f)
-
-        return image_data
+            
+    # Add projection bounds from the data
+    image_data["projection_bounds"] = {
+        "x_min": image_data["x_range"][0],
+        "x_max": image_data["x_range"][1],
+        "y_min": image_data["y_range"][0],
+        "y_max": image_data["y_range"][1]
+    }
+    
+    return image_data
 
 
 def generate_cache_key(

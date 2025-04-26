@@ -1,2 +1,0 @@
-session_id,feedback_type,targets,granularity,timestamp,text_feedback,score,preferences,action,state,action_preferences,state_preferences,is_demo,demo_preferences,feature_selection,feature_importance,feature_selections_preferences,feature_importance_preferences,user_id,meta_action
-2025-04-18_17-11-54_Ant-v4_random_experiment_logs,meta,[],entire,1744989114174,,0.0,[],,,,,False,,,,,,-1,reset

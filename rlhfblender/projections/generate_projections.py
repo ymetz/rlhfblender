@@ -817,11 +817,11 @@ def compute_inverse_projection(
             "resolution": inverse_options.grid_resolution,
         }
 
-        # Cache the results
-        results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": str(model_file)}
+        # Results are also available in the main projection results, just use this
+        #results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": str(model_file)}
 
-        with open(cache_file, "w") as f:
-            json.dump(results, f)
+        #with open(cache_file, "w") as f:
+        #    json.dump(results, f)
 
         # Save model with the cache key as filename
         torch.save(
@@ -1069,7 +1069,7 @@ if __name__ == "__main__":
                 inverse_options=inverse_options,
             )
         )
-        save_path = projection_results.get("projection_hash", args.save_to) if args.save_to else args.experiment_name
+        save_path = projection_results.get("projection_hash", f"{args.experiment_name}_{args.checkpoint}_{args.projection_method}")
 
         # Check if we got valid results
         if projection_results["projection"] and len(projection_results["projection"]) > 0:

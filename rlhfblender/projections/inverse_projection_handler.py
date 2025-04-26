@@ -386,8 +386,8 @@ class InverseProjectionHandler:
         y_min, y_max = min(points[:, 1]), max(points[:, 1])
 
         # Add a small buffer to avoid edge effects
-        x_buffer = (x_max - x_min) * 0.05
-        y_buffer = (y_max - y_min) * 0.05
+        x_buffer = 0 #(x_max - x_min) * 0.05
+        y_buffer = 0 #(y_max - y_min) * 0.05
 
         xi = np.linspace(x_min - x_buffer, x_max + x_buffer, resolution)
         yi = np.linspace(y_min - y_buffer, y_max + y_buffer, resolution)
@@ -425,7 +425,6 @@ class InverseProjectionHandler:
         ax.set_yticks([])
         ax.set_xlim(x_min - x_buffer, x_max + x_buffer)
         ax.set_ylim(y_min - y_buffer, y_max + y_buffer)
-        ax.set_aspect("equal")
         plt.tight_layout()
         plt.axis("off")
 
@@ -441,13 +440,153 @@ class InverseProjectionHandler:
             "image": img_str,
             "min_value": float(min(values)),
             "max_value": float(max(values)),
-            "x_range": [float(x_min), float(x_max)],
-            "y_range": [float(y_min), float(y_max)],
+            "x_range": [float(x_min) - x_buffer, float(x_max) + x_buffer],
+            "y_range": [float(y_min) - y_buffer, float(y_max) + y_buffer],
             "point_count": len(points),
             "interpolation_method": method,
         }
+    
 
+    @staticmethod
+    def generate_bivariate_colormap(resolution=256):
+        """
+        Generate a bivariate colormap from:
+        - Blue (high prediction) to Yellow (low prediction)
+        - Certainty shown via saturation (high certainty = vivid, low = grayscale)
 
+        Output:
+            colormap: (resolution x resolution x 3) RGB values in [0, 1]
+        """
+        # Define corner colors and convert to float for interpolation
+        top_left = np.array([255, 255, 169], dtype=float) / 255.0    # high certainty, low prediction
+        top_right = np.array([0, 150, 255], dtype=float) / 255.0     # high certainty, high prediction
+        bottom_left = np.array([140, 140, 140], dtype=float) / 255.0 # low certainty, low prediction
+        bottom_right = np.array([0, 0, 0], dtype=float) / 255.0      # low certainty, high prediction
+
+        # Interpolate grid
+        grid = np.zeros((resolution, resolution, 3))
+        for i in range(resolution):
+            for j in range(resolution):
+                v = i / (resolution - 1)  # certainty
+                h = j / (resolution - 1)  # prediction
+                top = (1 - h) * top_left + h * top_right
+                bottom = (1 - h) * bottom_left + h * bottom_right
+                grid[i, j] = v * top + (1 - v) * bottom
+
+        return grid
+    
+    @staticmethod
+    def precompute_bivariate_interpolated_surface(
+        grid_coords, grid_predictions, grid_uncertainties, additional_coords=None, additional_predictions=None, additional_uncertainties=None, resolution=400, method="cubic"
+    ):
+        """
+        Creates a bivariate interpolated surface combining prediction and uncertainty.
+
+        Parameters:
+        -----------
+        grid_coords : list of [x,y] coordinates for the grid points
+        grid_preds : list of prediction values at the grid points
+        grid_uncertainties : list of uncertainty values at the grid points
+        additional_coords : list of [x,y] coordinates for off-grid points (optional)
+        additional_preds : list of prediction values at the off-grid points (optional)
+        additional_uncertainties : list of uncertainty values at the off-grid points (optional)
+        resolution : output image resolution
+        method : interpolation method ('cubic', 'linear', 'nearest')
+
+        Returns:
+        --------
+        Dictionary with image as base64 string and metadata
+        """
+        # Combine all data points (grid and additional)
+        coords = np.array(grid_coords)
+        preds = np.array(grid_predictions)
+        uncertainties = np.array(grid_uncertainties)
+
+        if additional_coords is not None and additional_predictions is not None and additional_uncertainties is not None:
+            additional_coords = np.array(additional_coords)
+            additional_preds = np.array(additional_predictions)
+            additional_uncertainties = np.array(additional_uncertainties)
+
+            # Combine the data
+            coords = np.vstack((coords, additional_coords))
+            preds = np.append(preds, additional_preds)
+            uncertainties = np.append(uncertainties, additional_uncertainties)
+
+        # Create a regular grid for interpolation output
+        x_min, x_max = min(coords[:, 0]), max(coords[:, 0])
+        y_min, y_max = min(coords[:, 1]), max(coords[:, 1])
+
+        # Add a small buffer to avoid edge effects
+        x_buffer = 0 #(x_max - x_min) * 0.05
+        y_buffer = 0 #(y_max - y_min) * 0.05
+
+        xi = np.linspace(x_min - x_buffer, x_max + x_buffer, resolution)
+        yi = np.linspace(y_min - y_buffer, y_max + y_buffer, resolution)
+        xi_grid, yi_grid = np.meshgrid(xi, yi)
+
+        # Perform the interpolation
+        zi_pred = griddata(coords, preds, (xi_grid, yi_grid), method=method)
+        zi_uncertainty = griddata(coords, uncertainties, (xi_grid, yi_grid), method=method)
+
+        # Fill NaN values that might occur at the edges
+        if np.any(np.isnan(zi_pred)):
+            zi_pred_nearest = griddata(coords, preds, (xi_grid, yi_grid), method="nearest")
+            zi_pred = np.where(np.isnan(zi_pred), zi_pred_nearest, zi_pred)
+        if np.any(np.isnan(zi_uncertainty)):
+            zi_uncertainty_nearest = griddata(coords, uncertainties, (xi_grid, yi_grid), method="nearest")
+            zi_uncertainty = np.where(np.isnan(zi_uncertainty), zi_uncertainty_nearest, zi_uncertainty)
+
+        # Create a color-mapped image
+        fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution / 8)
+
+        # Draw the interpolated surface
+        norm_pred = Normalize(vmin=min(preds), vmax=max(preds))
+        norm_uncertainty = Normalize(vmin=min(uncertainties), vmax=max(uncertainties))
+
+        zi_pred_norm = norm_pred(zi_pred)
+        zi_uncertainty_norm = norm_uncertainty(zi_uncertainty)
+
+        # Load inline bivariate colormap (resolution = 256)
+        bimap = InverseProjectionHandler.generate_bivariate_colormap(resolution=resolution)
+        idx_x = (zi_pred_norm * (resolution - 1)).astype(int).clip(0, resolution - 1)
+        idx_y = (zi_uncertainty_norm * (resolution - 1)).astype(int).clip(0, resolution - 1)
+        rgb = bimap[idx_y, idx_x]
+
+        ax.imshow(rgb, origin="lower", extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer])
+
+        # Optionally, mark the data points on the surface
+        # ax.scatter(coords[:,0], coords[:,1], s=10, c='white', alpha=0.5)
+
+        # Add contour lines for better readability
+        # contour = ax.contour(xi_grid, yi_grid, zi_pred, 10, colors='white', alpha=0.3, linewidths=0.5)
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(x_min - x_buffer, x_max + x_buffer)
+        ax.set_ylim(y_min - y_buffer, y_max + y_buffer)
+        #ax.set_aspect("equal")
+        plt.tight_layout()
+        plt.axis("off")
+        # Save to a base64-encoded PNG
+
+        buf = BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+        buf.seek(0)
+        img_str = base64.b64encode(buf.read()).decode("utf-8")
+        plt.close()
+
+        # Return metadata along with the image
+        return {
+            "image": img_str,
+            "min_value": float(min(preds)),
+            "max_value": float(max(preds)),
+            "x_range": [float(x_min) - x_buffer, float(x_max) + x_buffer],
+            "y_range": [float(y_min) - y_buffer, float(y_max) + y_buffer],
+            "point_count": len(coords),
+            "interpolation_method": method,
+        }
+    
+    
 # Example usage
 if __name__ == "__main__":
     # Create synthetic data

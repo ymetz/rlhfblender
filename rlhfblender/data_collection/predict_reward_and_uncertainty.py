@@ -506,7 +506,7 @@ def main():
 
     # Input data sources - no longer mutually exclusive
     parser.add_argument("--episode-path", type=str, help="Path to episode NPZ file")
-    parser.add_argument("--inverse-projection", type=str, help="Path to inverse projection JSON file")
+    parser.add_argument("--projection-data", type=str, help="Path to projection (+inverse projection) JSON file")
 
     # Episode identification (required if --env-name is used)
     parser.add_argument("--env-name", type=str, help="Environment name")
@@ -525,7 +525,7 @@ def main():
     )
 
     # Check if we need to process both inverse projection and episode data
-    if args.inverse_projection and (
+    if args.projection_data and (
         args.episode_path or (args.env_name and args.benchmark_id and args.checkpoint and args.episode_num)
     ):
 
@@ -541,12 +541,13 @@ def main():
             )
             episode_data = load_episodes(episode_path)
 
+        print(episode_data)
         original_obs = episode_data["obs"]
         original_actions = episode_data["actions"]
 
         # First, get predictions from inverse projection
         grid_predictions = predictor.predict_for_inverse_projections(
-            inverse_projection_file=args.inverse_projection,
+            inverse_projection_file=args.projection_data,
             original_obs=original_obs,
             original_actions=original_actions,
             action_space_size=args.action_space_size,
@@ -557,15 +558,15 @@ def main():
             predictions=grid_predictions,
             output_dir=args.output_dir,
             filename_prefix="combined_predictions",
-            source_file=args.inverse_projection,
+            source_file=args.projection_data,
         )
 
     else:
         # Process each source individually (original behavior)
-        if args.inverse_projection:
+        if args.projection_data:
             # Predict for inverse projections
             predictions = predictor.predict_for_inverse_projections(
-                inverse_projection_file=args.inverse_projection, action_space_size=args.action_space_size
+                inverse_projection_file=args.projection_data, action_space_size=args.action_space_size
             )
 
             # Save predictions, using the original filename pattern
@@ -573,7 +574,7 @@ def main():
                 predictions=predictions,
                 output_dir=args.output_dir,
                 filename_prefix="inverse_projection_predictions",
-                source_file=args.inverse_projection,
+                source_file=args.projection_data,
             )
 
         if args.episode_path:
