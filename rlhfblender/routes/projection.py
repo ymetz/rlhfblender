@@ -600,7 +600,9 @@ async def load_grid_projection_image(
         "x_min": image_data["x_range"][0],
         "x_max": image_data["x_range"][1],
         "y_min": image_data["y_range"][0],
-        "y_max": image_data["y_range"][1]
+        "y_max": image_data["y_range"][1],
+        "min_val": image_data["min_value"],
+        "max_val": image_data["max_value"],
     }
     
     return image_data

@@ -256,6 +256,7 @@ async def delete_backend_config(req: DeleteBackendConfigRequest):
 class SaveSetupRequest(BaseModel):
     project: dict
     experiment: dict
+    checkpoint: int
     ui_config: dict
     backend_config: dict
 
@@ -271,6 +272,7 @@ async def save_setup(req: SaveSetupRequest):
         "id": setup_id,
         "project": req.project,
         "experiment": req.experiment,
+        "checkpoint": req.checkpoint,
         "ui_config": req.ui_config,
         "backend_config": req.backend_config,
     }

@@ -818,7 +818,7 @@ def compute_inverse_projection(
         }
 
         # Results are also available in the main projection results, just use this
-        #results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": str(model_file)}
+        results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": str(model_file)}
 
         #with open(cache_file, "w") as f:
         #    json.dump(results, f)
