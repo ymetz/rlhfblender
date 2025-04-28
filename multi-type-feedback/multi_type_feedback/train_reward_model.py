@@ -120,7 +120,7 @@ def main():
     args = parser.parse_args()
 
     TrainingUtils.set_seeds(args.seed)
-    environment = TrainingUtils.setup_environment(args.environment, save_reset_wrapper=False)
+    environment = TrainingUtils.setup_environment(args.environment, args.seed, save_reset_wrapper=False)
 
     feedback_id, model_id = TrainingUtils.get_model_ids(args)
 

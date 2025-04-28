@@ -533,7 +533,7 @@ def make_vec_metaworld_env(
     env_id: str,
     n_envs: int = 1,
     reward_thres: float = 0.5,
-    seed: Optional[int] = None,
+    seed: Optional[int] = 1234,
     start_index: int = 0,
     monitor_dir: Optional[str] = None,
     wrapper_class: Optional[Callable[[gym.Env], gym.Env]] = None,

@@ -164,17 +164,28 @@ def get_environment(
 
     if gym_entry_point:
         # Register the environment with the given entry point to gym for the current session
-        print("ENTRY POINT", gym_entry_point)
         gym.register(id=env_name, entry_point=gym_entry_point)
 
-    env = make_vec_env(
-        env_name,
-        n_envs=n_envs,
-        wrapper_class=env_wrapper,
-        env_kwargs=env_kwargs,
-        vec_env_cls=vec_env_cls,
-        vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
-    )
+    if "metaworld" in env_name.lower():
+        from train_baselines.utils import make_vec_metaworld_env
+        environment_name = env_name.replace("metaworld-", "")
+        env = make_vec_metaworld_env(
+            env_id=environment_name,
+            n_envs=n_envs,
+            wrapper_class=env_wrapper,
+            env_kwargs=env_kwargs,
+            vec_env_cls=vec_env_cls,
+            vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
+        )
+    else:
+        env = make_vec_env(
+            env_name,
+            n_envs=n_envs,
+            wrapper_class=env_wrapper,
+            env_kwargs=env_kwargs,
+            vec_env_cls=vec_env_cls,
+            vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
+        )
 
     if "vec_env_wrapper" in environment_config.keys():
         vec_env_wrapper = get_wrapper_class(environment_config, "vec_env_wrapper")
@@ -259,10 +270,11 @@ def initial_registration(
             importlib.import_module(env_module)
 
     # Check if this is a MetaWorld environment
-    is_metaworld = any(name in env_id.lower() for name in ["pick-place", "button-press", "door-open", "drawer-close", "sweep"])
+    environment_id = env_id.replace("metaworld-", "")
+    is_metaworld = any(name in environment_id.lower() for name in ["pick-place-v2", "button-press-v2", "door-open-v2", "drawer-close-v2", "sweep","sweep-into-v2"])
 
     if is_metaworld:
-        env = get_metaworld_env(env_id).envs[0]
+        env = get_metaworld_env(environment_id).envs[0]
     else:
         if entry_point:
             gym.register(id=env_id, entry_point=entry_point)

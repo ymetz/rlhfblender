@@ -80,7 +80,7 @@ def main():
         # Set up environment
         update_status(status_file, "initializing", "Setting up environment")
         TrainingUtils.set_seeds(args.seed)
-        environment = TrainingUtils.setup_environment(args.env, save_reset_wrapper=False)
+        environment = TrainingUtils.setup_environment(args.env, args.seed, save_reset_wrapper=False)
 
         # Load feedback
         update_status(status_file, "processing_feedback", "Loading feedback data")

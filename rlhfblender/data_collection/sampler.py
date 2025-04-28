@@ -6,8 +6,6 @@ import os
 from enum import Enum
 
 import numpy as np
-
-from rlhfblender.data_collection.feedback_model import FeedbackModel
 from rlhfblender.data_models.global_models import Environment, EpisodeID, Experiment
 from rlhfblender.logger import Logger
 from rlhfblender.utils import process_env_name
@@ -39,7 +37,7 @@ class Sampler:
         saved_episode_dir: str,
         max_episode_count: int = 1000,
         sampler_type: SamplerType = SamplerType.sequential,
-        sample_model: FeedbackModel | None = None,
+        sample_model = None,
         logger: Logger = None,
     ):
         self.experiment = experiment
