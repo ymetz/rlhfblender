@@ -23,6 +23,7 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender/ ${CODE_DIR}/rlhfblender/rlhf
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./multi-type-feedback/ ${CODE_DIR}/rlhfblender/multi-type-feedback/
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./configs/ ${CODE_DIR}/rlhfblender/configs/
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender_model/ ${CODE_DIR}/rlhfblender/rlhfblender_model/
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./remote_data/ ${CODE_DIR}/rlhfblender/data/
 
 RUN cd ${CODE_DIR}/rlhfblender && \
     pip install -e .[tests,docs] && \
