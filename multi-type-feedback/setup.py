@@ -34,7 +34,7 @@ setup(
         #"procgen @ git+https://github.com/juancroldan/procgen",
         "opencv-python",
         #"stable-baselines3",
-        #f"imitation @ {get_abs_path('dependencies/imitation')}",
+        f"imitation @ {get_abs_path('dependencies/imitation')}",
         f"masksembles @ {get_abs_path('dependencies/masksembles')}",
         f"train_baselines @ {get_abs_path('train_baselines')}"
     ],
