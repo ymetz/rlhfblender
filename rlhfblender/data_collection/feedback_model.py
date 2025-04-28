@@ -3,7 +3,10 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from imitation.rewards.reward_nets import RewardNet
+try:
+    from imitation.rewards.reward_nets import RewardNet
+except ImportError:
+    print("Error: Imitation library is not installed. Please install it to use the FeedbackModel.")
 from torch.utils.data import DataLoader, Dataset
 
 from rlhfblender.data_models.feedback_models import StandardizedFeedback

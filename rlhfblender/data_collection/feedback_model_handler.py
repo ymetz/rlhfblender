@@ -1,9 +1,4 @@
-from imitation.rewards.reward_nets import (
-    RewardNet,
-)
-
 from rlhfblender.data_collection import feedback_model
-
 
 class FeedbackModelHandler:
     """
@@ -23,7 +18,7 @@ class FeedbackModelHandler:
     def __init__(
         self,
         session_id: str,
-        feedback_model_cls: RewardNet,
+        feedback_model_cls,
         observation_space,
         action_space,
     ):
