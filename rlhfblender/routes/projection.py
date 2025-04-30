@@ -604,6 +604,13 @@ async def load_grid_projection_image(
         "min_val": image_data["min_value"],
         "max_val": image_data["max_value"],
     }
+    # normalized original preds and uncertainties
+    image_data["original_predictions"] = ((np.array(prediction_data["original_predictions"]) - np.min(prediction_data["original_predictions"])) / (
+        np.max(prediction_data["original_predictions"]) - np.min(prediction_data["original_predictions"])
+    )).tolist()
+    image_data["original_uncertainties"] = ((prediction_data["original_uncertainties"] - np.min(prediction_data["original_uncertainties"])) / (
+        np.max(prediction_data["original_uncertainties"]) - np.min(prediction_data["original_uncertainties"])
+    )).tolist()
     
     return image_data
 

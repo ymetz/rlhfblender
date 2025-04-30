@@ -520,7 +520,7 @@ def get_model_path(
 def ppo_make_metaworld_env(env_id, seed):
     env_name = env_id.replace("metaworld-", "")
     env_cls = _envs_dict.ALL_V2_ENVIRONMENTS[env_name]
-    env = env_cls()
+    env = env_cls(render_mode="rgb_array")
 
     env._freeze_rand_vec = False
     env._set_task_called = True

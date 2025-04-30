@@ -351,43 +351,57 @@ class InverseProjectionHandler:
 
     @staticmethod
     def precompute_interpolated_surface(
-        grid_coords, grid_values, additional_coords=None, additional_values=None, resolution=400, method="cubic"
+        grid_coords, grid_values, additional_coords=None, additional_values=None, 
+        resolution=400, method="cubic", mask_radius=None
     ):
         """
-        Creates an interpolated surface from both grid points and additional data points.
-
-        Parameters:
-        -----------
-        grid_coords : list of [x,y] coordinates for the grid points
-        grid_values : list of values at the grid points
-        additional_coords : list of [x,y] coordinates for off-grid points (optional)
-        additional_values : list of values at the off-grid points (optional)
-        resolution : output image resolution
-        method : interpolation method ('cubic', 'linear', 'nearest', or 'rbf')
-
-        Returns:
-        --------
-        Dictionary with the interpolated surface as a base64 encoded image and metadata
+        Creates an interpolated surface prioritizing original data over grid data.
         """
-        # Combine all data points (grid and additional)
-        points = np.array(grid_coords)
-        values = np.array(grid_values)
-
+        # Convert to numpy arrays
+        grid_coords = np.array(grid_coords)
+        grid_values = np.array(grid_values)
+        
+        # If we have original data points to incorporate
         if additional_coords is not None and additional_values is not None:
-            additional_points = np.array(additional_coords)
+            additional_coords = np.array(additional_coords)
             additional_values = np.array(additional_values)
-
-            # Combine the data
-            points = np.vstack((points, additional_points))
-            values = np.append(values, additional_values)
-
-        # Create a regular grid for interpolation output
+            
+            # Calculate optimal mask_radius if not provided
+            if mask_radius is None:
+                # Compute average distance between neighboring grid points
+                from scipy.spatial import KDTree
+                tree = KDTree(grid_coords)
+                distances, _ = tree.query(grid_coords, k=5)  # query k=5 nearest neighbors
+                avg_dist = np.mean(distances[:, 1:])  # exclude self-distance (first column)
+                mask_radius = avg_dist * 0.75  # 75% of average distance is a good default
+            
+            # Create a mask for grid points that should be excluded
+            grid_mask = np.ones(len(grid_coords), dtype=bool)
+            
+            # For each original point, mask nearby grid points
+            for orig_coord in additional_coords:
+                distances = np.sqrt(np.sum((grid_coords - orig_coord)**2, axis=1))
+                grid_mask = grid_mask & (distances >= mask_radius)
+            
+            # Apply the mask to keep only grid points that are far from original points
+            masked_grid_coords = grid_coords[grid_mask]
+            masked_grid_values = grid_values[grid_mask]
+            
+            # Combine masked grid points with original points
+            points = np.vstack((masked_grid_coords, additional_coords))
+            values = np.append(masked_grid_values, additional_values)
+        else:
+            # If no original points, use all grid points
+            points = grid_coords
+            values = grid_values
+        
+        # Rest of function remains the same...
         x_min, x_max = min(points[:, 0]), max(points[:, 0])
         y_min, y_max = min(points[:, 1]), max(points[:, 1])
 
         # Add a small buffer to avoid edge effects
-        x_buffer = 0 #(x_max - x_min) * 0.05
-        y_buffer = 0 #(y_max - y_min) * 0.05
+        x_buffer = 0
+        y_buffer = 0
 
         xi = np.linspace(x_min - x_buffer, x_max + x_buffer, resolution)
         yi = np.linspace(y_min - y_buffer, y_max + y_buffer, resolution)
@@ -395,31 +409,25 @@ class InverseProjectionHandler:
 
         # Perform the interpolation
         if method == "rbf":
-            # Radial Basis Function interpolation - often better for scattered data
             rbf = Rbf(points[:, 0], points[:, 1], values, function="multiquadric")
             zi_grid = rbf(xi_grid, yi_grid)
         else:
-            # Standard grid interpolation methods
             zi_grid = griddata(points, values, (xi_grid, yi_grid), method=method)
 
             # Fill NaN values that might occur at the edges
             if np.any(np.isnan(zi_grid)):
-                # Use nearest neighbor to fill NaN values
                 zi_grid_nearest = griddata(points, values, (xi_grid, yi_grid), method="nearest")
                 zi_grid = np.where(np.isnan(zi_grid), zi_grid_nearest, zi_grid)
 
-        # Create a color-mapped image
+        # Create visualization
         fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution / 8)
-
-        # Draw the interpolated surface
         norm = Normalize(vmin=min(values), vmax=max(values))
         im = ax.pcolormesh(xi_grid, yi_grid, zi_grid, shading="auto", cmap="viridis", norm=norm)
-
-        # Optionally, mark the data points on the surface
-        # ax.scatter(points[:,0], points[:,1], s=10, c='white', alpha=0.5)
-
-        # Add contour lines for better readability
-        # contour = ax.contour(xi_grid, yi_grid, zi_grid, 10, colors='white', alpha=0.3, linewidths=0.5)
+        
+        # Optionally mark original data points
+        if additional_coords is not None:
+            pass
+            #ax.scatter(additional_coords[:, 0], additional_coords[:, 1], s=5, c='white', alpha=0.5, marker='o')
 
         ax.set_xticks([])
         ax.set_yticks([])
@@ -428,7 +436,7 @@ class InverseProjectionHandler:
         plt.tight_layout()
         plt.axis("off")
 
-        # Save to a base64-encoded PNG
+        # Save to base64-encoded PNG
         buf = BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
         buf.seek(0)
@@ -444,8 +452,11 @@ class InverseProjectionHandler:
             "y_range": [float(y_min) - y_buffer, float(y_max) + y_buffer],
             "point_count": len(points),
             "interpolation_method": method,
+            "mask_radius": float(mask_radius) if mask_radius is not None else None,
+            "original_points_count": len(additional_coords) if additional_coords is not None else 0,
+            "grid_points_used": len(masked_grid_coords) if additional_coords is not None else len(grid_coords),
         }
-    
+        
 
     @staticmethod
     def generate_bivariate_colormap(resolution=256):
@@ -474,51 +485,158 @@ class InverseProjectionHandler:
                 grid[i, j] = v * top + (1 - v) * bottom
 
         return grid
+
+    @staticmethod
+    def generate_vsup_colormap(resolution=256, num_bins=5):
+        """
+        Generate a true Value-Suppressing Uncertainty Palette:
+        - Sequential colormap for value (e.g., blue gradient)
+        - Value differences become less distinguishable as uncertainty increases
+        - Optional quantization into discrete bins
+        
+        Parameters:
+        -----------
+        resolution: Resolution of the colormap
+        num_bins: Number of discrete bins (set to 0 for continuous map)
+        
+        Returns:
+        --------
+        colormap: (resolution x resolution x 3) RGB values in [0, 1]
+        """
+        # Create base sequential colormap for values (blue gradient)
+        from matplotlib.colors import LinearSegmentedColormap
+        
+        # Create diverging colormap for values (blue to orange)
+        value_cmap = LinearSegmentedColormap.from_list("value", 
+            [(0.0, (0.32, 0.188, 0.019)),    # Dark Yellow for low values
+            (1.0, (0.0, 0.235, 0.188))])   # Dark blue for high values
+        
+        # Create grid
+        grid = np.zeros((resolution, resolution, 3))
+        
+        # Apply discretization if requested
+        if num_bins > 1:
+            # Create bin edges for value and uncertainty
+            value_bins = np.linspace(0, 1, num_bins + 1)
+            uncertainty_bins = np.linspace(0, 1, num_bins + 1)
+            
+            # For each bin combination, calculate appropriate color
+            for i in range(num_bins):
+                for j in range(num_bins):
+                    # Bin centers
+                    v_center = (value_bins[j] + value_bins[j+1]) / 2
+                    u_center = (uncertainty_bins[i] + uncertainty_bins[i+1]) / 2
+                    
+                    # Calculate color based on bin center
+                    base_color = value_cmap(v_center)[:3]  # Get RGB only
+                    
+                    # Apply uncertainty effect - as uncertainty increases:
+                    # 1. Move color toward light gray
+                    # 2. Reduce value differentiation
+                    gray_level = 0.8  # Light gray
+                    uncertainty_effect = u_center**1.5  # Non-linear to emphasize high uncertainty
+                    
+                    # Mix base color with gray based on uncertainty
+                    adjusted_color = (1 - uncertainty_effect) * np.array(base_color) + \
+                                    uncertainty_effect * np.array([gray_level, gray_level, gray_level])
+                    
+                    # Fill the bin area with this color
+                    v_min, v_max = int(value_bins[j] * resolution), int(value_bins[j+1] * resolution)
+                    u_min, u_max = int(uncertainty_bins[i] * resolution), int(uncertainty_bins[i+1] * resolution)
+                    
+                    # Handle edge case for last bin
+                    if j == num_bins - 1: v_max = resolution
+                    if i == num_bins - 1: u_max = resolution
+                    
+                    grid[u_min:u_max, v_min:v_max] = adjusted_color
+        else:
+            # Continuous version (no bins)
+            for i in range(resolution):
+                u = i / (resolution - 1)  # uncertainty (0-1)
+                for j in range(resolution):
+                    v = j / (resolution - 1)  # value (0-1)
+                    
+                    # Get base color from value
+                    base_color = value_cmap(v)[:3]
+                    
+                    # Apply uncertainty effect with smooth transition
+                    gray_level = 0.8
+                    uncertainty_effect = u**1.5
+                    
+                    # Additional value suppression - compress the value range as uncertainty increases
+                    if uncertainty_effect > 0.5:
+                        # Calculate how much to move toward the mean value (0.5)
+                        value_suppression = (uncertainty_effect - 0.5) * 2  # 0-1 range
+                        v_compressed = v * (1 - value_suppression) + 0.5 * value_suppression
+                        base_color = value_cmap(v_compressed)[:3]
+                    
+                    # Mix with gray
+                    adjusted_color = (1 - uncertainty_effect) * np.array(base_color) + \
+                                    uncertainty_effect * np.array([gray_level, gray_level, gray_level])
+                    
+                    grid[i, j] = adjusted_color
+            
+        return grid
     
     @staticmethod
     def precompute_bivariate_interpolated_surface(
-        grid_coords, grid_predictions, grid_uncertainties, additional_coords=None, additional_predictions=None, additional_uncertainties=None, resolution=400, method="cubic"
+        grid_coords, grid_predictions, grid_uncertainties, 
+        additional_coords=None, additional_predictions=None, additional_uncertainties=None, 
+        resolution=400, method="cubic", mask_radius=None
     ):
         """
-        Creates a bivariate interpolated surface combining prediction and uncertainty.
-
-        Parameters:
-        -----------
-        grid_coords : list of [x,y] coordinates for the grid points
-        grid_preds : list of prediction values at the grid points
-        grid_uncertainties : list of uncertainty values at the grid points
-        additional_coords : list of [x,y] coordinates for off-grid points (optional)
-        additional_preds : list of prediction values at the off-grid points (optional)
-        additional_uncertainties : list of uncertainty values at the off-grid points (optional)
-        resolution : output image resolution
-        method : interpolation method ('cubic', 'linear', 'nearest')
-
-        Returns:
-        --------
-        Dictionary with image as base64 string and metadata
+        Creates a bivariate interpolated surface combining prediction and uncertainty,
+        prioritizing original data over grid data.
         """
-        # Combine all data points (grid and additional)
-        coords = np.array(grid_coords)
-        preds = np.array(grid_predictions)
-        uncertainties = np.array(grid_uncertainties)
-
+        # Convert to numpy arrays
+        grid_coords = np.array(grid_coords)
+        grid_predictions = np.array(grid_predictions)
+        grid_uncertainties = np.array(grid_uncertainties)
+        
+        # If we have original data points
         if additional_coords is not None and additional_predictions is not None and additional_uncertainties is not None:
             additional_coords = np.array(additional_coords)
-            additional_preds = np.array(additional_predictions)
+            additional_predictions = np.array(additional_predictions)
             additional_uncertainties = np.array(additional_uncertainties)
+            
+            # Calculate optimal mask_radius if not provided
+            if mask_radius is None:
+                # Compute average distance between neighboring grid points
+                from scipy.spatial import KDTree
+                tree = KDTree(grid_coords)
+                distances, _ = tree.query(grid_coords, k=5)  # query k=5 nearest neighbors
+                avg_dist = np.mean(distances[:, 1:])  # exclude self-distance
+                mask_radius = avg_dist * 0.75  # 75% of average distance is a good default
+            
+            # Create a mask for grid points that should be excluded
+            grid_mask = np.ones(len(grid_coords), dtype=bool)
+            
+            # For each original point, mask nearby grid points
+            for orig_coord in additional_coords:
+                distances = np.sqrt(np.sum((grid_coords - orig_coord)**2, axis=1))
+                grid_mask = grid_mask & (distances >= mask_radius)
+            
+            # Apply the mask to keep only grid points that are far from original points
+            masked_grid_coords = grid_coords[grid_mask]
+            masked_grid_predictions = grid_predictions[grid_mask]
+            masked_grid_uncertainties = grid_uncertainties[grid_mask]
+            
+            # Combine masked grid points with original points
+            coords = np.vstack((masked_grid_coords, additional_coords))
+            preds = np.append(masked_grid_predictions, additional_predictions)
+            uncertainties = np.append(masked_grid_uncertainties, additional_uncertainties)
+        else:
+            # If no original points, use all grid points
+            coords = grid_coords
+            preds = grid_predictions
+            uncertainties = grid_uncertainties
 
-            # Combine the data
-            coords = np.vstack((coords, additional_coords))
-            preds = np.append(preds, additional_preds)
-            uncertainties = np.append(uncertainties, additional_uncertainties)
-
-        # Create a regular grid for interpolation output
+        # Rest of function remains largely the same...
         x_min, x_max = min(coords[:, 0]), max(coords[:, 0])
         y_min, y_max = min(coords[:, 1]), max(coords[:, 1])
 
-        # Add a small buffer to avoid edge effects
-        x_buffer = 0 #(x_max - x_min) * 0.05
-        y_buffer = 0 #(y_max - y_min) * 0.05
+        x_buffer = 0
+        y_buffer = 0
 
         xi = np.linspace(x_min - x_buffer, x_max + x_buffer, resolution)
         yi = np.linspace(y_min - y_buffer, y_max + y_buffer, resolution)
@@ -528,10 +646,11 @@ class InverseProjectionHandler:
         zi_pred = griddata(coords, preds, (xi_grid, yi_grid), method=method)
         zi_uncertainty = griddata(coords, uncertainties, (xi_grid, yi_grid), method=method)
 
-        # Fill NaN values that might occur at the edges
+        # Fill NaN values
         if np.any(np.isnan(zi_pred)):
             zi_pred_nearest = griddata(coords, preds, (xi_grid, yi_grid), method="nearest")
             zi_pred = np.where(np.isnan(zi_pred), zi_pred_nearest, zi_pred)
+            
         if np.any(np.isnan(zi_uncertainty)):
             zi_uncertainty_nearest = griddata(coords, uncertainties, (xi_grid, yi_grid), method="nearest")
             zi_uncertainty = np.where(np.isnan(zi_uncertainty), zi_uncertainty_nearest, zi_uncertainty)
@@ -546,36 +665,43 @@ class InverseProjectionHandler:
         zi_pred_norm = norm_pred(zi_pred)
         zi_uncertainty_norm = norm_uncertainty(zi_uncertainty)
 
-        # Load inline bivariate colormap (resolution = 256)
-        bimap = InverseProjectionHandler.generate_bivariate_colormap(resolution=resolution)
+        # Apply bivariate colormap
+        bimap = InverseProjectionHandler.generate_vsup_colormap(resolution=resolution)
         idx_x = (zi_pred_norm * (resolution - 1)).astype(int).clip(0, resolution - 1)
         idx_y = (zi_uncertainty_norm * (resolution - 1)).astype(int).clip(0, resolution - 1)
         rgb = bimap[idx_y, idx_x]
 
         ax.imshow(rgb, origin="lower", extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer])
-
-        # Optionally, mark the data points on the surface
-        # ax.scatter(coords[:,0], coords[:,1], s=10, c='white', alpha=0.5)
-
-        # Add contour lines for better readability
-        # contour = ax.contour(xi_grid, yi_grid, zi_pred, 10, colors='white', alpha=0.3, linewidths=0.5)
+        
+        # Optionally mark original data points
+        if additional_coords is not None:
+            pass
+            #ax.scatter(additional_coords[:, 0], additional_coords[:, 1], s=5, c='white', alpha=0.5, marker='o')
 
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_xlim(x_min - x_buffer, x_max + x_buffer)
         ax.set_ylim(y_min - y_buffer, y_max + y_buffer)
-        #ax.set_aspect("equal")
         plt.tight_layout()
         plt.axis("off")
-        # Save to a base64-encoded PNG
 
+        # Save to base64-encoded PNG
         buf = BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
         buf.seek(0)
+
+        # run a smoothness filter on the image
+        from PIL import Image, ImageFilter
+        img = Image.open(buf)
+        img = img.filter(ImageFilter.SMOOTH)
+        buf = BytesIO()
+        img.save(buf, format="png")
+        buf.seek(0)
+
         img_str = base64.b64encode(buf.read()).decode("utf-8")
         plt.close()
 
-        # Return metadata along with the image
+        # Return metadata with additional information
         return {
             "image": img_str,
             "min_value": float(min(preds)),
@@ -584,9 +710,11 @@ class InverseProjectionHandler:
             "y_range": [float(y_min) - y_buffer, float(y_max) + y_buffer],
             "point_count": len(coords),
             "interpolation_method": method,
+            "mask_radius": float(mask_radius) if mask_radius is not None else None,
+            "original_points_count": len(additional_coords) if additional_coords is not None else 0,
+            "grid_points_used": len(masked_grid_coords) if additional_coords is not None else len(grid_coords),
         }
-    
-    
+
 # Example usage
 if __name__ == "__main__":
     # Create synthetic data
