@@ -144,7 +144,7 @@ class VAEInverseModel(nn.Module):
         return self.decode(x)
 
 
-def get_inverse_model(data_shape, model_type="auto"):
+def get_inverse_model(data_shape, model_type="auto", hidden_dims=[64,128, 192]):
     """
     Factory function to create the appropriate inverse model based on the data shape.
 
@@ -161,7 +161,7 @@ def get_inverse_model(data_shape, model_type="auto"):
         elif model_type == "vae":
             # Flatten the dimensions for the VAE
             output_dim = np.prod(data_shape[1:])
-            model = VAEInverseModel(output_dim)
+            model = VAEInverseModel(output_dim, hidden_dims=hidden_dims)
             # Add method to reshape the output back to the original image shape
             original_forward = model.forward
 

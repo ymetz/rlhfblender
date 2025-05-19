@@ -17,7 +17,7 @@ gen_data = {
     "ALE_Breakout-v5": False,
     "BabyAI-MiniBossLevel-v0": False,
     "roundabout-v0": False,
-    "Ant-v4": True,
+    "Ant-v4": False,
 }
 
 if __name__ == "__main__":

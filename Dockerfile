@@ -23,7 +23,9 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender/ ${CODE_DIR}/rlhfblender/rlhf
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./multi-type-feedback/ ${CODE_DIR}/rlhfblender/multi-type-feedback/
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./configs/ ${CODE_DIR}/rlhfblender/configs/
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender_model/ ${CODE_DIR}/rlhfblender/rlhfblender_model/
+# Just for the study deployment, copy local data and database, so that we not need to re-generate them on the slow server
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./remote_data/ ${CODE_DIR}/rlhfblender/data/
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./remote_data/rlhfblender.db ${CODE_DIR}/rlhfblender/rlhfblender.db
 
 RUN cd ${CODE_DIR}/rlhfblender && \
     pip install -e .[tests,docs] && \

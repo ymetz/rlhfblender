@@ -1,5 +1,4 @@
 import base64
-import json
 import os
 from io import BytesIO
 
@@ -10,6 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from matplotlib.colors import Normalize
 from scipy.interpolate import Rbf, griddata
+from scipy.ndimage import gaussian_filter
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
@@ -352,7 +352,7 @@ class InverseProjectionHandler:
     @staticmethod
     def precompute_interpolated_surface(
         grid_coords, grid_values, additional_coords=None, additional_values=None, 
-        resolution=400, method="cubic", mask_radius=None
+        resolution=400, method="linear", mask_radius=None
     ):
         """
         Creates an interpolated surface prioritizing original data over grid data.
@@ -418,6 +418,10 @@ class InverseProjectionHandler:
             if np.any(np.isnan(zi_grid)):
                 zi_grid_nearest = griddata(points, values, (xi_grid, yi_grid), method="nearest")
                 zi_grid = np.where(np.isnan(zi_grid), zi_grid_nearest, zi_grid)
+        
+
+        zi_grid = griddata(points, values, (xi_grid, yi_grid), method="linear")
+        zi_grid = gaussian_filter(zi_grid, sigma=1.5)
 
         # Create visualization
         fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution / 8)
@@ -582,7 +586,7 @@ class InverseProjectionHandler:
     def precompute_bivariate_interpolated_surface(
         grid_coords, grid_predictions, grid_uncertainties, 
         additional_coords=None, additional_predictions=None, additional_uncertainties=None, 
-        resolution=400, method="cubic", mask_radius=None
+        resolution=400, method="linear", mask_radius=None
     ):
         """
         Creates a bivariate interpolated surface combining prediction and uncertainty,
@@ -631,6 +635,22 @@ class InverseProjectionHandler:
             preds = grid_predictions
             uncertainties = grid_uncertainties
 
+        # plot all values for debugging (as matplotlib scatter plot)
+        plt.scatter(coords[:, 0], coords[:, 1], c=preds, s=15, cmap="viridis")
+        plt.colorbar(label="Predictions")
+        plt.title("Grid Points with Predictions")
+        plt.xlabel("X-axis")
+        plt.ylabel("Y-axis")
+        plt.show()
+
+        # plot all values for debugging (as matplotlib scatter plot)
+        plt.scatter(coords[:, 0], coords[:, 1], c=uncertainties, s=15, cmap="viridis")
+        plt.colorbar(label="Uncertainties")
+        plt.title("Grid Points with Uncertainties")
+        plt.xlabel("X-axis")
+        plt.ylabel("Y-axis")
+        plt.show()
+
         # Rest of function remains largely the same...
         x_min, x_max = min(coords[:, 0]), max(coords[:, 0])
         y_min, y_max = min(coords[:, 1]), max(coords[:, 1])
@@ -645,6 +665,9 @@ class InverseProjectionHandler:
         # Perform the interpolation
         zi_pred = griddata(coords, preds, (xi_grid, yi_grid), method=method)
         zi_uncertainty = griddata(coords, uncertainties, (xi_grid, yi_grid), method=method)
+
+        zi_pred  = gaussian_filter(zi_pred,  sigma=1.5)
+        zi_uncertainty = gaussian_filter(zi_uncertainty, sigma=1.5)
 
         # Fill NaN values
         if np.any(np.isnan(zi_pred)):
@@ -667,11 +690,18 @@ class InverseProjectionHandler:
 
         # Apply bivariate colormap
         bimap = InverseProjectionHandler.generate_vsup_colormap(resolution=resolution)
-        idx_x = (zi_pred_norm * (resolution - 1)).astype(int).clip(0, resolution - 1)
-        idx_y = (zi_uncertainty_norm * (resolution - 1)).astype(int).clip(0, resolution - 1)
+        zi_pred_norm        = norm_pred(zi_pred)
+        zi_uncertainty_norm = norm_uncertainty(zi_uncertainty)
+
+        zi_pred_norm        = np.clip(zi_pred_norm,        0, 1)
+        zi_uncertainty_norm = np.clip(zi_uncertainty_norm, 0, 1)
+
+        idx_x = (zi_pred_norm        * (resolution-1)).astype(int)
+        idx_y = (zi_uncertainty_norm * (resolution-1)).astype(int)
         rgb = bimap[idx_y, idx_x]
 
-        ax.imshow(rgb, origin="lower", extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer])
+        ax.imshow(rgb, origin="lower", extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer], interpolation="bilinear")
+
         
         # Optionally mark original data points
         if additional_coords is not None:
@@ -688,14 +718,6 @@ class InverseProjectionHandler:
         # Save to base64-encoded PNG
         buf = BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
-        buf.seek(0)
-
-        # run a smoothness filter on the image
-        from PIL import Image, ImageFilter
-        img = Image.open(buf)
-        img = img.filter(ImageFilter.SMOOTH)
-        buf = BytesIO()
-        img.save(buf, format="png")
         buf.seek(0)
 
         img_str = base64.b64encode(buf.read()).decode("utf-8")
