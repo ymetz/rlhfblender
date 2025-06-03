@@ -516,10 +516,6 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
     if not experiment_id:
         return JSONResponse(status_code=400, content={"status": "error", "message": "Missing experiment_id parameter"})
 
-    # Get experiment from database
-    db_handler = request.app.state.db_handler
-    database = request.app.state.database
-
     exp = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
     if exp is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "No experiment found"})
@@ -529,6 +525,17 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
 
     # Load feedback from the translator's logger
     in_feedback = translator.logger.read()
+
+    # skip for now, just return
+    return JSONResponse(
+        content={
+            "phaseStatus": "success",
+            "message": "Feedback received",
+            "phaseTrainingStep": 10,
+            "phaseUncertainty": 0.0,
+            "phaseReward": 0.0,
+        }
+    )
 
     handler = RewardModelHandler(exp, session_id)
 

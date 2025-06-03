@@ -10,7 +10,7 @@ from pydantic import BaseModel
     Commonly used from Trainer & DataHandler/Server instances to make sure schemas are in sync
 """
 
-T = TypeVar("T", BaseModel, str)
+T = TypeVar('T', bound=BaseModel)
 
 
 def dict_factory(crs, row) -> dict:
@@ -20,7 +20,7 @@ def dict_factory(crs, row) -> dict:
     return d
 
 
-async def create_table_from_model(cursor: Database, model: type[BaseModel], table_name: str | None = None) -> None:
+async def create_table_from_model(cursor: Database, model: type[T], table_name: str | None = None) -> None:
     """
     Creates a new project table in the database dynamically based on the Project DataModel
     :param cursor: sqlite3.Cursor
@@ -43,7 +43,7 @@ async def create_table_from_model(cursor: Database, model: type[BaseModel], tabl
     return await cursor.execute(query)
 
 
-async def get_columns_names(cursor: Database, model: type[BaseModel], table_name: str | None = None) -> list[str]:
+async def get_columns_names(cursor: Database, model: type[T], table_name: str | None = None) -> list[str]:
     """
     Returns all column nmaes from a table with a given model
     :param cursor: sqlite3.Cursor
@@ -72,7 +72,7 @@ async def get_all(cursor: Database, model: type[T], table_name: str | None = Non
 
 
 async def get_single_entry(
-    cursor: Database, model: type[T], key: int, key_column: str | None = "id", table_name: str | None = None
+    cursor: Database, model: type[T], key: int | str, key_column: str | None = "id", table_name: str | None = None
 ) -> T:
     """
     Returns a single entry from a table with a given model
@@ -91,7 +91,7 @@ async def get_single_entry(
 
 
 async def check_if_exists(
-    cursor: Database, model: type[T], key: any, key_column: str | None = "id", table_name: str | None = None
+    cursor: Database, model: type[T], key: int | str, key_column: str | None = "id", table_name: str | None = None
 ) -> bool:
     """
     Checks if an entry exists in a table with a given model. If no key_column is specified, the id is used, otherwise
@@ -112,7 +112,7 @@ async def check_if_exists(
 
 async def add_entry(
     cursor: Database,
-    model: type[BaseModel],
+    model: type[T],
     data: dict,
     table_name: str | None = None,
 ) -> None:
@@ -153,9 +153,9 @@ async def add_entry(
 
 async def update_entry(
     cursor: Database,
-    model: type[BaseModel],
+    model: type[T],
     key: int,
-    key_column: str | None = "id",
+    key_column: str = "id",
     data: dict | None = None,
     table_name: str | None = None,
 ) -> None:
@@ -192,9 +192,9 @@ async def update_entry(
 
 async def delete_entry(
     cursor: Database,
-    model: type[BaseModel],
+    model: type[T],
     key: int,
-    key_column: str | None = "id",
+    key_column: str = "id",
     table_name: str | None = None,
 ) -> None:
     """

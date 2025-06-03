@@ -179,6 +179,8 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
         existing_checkpoints = exp.checkpoint_list if exp.checkpoint_list else []
         if benchmark_run["checkpoint_step"] not in existing_checkpoints:
             existing_checkpoints.append(benchmark_run["checkpoint_step"])
+            # sort the checkpoints
+            existing_checkpoints.sort(key=lambda x: int(x))
             exp.checkpoint_list = existing_checkpoints
             await db_handler.update_entry(
                 database,

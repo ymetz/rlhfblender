@@ -60,7 +60,7 @@ class InverseProjectionOptions(BaseModel):
     """
 
     model_type: str = "auto"  # Options: "auto", "mlp", "cnn", "vae"
-    num_epochs: int = 50
+    num_epochs: int = 30
     learning_rate: float = 0.001
     batch_size: int = 64
     validation_split: float = 0.1
@@ -881,7 +881,7 @@ async def generate_projections(
         Projection results and optionally inverse projection results
     """
 
-    db_experiment = await get_single_entry(
+    db_experiment: Experiment = await get_single_entry(
         database,
         Experiment,
         experiment_id,
@@ -994,7 +994,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--inverse-model-type", type=str, default="auto", help="Inverse model type ('auto', 'mlp', 'cnn', 'vae')"
     )
-    parser.add_argument("--inverse-epochs", type=int, default=50, help="Number of epochs for inverse model training")
+    parser.add_argument("--inverse-epochs", type=int, default=30, help="Number of epochs for inverse model training")
     parser.add_argument("--inverse-lr", type=float, default=0.001, help="Learning rate for inverse model")
     parser.add_argument("--inverse-batch-size", type=int, default=64, help="Batch size for inverse model training")
     parser.add_argument("--grid-resolution", type=int, default=20, help="Resolution of the grid for inverse projection")

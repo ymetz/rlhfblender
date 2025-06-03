@@ -10,6 +10,7 @@ To achieve this:
 
 import argparse
 import json
+import asyncio
 import os
 import time as import_time
 from pathlib import Path
@@ -20,10 +21,15 @@ import torch
 
 # For loading reward models
 from multi_type_feedback.networks import SingleCnnNetwork, SingleNetwork
+from rlhfblender.data_handling.database_handler import get_single_entry
+from rlhfblender.data_models.global_models import Experiment
 from train_baselines.utils import ALGOS
+from databases import Database
 
 # For loading policies/agents
 from rlhfblender.data_models.agent import BaseAgent
+
+database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
 class RewardUncertaintyPredictor:
@@ -330,8 +336,6 @@ class RewardUncertaintyPredictor:
         results["source_file"] = os.path.basename(inverse_projection_file)
         results["prediction_timestamp"] = import_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        print("RESULTS", results.keys(), results["original_coordinates"])
-
         return results
 
     def save_predictions(
@@ -460,6 +464,8 @@ def load_episodes(episode_path: str) -> Dict[str, np.ndarray]:
         episode_data = {}
         for key in data.files:
             episode_data[key] = data[key]
+    else:
+        raise ValueError(f"Invalid episode path: {episode_path}. Must be a file or directory.")
 
     return episode_data
 
@@ -469,7 +475,7 @@ def process_env_name(env_name: str) -> str:
     return env_name.replace("/", "_").replace(":", "_")
 
 
-def get_episode_file_path(env_name: str, benchmark_id: int, checkpoint_step: int, episode_num: int) -> str:
+def get_episode_file_path(env_name: str, benchmark_id: int, checkpoint_step: int) -> str:
     """
     Generate file path for a specific episode
 
@@ -477,21 +483,29 @@ def get_episode_file_path(env_name: str, benchmark_id: int, checkpoint_step: int
         env_name: Environment name
         benchmark_id: Benchmark ID
         checkpoint_step: Checkpoint step
-        episode_num: Episode number
 
     Returns:
         Path to the episode file
     """
-    base_dir = os.path.join(
+    return os.path.join(
         "data", "episodes", process_env_name(env_name), f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}"
     )
-
-    return os.path.join(base_dir, f"benchmark_{episode_num}.npz")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Predict rewards and uncertainty for states")
 
+    # Episode identification (required if --env-name is used)
+    parser.add_argument("--experiment-name", type=str, required=True, help="Benchmark/Experiment ID")
+    parser.add_argument("--checkpoint", type=int, help="Checkpoint step")
+    parser.add_argument("--episode-num", type=int, help="Episode number")
+    parser.add_argument(
+        "--projection-method",
+        type=str,
+        default="PCA",
+        help="Projection method used for inverse projection",
+    )
+    
     # Required arguments
     parser.add_argument("--reward-model", type=str, required=True, help="Path to reward model checkpoint")
     parser.add_argument("--output-dir", type=str, required=True, help="Directory to save predictions")
@@ -508,12 +522,6 @@ def main():
     parser.add_argument("--episode-path", type=str, help="Path to episode NPZ file")
     parser.add_argument("--projection-data", type=str, help="Path to projection (+inverse projection) JSON file")
 
-    # Episode identification (required if --env-name is used)
-    parser.add_argument("--env-name", type=str, help="Environment name")
-    parser.add_argument("--benchmark-id", type=int, help="Benchmark ID")
-    parser.add_argument("--checkpoint", type=int, help="Checkpoint step")
-    parser.add_argument("--episode-num", type=int, help="Episode number")
-
     args = parser.parse_args()
 
     # Create predictor
@@ -524,103 +532,58 @@ def main():
         device=args.device,
     )
 
-    # Check if we need to process both inverse projection and episode data
-    if args.projection_data and (
-        args.episode_path or (args.env_name and args.benchmark_id and args.checkpoint and args.episode_num)
-    ):
-
-        if args.episode_path:
-            episode_data = load_episodes(args.episode_path)
-        else:
-            # Generate episode path from env parameters
-            episode_path = get_episode_file_path(
-                env_name=args.env_name,
-                benchmark_id=args.benchmark_id,
-                checkpoint_step=args.checkpoint,
-                episode_num=args.episode_num,
-            )
-            episode_data = load_episodes(episode_path)
-
-        print(episode_data)
-        original_obs = episode_data["obs"]
-        original_actions = episode_data["actions"]
-
-        # First, get predictions from inverse projection
-        grid_predictions = predictor.predict_for_inverse_projections(
-            inverse_projection_file=args.projection_data,
-            original_obs=original_obs,
-            original_actions=original_actions,
-            action_space_size=args.action_space_size,
+    loop = asyncio.get_event_loop()
+    db_experiment: Experiment = loop.run_until_complete(
+        get_single_entry(
+            database,
+            Experiment,
+            args.experiment_name,
+            key_column="exp_name",
         )
+    )
+    env_name = process_env_name(db_experiment.env_id)
 
-        # Save combined predictions
-        predictor.save_predictions(
-            predictions=grid_predictions,
-            output_dir=args.output_dir,
-            filename_prefix="combined_predictions",
-            source_file=args.projection_data,
-        )
 
+
+    if args.episode_path:
+        episode_data = load_episodes(args.episode_path)
     else:
-        # Process each source individually (original behavior)
-        if args.projection_data:
-            # Predict for inverse projections
-            predictions = predictor.predict_for_inverse_projections(
-                inverse_projection_file=args.projection_data, action_space_size=args.action_space_size
-            )
+        # Generate episode path from env parameters
+        episode_path = get_episode_file_path(
+            env_name=env_name,
+            benchmark_id=db_experiment.id,
+            checkpoint_step=args.checkpoint,
+        )
+        episode_data = load_episodes(episode_path)
 
-            # Save predictions, using the original filename pattern
-            predictor.save_predictions(
-                predictions=predictions,
-                output_dir=args.output_dir,
-                filename_prefix="inverse_projection_predictions",
-                source_file=args.projection_data,
-            )
+    if args.projection_data:
+        projection_data_path = args.projection_data
+    else:
+        projection_data_path = os.path.join(
+            "data",
+            "saved_projections",
+            f"{env_name}_{db_experiment.id}_{args.checkpoint}_{args.projection_method}.json"
+        )
 
-        if args.episode_path:
-            # Load episode data
-            episode_data = load_episodes(args.episode_path)
+    original_obs = episode_data["obs"]
+    original_actions = episode_data["actions"]
 
-            # Predict for observations in the episode
-            predictions = predictor.predict_for_states(
-                observations=episode_data["obs"],
-                actions=episode_data["actions"] if "actions" in episode_data else None,
-                action_space_size=args.action_space_size,
-            )
+    # First, get predictions from inverse projection
+    grid_predictions = predictor.predict_for_inverse_projections(
+        inverse_projection_file=projection_data_path,
+        original_obs=original_obs,
+        original_actions=original_actions,
+        action_space_size=args.action_space_size,
+    )
 
-            # Save predictions
-            predictor.save_predictions(
-                predictions=predictions, output_dir=args.output_dir, filename_prefix="episode_predictions"
-            )
+    # Save combined predictions
+    predictor.save_predictions(
+        predictions=grid_predictions,
+        output_dir=args.output_dir,
+        filename_prefix="combined_predictions",
+        source_file=projection_data_path,
+    )
 
-        elif (
-            args.env_name
-            and args.benchmark_id is not None
-            and args.checkpoint is not None
-            and args.episode_num is not None
-        ):
-            # Generate episode path
-            episode_path = get_episode_file_path(
-                env_name=args.env_name,
-                benchmark_id=args.benchmark_id,
-                checkpoint_step=args.checkpoint,
-                episode_num=args.episode_num,
-            )
-
-            # Load episode data
-            episode_data = load_episodes(episode_path)
-
-            # Predict for observations in the episode
-            predictions = predictor.predict_for_states(
-                observations=episode_data["obs"],
-                actions=episode_data["actions"] if "actions" in episode_data else None,
-                action_space_size=args.action_space_size,
-            )
-
-            # Save predictions
-            predictor.save_predictions(
-                predictions=predictions, output_dir=args.output_dir, filename_prefix=f"episode_{args.episode_num}_predictions"
-            )
 
     print("Predictions completed successfully!")
 

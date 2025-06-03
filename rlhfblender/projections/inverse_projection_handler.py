@@ -635,22 +635,6 @@ class InverseProjectionHandler:
             preds = grid_predictions
             uncertainties = grid_uncertainties
 
-        # plot all values for debugging (as matplotlib scatter plot)
-        plt.scatter(coords[:, 0], coords[:, 1], c=preds, s=15, cmap="viridis")
-        plt.colorbar(label="Predictions")
-        plt.title("Grid Points with Predictions")
-        plt.xlabel("X-axis")
-        plt.ylabel("Y-axis")
-        plt.show()
-
-        # plot all values for debugging (as matplotlib scatter plot)
-        plt.scatter(coords[:, 0], coords[:, 1], c=uncertainties, s=15, cmap="viridis")
-        plt.colorbar(label="Uncertainties")
-        plt.title("Grid Points with Uncertainties")
-        plt.xlabel("X-axis")
-        plt.ylabel("Y-axis")
-        plt.show()
-
         # Rest of function remains largely the same...
         x_min, x_max = min(coords[:, 0]), max(coords[:, 0])
         y_min, y_max = min(coords[:, 1]), max(coords[:, 1])

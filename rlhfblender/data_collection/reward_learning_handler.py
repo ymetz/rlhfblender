@@ -151,8 +151,6 @@ class RewardModelHandler:
 
         # Create a script to run the training process
         script_file = self.session_dir / "training_script.py"
-        with open(script_file, "w") as f:
-            f.write(self._generate_training_script())
 
         # Create command to run the script
         cmd = [
