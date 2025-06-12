@@ -3,6 +3,7 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+
 try:
     from imitation.rewards.reward_nets import RewardNet
 except ImportError:

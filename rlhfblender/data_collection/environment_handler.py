@@ -168,6 +168,7 @@ def get_environment(
 
     if "metaworld" in env_name.lower():
         from train_baselines.utils import make_vec_metaworld_env
+
         environment_name = env_name.replace("metaworld-", "")
         env = make_vec_metaworld_env(
             env_id=environment_name,
@@ -271,7 +272,10 @@ def initial_registration(
 
     # Check if this is a MetaWorld environment
     environment_id = env_id.replace("metaworld-", "")
-    is_metaworld = any(name in environment_id.lower() for name in ["pick-place-v2", "button-press-v2", "door-open-v2", "drawer-close-v2", "sweep","sweep-into-v2"])
+    is_metaworld = any(
+        name in environment_id.lower()
+        for name in ["pick-place-v2", "button-press-v2", "door-open-v2", "drawer-close-v2", "sweep", "sweep-into-v2"]
+    )
 
     if is_metaworld:
         env = get_metaworld_env(environment_id).envs[0]

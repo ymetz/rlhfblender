@@ -350,9 +350,7 @@ class InverseProjectionHandler:
         return reconstructions
 
     @staticmethod
-    def precompute_bivariate_surface(
-        grid_coords, pred_values, unc_values, resolution=400, method="cubic"
-    ):
+    def precompute_bivariate_surface(grid_coords, pred_values, unc_values, resolution=400, method="cubic"):
         """
         Creates a bivariate interpolated surface combining prediction and uncertainty.
 
@@ -368,12 +366,13 @@ class InverseProjectionHandler:
         --------
         Dictionary with image as base64 string and metadata
         """
+        import base64
+        from io import BytesIO
+
         import matplotlib.pyplot as plt
+        import numpy as np
         from matplotlib.colors import Normalize
         from scipy.interpolate import griddata
-        import numpy as np
-        from io import BytesIO
-        import base64
 
         coords = np.array(grid_coords)
         pred = np.array(pred_values)
@@ -408,10 +407,9 @@ class InverseProjectionHandler:
         idx_y = (zi_unc_norm * 255).astype(int).clip(0, 255)
         rgb = bimap[idx_y, idx_x]
 
-
         fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution // 8)
         ax.imshow(rgb, origin="lower", extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer])
-        ax.scatter(coords[:, 0], coords[:, 1], s=8, c='white', alpha=0.6, edgecolors='black', linewidths=0.2)
+        ax.scatter(coords[:, 0], coords[:, 1], s=8, c="white", alpha=0.6, edgecolors="black", linewidths=0.2)
 
         ax.set_xticks([])
         ax.set_yticks([])
@@ -432,6 +430,8 @@ class InverseProjectionHandler:
             "y_range": [float(y_min), float(y_max)],
             "point_count": len(coords),
         }
+
+
 def generate_bivariate_colormap(resolution=256):
     """
     Generate a bivariate colormap from:
@@ -442,10 +442,10 @@ def generate_bivariate_colormap(resolution=256):
         colormap: (resolution x resolution x 3) RGB values in [0, 1]
     """
     # Define corner colors and convert to float for interpolation
-    top_left = np.array([255, 255, 169], dtype=float) / 255.0    # high certainty, low prediction
-    top_right = np.array([0, 150, 255], dtype=float) / 255.0     # high certainty, high prediction
-    bottom_left = np.array([140, 140, 140], dtype=float) / 255.0 # low certainty, low prediction
-    bottom_right = np.array([0, 0, 0], dtype=float) / 255.0      # low certainty, high prediction
+    top_left = np.array([255, 255, 169], dtype=float) / 255.0  # high certainty, low prediction
+    top_right = np.array([0, 150, 255], dtype=float) / 255.0  # high certainty, high prediction
+    bottom_left = np.array([140, 140, 140], dtype=float) / 255.0  # low certainty, low prediction
+    bottom_right = np.array([0, 0, 0], dtype=float) / 255.0  # low certainty, high prediction
 
     # Interpolate grid
     grid = np.zeros((resolution, resolution, 3))
@@ -487,7 +487,7 @@ def show_bivariate_legend(resolution=300):
             rgb[i, j] = final_color
 
     fig, ax = plt.subplots(figsize=(4, 4))
-    ax.imshow(rgb, origin='lower', extent=[0, 1, 0, 1])
+    ax.imshow(rgb, origin="lower", extent=[0, 1, 0, 1])
     ax.set_xlabel("Prediction (low → high)", fontsize=10)
     ax.set_ylabel("Certainty (low → high)", fontsize=10)
     ax.set_xticks([0, 0.5, 1])
@@ -495,7 +495,6 @@ def show_bivariate_legend(resolution=300):
     ax.set_title("Bivariate Color Legend", fontsize=11)
     plt.tight_layout()
     plt.show()
-
 
 
 # Example usage
@@ -516,7 +515,6 @@ if __name__ == "__main__":
     # Create and fit the handler
     handler = InverseProjectionHandler(model_type="mlp", num_epochs=20, batch_size=32)
 
-
     history = handler.fit(original_data, coords_2d)
 
     # Generate predictions
@@ -536,18 +534,11 @@ if __name__ == "__main__":
     recons = handler.predict(coords_2d)
     grid_coords = coords_2d
 
-
     # Simulate uncertainty as std over features (or use your real values here)
     uncertainties = np.std(recons, axis=1)
     pred_means = np.mean(recons, axis=1)
 
     result = handler.precompute_bivariate_surface(
-        grid_coords=grid_coords,
-        pred_values=pred_means,
-        unc_values=uncertainties,
-        resolution=500,
-        method="cubic"
+        grid_coords=grid_coords, pred_values=pred_means, unc_values=uncertainties, resolution=500, method="cubic"
     )
     show_bivariate_legend()
-
-

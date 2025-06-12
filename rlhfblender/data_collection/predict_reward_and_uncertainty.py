@@ -9,8 +9,8 @@ To achieve this:
 """
 
 import argparse
-import json
 import asyncio
+import json
 import os
 import time as import_time
 from pathlib import Path
@@ -18,16 +18,17 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
+from databases import Database
 
 # For loading reward models
 from multi_type_feedback.networks import SingleCnnNetwork, SingleNetwork
-from rlhfblender.data_handling.database_handler import get_single_entry
-from rlhfblender.data_models.global_models import Experiment
 from train_baselines.utils import ALGOS
-from databases import Database
+
+from rlhfblender.data_handling.database_handler import get_single_entry
 
 # For loading policies/agents
 from rlhfblender.data_models.agent import BaseAgent
+from rlhfblender.data_models.global_models import Experiment
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -505,7 +506,7 @@ def main():
         default="PCA",
         help="Projection method used for inverse projection",
     )
-    
+
     # Required arguments
     parser.add_argument("--reward-model", type=str, required=True, help="Path to reward model checkpoint")
     parser.add_argument("--output-dir", type=str, required=True, help="Directory to save predictions")
@@ -543,8 +544,6 @@ def main():
     )
     env_name = process_env_name(db_experiment.env_id)
 
-
-
     if args.episode_path:
         episode_data = load_episodes(args.episode_path)
     else:
@@ -560,9 +559,7 @@ def main():
         projection_data_path = args.projection_data
     else:
         projection_data_path = os.path.join(
-            "data",
-            "saved_projections",
-            f"{env_name}_{db_experiment.id}_{args.checkpoint}_{args.projection_method}.json"
+            "data", "saved_projections", f"{env_name}_{db_experiment.id}_{args.checkpoint}_{args.projection_method}.json"
         )
 
     original_obs = episode_data["obs"]
@@ -583,7 +580,6 @@ def main():
         filename_prefix="combined_predictions",
         source_file=projection_data_path,
     )
-
 
     print("Predictions completed successfully!")
 

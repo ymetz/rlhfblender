@@ -4,11 +4,12 @@ import os
 import pickle
 import sys
 import time
+import traceback
 from pathlib import Path
+
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-import traceback
 
 # Add your project to the path
 sys.path.append(os.getcwd())
@@ -28,8 +29,6 @@ def update_status(status_file, status, message=""):
     with open(status_file, "w") as f:
         json.dump({"status": status, "message": message, "timestamp": time.time()}, f)
     print(f"Status updated to {status}: {message}")
-
-
 
 
 def update_result(result_file, **kwargs):
@@ -63,7 +62,7 @@ def update_result(result_file, **kwargs):
 def train_single_model(reward_model, dataset, model_id, reward_models_dir, status_file, result_file):
     """
     Train a single reward model and return the path to the saved model.
-    
+
     Args:
         reward_model: The model to train
         dataset: Training dataset
@@ -71,7 +70,7 @@ def train_single_model(reward_model, dataset, model_id, reward_models_dir, statu
         reward_models_dir: Directory to save models
         status_file: Status file for updates
         result_file: Result file for updates
-        
+
     Returns:
         Path to the trained model or None if training failed
     """
@@ -101,6 +100,7 @@ def train_single_model(reward_model, dataset, model_id, reward_models_dir, statu
 
         # Create data loaders
         import math
+
         from torch.utils.data import DataLoader, random_split
 
         split_ratio = 0.8
@@ -140,7 +140,7 @@ def train_single_model(reward_model, dataset, model_id, reward_models_dir, statu
         )
 
         return checkpoint_callback.best_model_path
-        
+
     except Exception as e:
         error_msg = f"Error during training: {e!s}\n{traceback.format_exc()}"
         print(error_msg)
@@ -173,32 +173,34 @@ def main():
 
         # Load preprocessed datasets by type
         update_status(status_file, "processing_feedback", "Loading preprocessed datasets")
-        
+
         # Get feedback types from dataset files
         feedback_types = set()
         for file_path in session_dir.glob("*_dataset.pkl"):
             fb_type = file_path.stem.replace("_dataset", "")
             feedback_types.add(fb_type)
-        
+
         if not feedback_types:
-            raise FileNotFoundError(f"No preprocessed datasets found in {session_dir}. RewardModelHandler should have created these.")
-        
+            raise FileNotFoundError(
+                f"No preprocessed datasets found in {session_dir}. RewardModelHandler should have created these."
+            )
+
         print(f"Found feedback types: {feedback_types}")
         # Train individual reward models for each feedback type
         reward_models = []
         all_model_paths = []
         reward_models_dir = session_dir / "reward_models"
         reward_models_dir.mkdir(exist_ok=True)
-        
+
         for feedback_type in feedback_types:
             update_status(status_file, "training", f"Training reward model for {feedback_type} feedback")
-            
+
             # Load dataset for this feedback type
             dataset_file = session_dir / f"{feedback_type}_dataset.pkl"
             with open(dataset_file, "rb") as f:
                 dataset = pickle.load(f)
             print(f"Loaded {feedback_type} dataset from {dataset_file}")
-            
+
             # Set up reward model for this feedback type
             is_cnn_env = "procgen" in args.env or "ALE" in args.env
             model_kwargs = {
@@ -208,13 +210,12 @@ def main():
                 "layer_num": (3 if is_cnn_env else 6),
                 "output_dim": 1,
                 "loss_function": (
-                    calculate_single_reward_loss if feedback_type in ["rating", "descriptive"] 
-                    else calculate_pairwise_loss
+                    calculate_single_reward_loss if feedback_type in ["rating", "descriptive"] else calculate_pairwise_loss
                 ),
                 "learning_rate": 1e-5,
                 "ensemble_count": 4,  # Use ensemble of 4 models
             }
-            
+
             if is_cnn_env:
                 model_kwargs["cnn_channels"] = [16, 32, 32]
                 reward_model = SingleCnnNetwork(**model_kwargs)
@@ -223,12 +224,12 @@ def main():
 
             # Train the model for this feedback type
             model_id = f"{args.algorithm}_{args.env}_{args.seed}_{feedback_type}_{args.seed}"
-            
+
             # Train and save the model
             trained_model_path = train_single_model(
                 reward_model, dataset, model_id, reward_models_dir, status_file, result_file
             )
-            
+
             if trained_model_path:
                 all_model_paths.append(trained_model_path)
                 reward_models.append(reward_model)
@@ -246,7 +247,7 @@ def main():
         # Basic metrics from the training process
         uncertainty = 0.0
         avg_reward = 0.0
-        
+
         # Calculate total samples across all datasets
         total_samples = 0
         for feedback_type in feedback_types:
@@ -254,7 +255,7 @@ def main():
             if dataset_file.exists():
                 with open(dataset_file, "rb") as f:
                     dataset = pickle.load(f)
-                    if hasattr(dataset, '__len__'):
+                    if hasattr(dataset, "__len__"):
                         total_samples += len(dataset)
 
         # Read existing results to preserve training metrics
@@ -262,7 +263,7 @@ def main():
         if os.path.exists(result_file):
             with open(result_file) as f:
                 existing_result = json.load(f)
-        
+
         # Merge existing metrics with new ones
         existing_metrics = existing_result.get("metrics", {})
         new_metrics = {
@@ -273,7 +274,7 @@ def main():
             "individual_training": True,
         }
         merged_metrics = {**existing_metrics, **new_metrics}
-        
+
         # Update final results
         update_result(
             result_file,
@@ -293,6 +294,7 @@ def main():
         print(error_msg)
         update_status(status_file, "failed", error_msg)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

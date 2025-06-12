@@ -75,7 +75,7 @@ class RewardModelHandler:
         base_session_dir = Path(f"sessions/{self.session_id}")
         self.session_dir = base_session_dir / f"phase_{self.phase}"
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Also create base session directory for shared files
         self.base_session_dir = base_session_dir
         self.base_session_dir.mkdir(parents=True, exist_ok=True)
@@ -156,16 +156,16 @@ class RewardModelHandler:
     def _preprocess_feedback_datasets(self, feedback: List[Dict]) -> None:
         """
         Create preprocessed unified datasets from already processed feedback.
-        
+
         Args:
             feedback: List of processed StandardizedFeedback objects (as dicts)
         """
         try:
             self._update_status(TrainingStatus.PROCESSING_FEEDBACK, "Creating unified dataset from processed feedback")
-            
+
             # Convert dict feedback back to StandardizedFeedback objects if needed
-            from rlhfblender.data_models.feedback_models import StandardizedFeedback, SimplifiedFeedbackType
-            
+            from rlhfblender.data_models.feedback_models import SimplifiedFeedbackType, StandardizedFeedback
+
             standardized_feedbacks = []
             for fb_dict in feedback:
                 try:
@@ -175,20 +175,20 @@ class RewardModelHandler:
                     else:
                         # If it's a dict, try to convert it
                         feedback_obj = StandardizedFeedback(**fb_dict)
-                    
+
                     # Filter out meta feedback - it's only for logging, not training
                     if feedback_obj.feedback_type != SimplifiedFeedbackType.meta:
                         standardized_feedbacks.append(feedback_obj)
                     else:
                         self.logger.info(f"Skipping meta feedback for training: {feedback_obj.content}")
-                        
+
                 except Exception as e:
                     self.logger.warning(f"Failed to parse feedback item: {e}")
                     continue
-            
+
             # Get environment name from experiment
-            env_name = self.exp.env_id if self.exp and hasattr(self.exp, 'env_id') else ""
-            
+            env_name = self.exp.env_id if self.exp and hasattr(self.exp, "env_id") else ""
+
             # Organize feedback by type for individual model training
             feedbacks_by_type = {}
             for fb in standardized_feedbacks:
@@ -196,29 +196,29 @@ class RewardModelHandler:
                 if fb_type not in feedbacks_by_type:
                     feedbacks_by_type[fb_type] = []
                 feedbacks_by_type[fb_type].append(fb)
-            
+
             # Save one dataset per feedback type for individual training
             for fb_type, type_feedbacks in feedbacks_by_type.items():
                 # Create dataset for this specific feedback type
                 type_dataset = FeedbackTranslator.create_unified_dataset_from_processed(
-                    processed_feedback=type_feedbacks,
-                    n_feedback=-1,
-                    env_name=env_name
+                    processed_feedback=type_feedbacks, n_feedback=-1, env_name=env_name
                 )
-                
+
                 # Save preprocessed dataset for this type
                 type_file = self.session_dir / f"{fb_type}_dataset.pkl"
                 with open(type_file, "wb") as f:
                     pickle.dump(type_dataset, f)
-                
+
                 self.logger.info(f"Saved {len(type_feedbacks)} {fb_type} feedback items as dataset to {type_file}")
-                
-            self.logger.info(f"Preprocessed {len(standardized_feedbacks)} feedback items into {len(feedbacks_by_type)} type-specific datasets")
+
+            self.logger.info(
+                f"Preprocessed {len(standardized_feedbacks)} feedback items into {len(feedbacks_by_type)} type-specific datasets"
+            )
             self.logger.info(f"Feedback types found: {list(feedbacks_by_type.keys())}")
-            
+
             if len(standardized_feedbacks) == 0:
                 self.logger.warning("No non-meta feedback available for training!")
-            
+
         except Exception as e:
             self.logger.error(f"Error preprocessing feedback datasets: {str(e)}", exc_info=True)
             raise
@@ -234,10 +234,10 @@ class RewardModelHandler:
 
         # Use the existing training script in the project
         script_file = Path(__file__).parent / "training_script.py"
-        
+
         if not script_file.exists():
             raise FileNotFoundError(f"Training script not found at {script_file}")
-        
+
         # Create command to run the script
         cmd = [
             "python",

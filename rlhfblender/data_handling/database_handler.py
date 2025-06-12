@@ -10,7 +10,7 @@ from pydantic import BaseModel
     Commonly used from Trainer & DataHandler/Server instances to make sure schemas are in sync
 """
 
-T = TypeVar('T', bound=BaseModel)
+T = TypeVar("T", bound=BaseModel)
 
 
 def dict_factory(crs, row) -> dict:

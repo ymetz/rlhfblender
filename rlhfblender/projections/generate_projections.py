@@ -408,9 +408,7 @@ def compute_projections_and_clusters(
     if joint_projection_path:
         print(f"Using joint projection from: {joint_projection_path}")
         handler = ProjectionHandler(
-            projection_method=projection_method, 
-            projection_props=projection_props,
-            joint_projection_path=joint_projection_path
+            projection_method=projection_method, projection_props=projection_props, joint_projection_path=joint_projection_path
         )
     else:
         handler = ProjectionHandler(projection_method=projection_method, projection_props=projection_props)
@@ -834,7 +832,7 @@ def compute_inverse_projection(
         # Results are also available in the main projection results, just use this
         results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": str(model_file)}
 
-        #with open(cache_file, "w") as f:
+        # with open(cache_file, "w") as f:
         #    json.dump(results, f)
 
         # Save model with the cache key as filename
@@ -1006,9 +1004,12 @@ if __name__ == "__main__":
     parser.add_argument("--no-feature", action="store_true", help="Skip feature embedding computation")
 
     # Joint projection parameter
-    parser.add_argument("--joint-projection-path", type=str, default=None, 
-                       help="Path to joint projection metadata file (.json) or handler file (.pkl)")
-
+    parser.add_argument(
+        "--joint-projection-path",
+        type=str,
+        default=None,
+        help="Path to joint projection metadata file (.json) or handler file (.pkl)",
+    )
 
     # Inverse projection parameters
     parser.add_argument("--compute-inverse", action="store_true", help="Compute inverse projection")
@@ -1091,7 +1092,9 @@ if __name__ == "__main__":
                 joint_projection_path=args.joint_projection_path,
             )
         )
-        save_path = projection_results.get("projection_hash", f"{args.experiment_name}_{args.checkpoint}_{args.projection_method}")
+        save_path = projection_results.get(
+            "projection_hash", f"{args.experiment_name}_{args.checkpoint}_{args.projection_method}"
+        )
 
         # Check if we got valid results
         if projection_results["projection"] and len(projection_results["projection"]) > 0:

@@ -144,7 +144,7 @@ class VAEInverseModel(nn.Module):
         return self.decode(x)
 
 
-def get_inverse_model(data_shape, model_type="auto", hidden_dims=[64,128, 192]):
+def get_inverse_model(data_shape, model_type="auto", hidden_dims=[64, 128, 192]):
     """
     Factory function to create the appropriate inverse model based on the data shape.
 

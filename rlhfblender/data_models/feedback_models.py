@@ -1,7 +1,9 @@
 # feedback_models.py
-from typing import Union, Literal, Optional, List
-from pydantic import BaseModel, Field
 from enum import Enum
+from typing import List, Literal, Optional, Union
+
+from pydantic import BaseModel, Field
+
 
 # Keep your existing Origin enum
 class Origin(Enum):
@@ -14,7 +16,8 @@ class Origin(Enum):
 
     def __repr__(self):
         return self.name
-    
+
+
 class FeedbackType(Enum):
     rating = "evaluative"
     comparison = "comparative"
@@ -30,7 +33,8 @@ class FeedbackType(Enum):
 
     def __str__(self):
         return self.name
-    
+
+
 class UnprocessedFeedback(BaseModel):
     """
     This is the feedback we get from the user when evaluating an episode.
@@ -80,7 +84,7 @@ class Target(BaseModel):
     timestamp: int = -1
     # Store the actual trajectory data
     data: Optional[List[tuple]] = None  # List of (obs, action, reward) tuples
-    
+
     # Episode reference information (replaces string reference)
     env_name: str = ""
     benchmark_type: str = ""
@@ -88,47 +92,61 @@ class Target(BaseModel):
     checkpoint_step: int = -1
     episode_num: int = -1
 
+
 class Episode(Target):
     # All episode info is now in the base Target class
     pass
-    
+
+
 class State(Target):
     step: int = -1  # Which step within the episode
 
+
 class Segment(Target):
     start: int = -1  # Start step
-    end: int = -1    # End step
+    end: int = -1  # End step
+
 
 class Entire(Target):
     # No target-specific reference necessary
     pass
 
+
 # Content types for different feedback
 class FeedbackContent(BaseModel):
     """Base class for all feedback content"""
+
     pass
+
 
 class Rating(FeedbackContent):
     score: float
-    
+
+
 class Ranking(FeedbackContent):
     preferences: List[float]
-    
+
+
 class Correction(FeedbackContent):
     action_preferences: List[int]
-    
+
+
 class Demonstration(FeedbackContent):
     actions: List[Union[int, List[float]]] = Field(default_factory=list)
-    
+
+
 class FeatureSelection(FeedbackContent):
     features: Union[List[dict], str]
     importance: Optional[Union[float, List[float], str]] = None
-    
+
+
 class TextFeedback(FeedbackContent):
     text: str
 
+
 class MetaFeedback(FeedbackContent):
     action: str  # "skip", "submit", etc.
+
 
 # Simplified Feedback Type
 class SimplifiedFeedbackType(str, Enum):
@@ -141,41 +159,38 @@ class SimplifiedFeedbackType(str, Enum):
     text = "text"
     meta = "meta"
 
+
 # Unified Feedback Model
 class StandardizedFeedback(BaseModel):
     feedback_id: int
     timestamp: int
     session_id: str
-    
+
     # Simplified type system
     feedback_type: SimplifiedFeedbackType
-    
+
     # Single or multiple targets based on feedback type
     targets: List[Target]
-    
+
     # Content is a discriminated union
-    content: Union[
-        Rating, Ranking, Correction, 
-        Demonstration, FeatureSelection, 
-        TextFeedback, MetaFeedback
-    ]
-    
+    content: Union[Rating, Ranking, Correction, Demonstration, FeatureSelection, TextFeedback, MetaFeedback]
+
     # Optional metadata that can be inferred or specified
     granularity: Literal["state", "segment", "episode", "entire"] = "episode"
-    
+
     @property
     def is_relative(self) -> bool:
         """Infer if feedback is relative based on type"""
         return self.feedback_type in [
             SimplifiedFeedbackType.ranking,
             SimplifiedFeedbackType.comparison,
-            SimplifiedFeedbackType.correction
+            SimplifiedFeedbackType.correction,
         ]
-    
+
     @property
     def is_absolute(self) -> bool:
         return not self.is_relative
-    
+
     @property
     def is_hypothetical(self) -> bool:
         """Infer if feedback is hypothetical"""

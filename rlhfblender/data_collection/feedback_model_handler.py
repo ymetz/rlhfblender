@@ -1,5 +1,6 @@
 from rlhfblender.data_collection import feedback_model
 
+
 class FeedbackModelHandler:
     """
     This class handles the feedback model (trainable with collected feedback).
