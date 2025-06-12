@@ -32,8 +32,6 @@ def train_reward_model(
     feedback_type: FeedbackType,
     dataset: FeedbackDataset,
     maximum_epochs: int = 100,
-    cpu_count: int = 4,
-    algorithm: str = "sac",
     environment: str = "HalfCheetah-v3",
     gradient_clip_value: Union[float, None] = None,
     split_ratio: float = 0.8,

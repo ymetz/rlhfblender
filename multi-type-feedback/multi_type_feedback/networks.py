@@ -183,6 +183,7 @@ class SingleNetwork(LightningModule):
         """Compute the loss for validation."""
         loss = self.loss_function(self, batch)
         self.log("val_loss", loss, prog_bar=True)
+        return loss
 
     def configure_optimizers(self):
         """Configure optimizer to optimize the neural network."""
@@ -307,6 +308,7 @@ class SingleCnnNetwork(LightningModule):
         """Compute the loss for validation."""
         loss = self.loss_function(self, batch)
         self.log("val_loss", loss, prog_bar=True)
+        return loss
 
     def configure_optimizers(self):
         """Configure optimizer to optimize the neural network."""

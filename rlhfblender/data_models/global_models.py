@@ -62,7 +62,7 @@ class Experiment(BaseModel):
     wandb_tracking: bool = False
     device: str = "auto"
     trained_agent_path: str = ""
-    seed: int = -1
+    seed: int = 0
 
     @field_validator(
         "status",

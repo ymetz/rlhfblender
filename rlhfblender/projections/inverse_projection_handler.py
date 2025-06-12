@@ -28,10 +28,14 @@ class InverseProjectionHandler:
         hidden_dims=None,
         learning_rate=0.001,
         batch_size=64,
-        num_epochs=100,
+        num_epochs=30,
         device=None,
         save_model=True,
         save_dir="models",
+        weight_decay=0.01,
+        use_scheduler=True,
+        warmup_epochs=3,
+        min_lr_ratio=0.1,
     ):
         """
         Initialize the inverse projection handler.
@@ -39,12 +43,16 @@ class InverseProjectionHandler:
         Args:
             model_type: Type of model to use ('auto', 'mlp', 'cnn', 'vae')
             hidden_dims: List of hidden dimensions for MLP and VAE models
-            learning_rate: Learning rate for the optimizer
+            learning_rate: Initial learning rate for the optimizer
             batch_size: Batch size for training
             num_epochs: Number of epochs for training
             device: Device to use for training ('cuda', 'cpu', or None for auto-detection)
             save_model: Whether to save the trained model
             save_dir: Directory to save the trained model
+            weight_decay: Weight decay for AdamW optimizer
+            use_scheduler: Whether to use learning rate scheduler
+            warmup_epochs: Number of epochs for linear warmup
+            min_lr_ratio: Minimum learning rate as ratio of initial learning rate
         """
         self.model_type = model_type
         self.hidden_dims = hidden_dims
@@ -53,6 +61,10 @@ class InverseProjectionHandler:
         self.num_epochs = num_epochs
         self.save_model = save_model
         self.save_dir = save_dir
+        self.weight_decay = weight_decay
+        self.use_scheduler = use_scheduler
+        self.warmup_epochs = warmup_epochs
+        self.min_lr_ratio = min_lr_ratio
 
         # Auto-detect device if not specified
         if device is None:
@@ -62,12 +74,38 @@ class InverseProjectionHandler:
 
         self.model = None
         self.optimizer = None
+        self.scheduler = None
         self.loss_fn = nn.MSELoss()
         self.scaler = None  # For potential data scaling/normalization
 
         # Create save directory if it doesn't exist
         if self.save_model and not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
+
+    def _create_scheduler(self, total_steps):
+        """
+        Create a learning rate scheduler with linear warmup followed by linear decay.
+        
+        Args:
+            total_steps: Total number of training steps
+        """
+        if not self.use_scheduler:
+            return None
+            
+        warmup_steps = self.warmup_epochs * (total_steps // self.num_epochs)
+        decay_steps = total_steps - warmup_steps
+        min_lr = self.learning_rate * self.min_lr_ratio
+        
+        def lr_lambda(step):
+            if step < warmup_steps:
+                # Linear warmup
+                return step / warmup_steps
+            else:
+                # Linear decay
+                progress = (step - warmup_steps) / decay_steps
+                return max(self.min_lr_ratio, 1.0 - progress * (1.0 - self.min_lr_ratio))
+        
+        return optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
 
     def fit(self, data, coords, validation_split=0.1, verbose=True):
         """
@@ -80,7 +118,7 @@ class InverseProjectionHandler:
             verbose: Whether to print training progress
 
         Returns:
-            Dictionary of training history (loss values per epoch)
+            Dictionary of training history (loss values per epoch and learning rates)
         """
         # Convert data to PyTorch tensors if needed
         if isinstance(data, np.ndarray):
@@ -102,8 +140,12 @@ class InverseProjectionHandler:
 
         self.model = self.model.to(self.device)
 
-        # Initialize optimizer
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        # Initialize AdamW optimizer with weight decay
+        self.optimizer = optim.AdamW(
+            self.model.parameters(), 
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay
+        )
 
         # Prepare data for training
         dataset = TensorDataset(coords, data)
@@ -116,14 +158,21 @@ class InverseProjectionHandler:
         train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
 
+        # Calculate total steps for scheduler
+        total_steps = len(train_loader) * self.num_epochs
+        
+        # Initialize learning rate scheduler
+        self.scheduler = self._create_scheduler(total_steps)
+
         # Training history
-        history = {"train_loss": [], "val_loss": []}
+        history = {"train_loss": [], "val_loss": [], "learning_rates": []}
 
         # Training loop
         for epoch in range(self.num_epochs):
             # Training phase
             self.model.train()
             train_loss = 0
+            epoch_lrs = []
 
             pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.num_epochs}", disable=not verbose)
 
@@ -141,11 +190,26 @@ class InverseProjectionHandler:
                 loss.backward()
                 self.optimizer.step()
 
+                # Update learning rate scheduler
+                if self.scheduler is not None:
+                    current_lr = self.scheduler.get_last_lr()[0]
+                    epoch_lrs.append(current_lr)
+                    self.scheduler.step()
+                else:
+                    epoch_lrs.append(self.learning_rate)
+
                 train_loss += loss.item() * batch_coords.size(0)
-                pbar.set_postfix({"loss": loss.item()})
+                
+                # Update progress bar with current learning rate
+                current_lr = epoch_lrs[-1] if epoch_lrs else self.learning_rate
+                pbar.set_postfix({
+                    "loss": loss.item(), 
+                    "lr": f"{current_lr:.2e}"
+                })
 
             train_loss /= len(train_dataset)
             history["train_loss"].append(train_loss)
+            history["learning_rates"].append(np.mean(epoch_lrs))
 
             # Validation phase
             if val_size > 0:
@@ -163,10 +227,17 @@ class InverseProjectionHandler:
                 history["val_loss"].append(val_loss)
 
                 if verbose:
-                    print(f"Epoch {epoch+1}/{self.num_epochs}, " f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+                    current_lr = history["learning_rates"][-1]
+                    print(f"Epoch {epoch+1}/{self.num_epochs}, "
+                          f"Train Loss: {train_loss:.4f}, "
+                          f"Val Loss: {val_loss:.4f}, "
+                          f"LR: {current_lr:.2e}")
             else:
                 if verbose:
-                    print(f"Epoch {epoch+1}/{self.num_epochs}, Train Loss: {train_loss:.4f}")
+                    current_lr = history["learning_rates"][-1]
+                    print(f"Epoch {epoch+1}/{self.num_epochs}, "
+                          f"Train Loss: {train_loss:.4f}, "
+                          f"LR: {current_lr:.2e}")
 
         # Save the model if requested
         if self.save_model:
@@ -177,6 +248,12 @@ class InverseProjectionHandler:
                     "model_type": self.model_type,
                     "data_shape": data_shape,
                     "hidden_dims": self.hidden_dims,
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler else None,
+                    "weight_decay": self.weight_decay,
+                    "use_scheduler": self.use_scheduler,
+                    "warmup_epochs": self.warmup_epochs,
+                    "min_lr_ratio": self.min_lr_ratio,
                 },
                 model_file,
             )

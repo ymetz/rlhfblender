@@ -51,7 +51,7 @@ class TrainingUtils:
             environment = FlatObsWrapper(gym.make(env_name))
         elif "metaworld" in env_name:
             environment_name = env_name.replace("metaworld-", "")
-            environment = ppo_make_metaworld_env(environment_name, seed) if seed else ppo_make_metaworld_env(environment_name)
+            environment = ppo_make_metaworld_env(environment_name, seed) if seed is not None else ppo_make_metaworld_env(environment_name, random.randint(0, 10000))
         else:
             environment = gym.make(env_name)
 

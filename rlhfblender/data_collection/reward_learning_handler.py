@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
+from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
+
 
 # Define training status enums
 class TrainingStatus(str, Enum):
@@ -52,23 +54,31 @@ class RewardModelHandler:
     5. Providing status updates
     """
 
-    def __init__(self, exp: Optional[Any] = None, session_id: Optional[str] = None):
+    def __init__(self, exp: Optional[Any] = None, session_id: Optional[str] = None, phase: Optional[int] = None):
         """
         Initialize the reward model handler.
 
         Args:
             exp: The experiment configuration
             session_id: Unique identifier for the training session
+            phase: Current training phase/iteration number
         """
         self.exp = exp
         self.session_id = session_id or str(uuid.uuid4())
+        self.phase = phase or 0
         self.status = TrainingStatus.NOT_STARTED
         self.process = None
         self.result = TrainingResult()
 
-        # Create session directory
-        self.session_dir = Path(f"sessions/{self.session_id}")
+        # Create phase-specific session directory
+        # This ensures each training iteration has its own directory
+        base_session_dir = Path(f"sessions/{self.session_id}")
+        self.session_dir = base_session_dir / f"phase_{self.phase}"
         self.session_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Also create base session directory for shared files
+        self.base_session_dir = base_session_dir
+        self.base_session_dir.mkdir(parents=True, exist_ok=True)
 
         # Set up logging
         self.logger = logging.getLogger(f"reward_handler_{self.session_id}")
@@ -108,7 +118,7 @@ class RewardModelHandler:
 
         # Save to file
         with open(self.result_file, "w") as f:
-            json.dump(self.result.dict(), f)
+            json.dump(self.result.model_dump(), f)
 
         self.logger.info(f"Updated training results: {result}")
 
@@ -117,20 +127,23 @@ class RewardModelHandler:
         Submit feedback for training and start the training process.
 
         Args:
-            feedback: List of feedback instances
+            feedback: List of already processed StandardizedFeedback instances
 
         Returns:
             Dictionary with submission status
         """
         try:
-            # Save feedback to file
+            # Create preprocessed unified dataset from processed feedback
+            self._preprocess_feedback_datasets(feedback)
+
+            # Save processed feedback to file for training script
             feedback_file = self.session_dir / "feedback.pkl"
             with open(feedback_file, "wb") as f:
                 pickle.dump(feedback, f)
 
-            self.logger.info(f"Saved {len(feedback)} feedback items to {feedback_file}")
+            self.logger.info(f"Processed and saved {len(feedback)} feedback items to {feedback_file}")
 
-            # Start training process
+            # Start training process with preprocessed datasets
             self._start_training_process(feedback_file)
 
             return {"status": "success", "message": "Feedback submitted and training started", "session_id": self.session_id}
@@ -139,6 +152,76 @@ class RewardModelHandler:
             self.logger.error(f"Error submitting feedback: {str(e)}", exc_info=True)
             self._update_status(TrainingStatus.FAILED, message=str(e))
             return {"status": "error", "message": f"Failed to submit feedback: {str(e)}", "session_id": self.session_id}
+
+    def _preprocess_feedback_datasets(self, feedback: List[Dict]) -> None:
+        """
+        Create preprocessed unified datasets from already processed feedback.
+        
+        Args:
+            feedback: List of processed StandardizedFeedback objects (as dicts)
+        """
+        try:
+            self._update_status(TrainingStatus.PROCESSING_FEEDBACK, "Creating unified dataset from processed feedback")
+            
+            # Convert dict feedback back to StandardizedFeedback objects if needed
+            from rlhfblender.data_models.feedback_models import StandardizedFeedback, SimplifiedFeedbackType
+            
+            standardized_feedbacks = []
+            for fb_dict in feedback:
+                try:
+                    # If it's already a StandardizedFeedback object, use it directly
+                    if isinstance(fb_dict, StandardizedFeedback):
+                        feedback_obj = fb_dict
+                    else:
+                        # If it's a dict, try to convert it
+                        feedback_obj = StandardizedFeedback(**fb_dict)
+                    
+                    # Filter out meta feedback - it's only for logging, not training
+                    if feedback_obj.feedback_type != SimplifiedFeedbackType.meta:
+                        standardized_feedbacks.append(feedback_obj)
+                    else:
+                        self.logger.info(f"Skipping meta feedback for training: {feedback_obj.content}")
+                        
+                except Exception as e:
+                    self.logger.warning(f"Failed to parse feedback item: {e}")
+                    continue
+            
+            # Get environment name from experiment
+            env_name = self.exp.env_id if self.exp and hasattr(self.exp, 'env_id') else ""
+            
+            # Organize feedback by type for individual model training
+            feedbacks_by_type = {}
+            for fb in standardized_feedbacks:
+                fb_type = fb.feedback_type.value
+                if fb_type not in feedbacks_by_type:
+                    feedbacks_by_type[fb_type] = []
+                feedbacks_by_type[fb_type].append(fb)
+            
+            # Save one dataset per feedback type for individual training
+            for fb_type, type_feedbacks in feedbacks_by_type.items():
+                # Create dataset for this specific feedback type
+                type_dataset = FeedbackTranslator.create_unified_dataset_from_processed(
+                    processed_feedback=type_feedbacks,
+                    n_feedback=-1,
+                    env_name=env_name
+                )
+                
+                # Save preprocessed dataset for this type
+                type_file = self.session_dir / f"{fb_type}_dataset.pkl"
+                with open(type_file, "wb") as f:
+                    pickle.dump(type_dataset, f)
+                
+                self.logger.info(f"Saved {len(type_feedbacks)} {fb_type} feedback items as dataset to {type_file}")
+                
+            self.logger.info(f"Preprocessed {len(standardized_feedbacks)} feedback items into {len(feedbacks_by_type)} type-specific datasets")
+            self.logger.info(f"Feedback types found: {list(feedbacks_by_type.keys())}")
+            
+            if len(standardized_feedbacks) == 0:
+                self.logger.warning("No non-meta feedback available for training!")
+            
+        except Exception as e:
+            self.logger.error(f"Error preprocessing feedback datasets: {str(e)}", exc_info=True)
+            raise
 
     def _start_training_process(self, feedback_file: Path):
         """
@@ -149,9 +232,12 @@ class RewardModelHandler:
         """
         self._update_status(TrainingStatus.INITIALIZING)
 
-        # Create a script to run the training process
-        script_file = self.session_dir / "training_script.py"
-
+        # Use the existing training script in the project
+        script_file = Path(__file__).parent / "training_script.py"
+        
+        if not script_file.exists():
+            raise FileNotFoundError(f"Training script not found at {script_file}")
+        
         # Create command to run the script
         cmd = [
             "python",
@@ -219,7 +305,7 @@ class RewardModelHandler:
             Dictionary with training results
         """
         if not self.result_file.exists():
-            return self.result.dict()
+            return self.result.model_dump()
 
         try:
             with open(self.result_file, "r") as f:
@@ -233,7 +319,7 @@ class RewardModelHandler:
                 "status": "error",
                 "message": f"Failed to get training results: {str(e)}",
                 "timestamp": time.time(),
-                **self.result.dict(),
+                **self.result.model_dump(),
             }
 
     def cancel_training(self) -> Dict[str, str]:
@@ -376,118 +462,3 @@ class RewardModelHandler:
             self.logger.error(f"Error evaluating model: {str(e)}", exc_info=True)
             self._update_status(TrainingStatus.FAILED, str(e))
             return {"status": "error", "message": f"Failed to evaluate model: {str(e)}", "uncertainty": 0.0, "avg_reward": 0.0}
-
-    def collect_episodes_with_model(self, model_path: str, num_episodes: int = 10) -> Dict[str, Any]:
-        """
-        Collect episodes using a trained reward model.
-
-        Args:
-            model_path: Path to the trained reward model
-            num_episodes: Number of episodes to collect
-
-        Returns:
-            Dictionary with collected episodes
-        """
-        self._update_status(TrainingStatus.COLLECTING_EPISODES, f"Collecting episodes with model {model_path}")
-
-        try:
-            # Run the episode collection script with the model
-            cmd = [
-                "python",
-                "collect_episodes.py",
-                "--session-dir",
-                str(self.session_dir),
-                "--env",
-                self.exp.env_id if self.exp else "HalfCheetah-v5",
-                "--num-episodes",
-                str(num_episodes),
-                "--random-policy",
-                "false",  # Use the reward model
-                "--reward-model-path",
-                model_path,
-            ]
-
-            # Run process and wait for completion
-            log_file = open(self.session_dir / "model_collection.log", "w")
-            process = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
-
-            process.wait()
-
-            # Load episodes from file
-            episodes_file = self.session_dir / "episodes.json"
-            if episodes_file.exists():
-                with open(episodes_file, "r") as f:
-                    episodes = json.load(f)
-
-                self._update_status(TrainingStatus.NOT_STARTED, f"Collected {len(episodes)} episodes with model")
-
-                # Update result with new episodes
-                self._update_result({"new_episodes": episodes})
-
-                return {"status": "success", "message": f"Collected {len(episodes)} episodes with model", "episodes": episodes}
-            else:
-                self._update_status(TrainingStatus.FAILED, "Failed to collect episodes with model")
-                return {"status": "error", "message": "Failed to collect episodes with model", "episodes": []}
-
-        except Exception as e:
-            self.logger.error(f"Error collecting episodes with model: {str(e)}", exc_info=True)
-            self._update_status(TrainingStatus.FAILED, str(e))
-            return {"status": "error", "message": f"Failed to collect episodes with model: {str(e)}", "episodes": []}
-
-    def predict_uncertainty_for_states(self, states: list[list[float]], model_path: str) -> dict[str, Any]:
-        """
-        Predict uncertainty for given states using a trained reward model.
-
-        Args:
-            states: List of states to predict uncertainty for
-            model_path: Path to the trained reward model
-
-        Returns:
-            Dictionary with predicted uncertainties
-        """
-        self._update_status(TrainingStatus.EVALUATING, f"Predicting uncertainty for {len(states)} states")
-
-        try:
-            # Run the prediction script
-            cmd = [
-                "python",
-                "predict_uncertainty.py",
-                "--session-dir",
-                str(self.session_dir),
-                "--model-path",
-                model_path,
-                "--states-file",
-                str(self.session_dir / "states.json"),
-            ]
-
-            # Save states to file
-            with open(self.session_dir / "states.json", "w") as f:
-                json.dump(states, f)
-
-            # Run process and wait for completion
-            log_file = open(self.session_dir / "prediction.log", "w")
-            process = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
-
-            process.wait()
-
-            # Load predictions from file
-            predictions_file = self.session_dir / "predictions.json"
-            if predictions_file.exists():
-                with open(predictions_file, "r") as f:
-                    predictions = json.load(f)
-
-                self._update_status(TrainingStatus.NOT_STARTED, f"Predicted uncertainties for {len(states)} states")
-
-                return {
-                    "status": "success",
-                    "message": f"Predicted uncertainties for {len(states)} states",
-                    "predictions": predictions,
-                }
-            else:
-                self._update_status(TrainingStatus.FAILED, "Failed to predict uncertainties")
-                return {"status": "error", "message": "Failed to predict uncertainties", "predictions": []}
-
-        except Exception as e:
-            self.logger.error(f"Error predicting uncertainties: {str(e)}", exc_info=True)
-            self._update_status(TrainingStatus.FAILED, str(e))
-            return {"status": "error", "message": f"Failed to predict uncertainties: {str(e)}", "predictions": []}

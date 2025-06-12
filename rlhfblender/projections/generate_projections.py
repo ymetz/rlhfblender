@@ -383,6 +383,7 @@ def compute_projections_and_clusters(
     actions: np.ndarray,
     projection_props: Dict[str, Any],
     suffix: str,
+    joint_projection_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compute projections and cluster the projected data.
@@ -404,13 +405,24 @@ def compute_projections_and_clusters(
         Dictionary with projection results
     """
     # Initialize projection handler
-    handler = ProjectionHandler(projection_method=projection_method, projection_props=projection_props)
+    if joint_projection_path:
+        print(f"Using joint projection from: {joint_projection_path}")
+        handler = ProjectionHandler(
+            projection_method=projection_method, 
+            projection_props=projection_props,
+            joint_projection_path=joint_projection_path
+        )
+    else:
+        handler = ProjectionHandler(projection_method=projection_method, projection_props=projection_props)
 
     # Set dimensionality based on option
     if use_one_d_projection:
         handler.embedding_method.n_components = 1
     else:
         handler.embedding_method.n_components = 2
+
+    if joint_projection_path:
+        print("Using pre-fitted joint projection model")
 
     # Compute main projection
     print(f"Computing main projection with method {projection_method}")
@@ -583,6 +595,7 @@ async def compute_projection(
     env_name: str = "",
     transition_embedding: bool = True,
     feature_embedding: bool = True,
+    joint_projection_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compute projection for the provided episode data.
@@ -652,6 +665,7 @@ async def compute_projection(
             episode_data["actions"],
             projection_props,
             projection_hash if projection_hash else "",
+            joint_projection_path=joint_projection_path,
         )
 
         # Extract projection arrays
@@ -858,6 +872,7 @@ async def generate_projections(
     feature_embedding: bool = True,
     compute_inverse: bool = False,
     inverse_options: InverseProjectionOptions = InverseProjectionOptions(),
+    joint_projection_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate projections for episodes matching the given parameters.
@@ -939,6 +954,7 @@ async def generate_projections(
         env_name=env_name,
         transition_embedding=transition_embedding,
         feature_embedding=feature_embedding,
+        joint_projection_path=joint_projection_path,
     )
 
     # Compute inverse projection if requested
@@ -988,6 +1004,11 @@ if __name__ == "__main__":
     parser.add_argument("--no-clustering", action="store_true", help="Skip clustering and point merging steps")
     parser.add_argument("--no-transition", action="store_true", help="Skip transition embedding computation")
     parser.add_argument("--no-feature", action="store_true", help="Skip feature embedding computation")
+
+    # Joint projection parameter
+    parser.add_argument("--joint-projection-path", type=str, default=None, 
+                       help="Path to joint projection metadata file (.json) or handler file (.pkl)")
+
 
     # Inverse projection parameters
     parser.add_argument("--compute-inverse", action="store_true", help="Compute inverse projection")
@@ -1067,6 +1088,7 @@ if __name__ == "__main__":
                 feature_embedding=not args.no_feature,
                 compute_inverse=args.compute_inverse,
                 inverse_options=inverse_options,
+                joint_projection_path=args.joint_projection_path,
             )
         )
         save_path = projection_results.get("projection_hash", f"{args.experiment_name}_{args.checkpoint}_{args.projection_method}")

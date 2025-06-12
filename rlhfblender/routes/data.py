@@ -10,14 +10,19 @@ from pydantic import BaseModel
 
 from rlhfblender.data_collection import framework_selector
 from rlhfblender.data_collection.demo_session import (
-    check_socket_connection,
-    close_demo_session,
     create_new_session,
     demo_perform_step,
+)
+from rlhfblender.data_collection.webrtc_demo_session import (
+    create_webrtc_demo_session,
+    stop_webrtc_demo_session,
+    handle_webrtc_offer,
+    handle_control_message,
 )
 from rlhfblender.data_collection.episode_recorder import (
     BenchmarkSummary,
 )
+from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.reward_learning_handler import RewardModelHandler
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.feedback_models import UnprocessedFeedback
@@ -426,6 +431,61 @@ async def initialize_demo_session(request: Request):
     }
 
 
+@router.post("/initialize_webrtc_demo_session")
+async def initialize_webrtc_demo_session(request: Request):
+    """
+    Initialize a WebRTC-based demo session for real-time environment interaction.
+    This provides low-latency video streaming and keyboard control support.
+    """
+    request = await request.json()
+    env_id = request.get("env_id", None)
+    exp_id = request.get("exp_id", None)
+    seed = request.get("seed", 42)
+    session_id = request.get("session_id", None)
+    
+    if not session_id or not exp_id or not env_id:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "Missing required parameters"}
+        )
+
+    # Get experiment and environment data
+    exp = await db_handler.get_single_entry(database, Experiment, key=exp_id)
+    db_env = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
+    
+    if not exp or not db_env:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "message": "Experiment or environment not found"}
+        )
+
+    action_space = db_env.action_space_info if db_env else {}
+
+    try:
+        # Create WebRTC demo session
+        webrtc_session_id, demo_number = await create_webrtc_demo_session(
+            session_id, exp, db_env, int(seed)
+        )
+        
+        return {
+            "success": True,
+            "session_id": webrtc_session_id,
+            "demo_number": demo_number,
+            "action_space": action_space,
+            "webrtc_enabled": True,
+        }
+        
+    except Exception as e:
+        print(f"Error initializing WebRTC demo session: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"Failed to initialize WebRTC demo session: {str(e)}"
+            }
+        )
+
+
 @router.post("/demo_step")
 async def demo_step(request: Request):
     """
@@ -456,32 +516,51 @@ async def end_demo_session(request: Request):
     """
     request = await request.json()
     session_id = request["session_id"]
-    pid = request["pid"]
+    pid = request.get("pid")
+    webrtc_enabled = request.get("webrtc_enabled", False)
 
-    return close_demo_session(session_id, pid)
+    if webrtc_enabled:
+        # Close WebRTC demo session
+        success = await stop_webrtc_demo_session(session_id)
+        return {"success": success, "session_type": "webrtc"}
 
 
-@router.get("/get_demo_image", response_class=FileResponse)
-async def get_demo_image(session_id: str):
+@router.post("/webrtc_offer")
+async def webrtc_offer(request: Request):
     """
-    Returns the demo image
-    :param session_id:
-    :return:
+    Handle WebRTC offer for demo session
     """
-    return FileResponse(
-        os.path.join("data", "current_demos", f"{session_id}.jpg"),
-        media_type="image/jpg",
-    )
+    request_data = await request.json()
+    session_id = request_data.get("session_id")
+    offer_sdp = request_data.get("offer")
+    
+    if not session_id or not offer_sdp:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Missing session_id or offer"}
+        )
+    
+    result = await handle_webrtc_offer(session_id, offer_sdp)
+    return JSONResponse(content=result)
 
 
-@router.get("/check_demo_connection")
-async def check_demo_connection(session_id: str):
+@router.post("/webrtc_control")
+async def webrtc_control(request: Request):
     """
-    Checks whether the demo session is still alive
-    :param session_id:
-    :return:
+    Handle control messages for WebRTC demo session
     """
-    return check_socket_connection(session_id)
+    request_data = await request.json()
+    session_id = request_data.get("session_id")
+    message = request_data.get("message", {})
+    
+    if not session_id:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Missing session_id"}
+        )
+    
+    result = await handle_control_message(session_id, message)
+    return JSONResponse(content=result)
 
 
 class FeedbackItem(BaseModel):
@@ -506,9 +585,10 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
     Returns:
         JSON response with submission status
     """
-    # Get session_id and experiment_id from query parameters
+    # Get session_id, experiment_id, and phase from query parameters
     session_id = request.query_params.get("session_id", None)
     experiment_id = request.query_params.get("experiment_id", None)
+    phase = int(request.query_params.get("phase", "0"))  # Default to phase 0
 
     if not session_id:
         return JSONResponse(status_code=400, content={"status": "error", "message": "Missing session_id parameter"})
@@ -521,28 +601,70 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse(status_code=404, content={"status": "error", "message": "No experiment found"})
 
     # Check if the feedback translator is initialized
-    translator = request.app.state.feedback_translator
+    translator: FeedbackTranslator = request.app.state.feedback_translator
+
+    # Process current feedback from the translator
+    translator.process()
 
     # Load feedback from the translator's logger
     in_feedback = translator.logger.read()
+    
+    if not in_feedback:
+        return JSONResponse(
+            status_code=400, 
+            content={
+                "status": "error", 
+                "message": "No feedback available for training"
+            }
+        )
 
-    # skip for now, just return
-    return JSONResponse(
-        content={
-            "phaseStatus": "success",
-            "message": "Feedback received",
-            "phaseTrainingStep": 10,
-            "phaseUncertainty": 0.0,
-            "phaseReward": 0.0,
-        }
-    )
+    try:
+        # Create reward model handler with phase-specific directory
+        handler = RewardModelHandler(exp, session_id, phase)
 
-    handler = RewardModelHandler(exp, session_id)
+        # Submit feedback for training (this starts the background process)
+        submission_status = handler.submit_feedback(in_feedback)
 
-    # Submit feedback for training (non-blocking)
-    submission_status = handler.submit_feedback(in_feedback)
+        if submission_status["status"] == "error":
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "phaseStatus": "error",
+                    "message": submission_status["message"],
+                    "phaseTrainingStep": 0,
+                    "phaseUncertainty": 0.0,
+                    "phaseReward": 0.0,
+                }
+            )
 
-    return JSONResponse(content={"submission_status": submission_status, "session_id": session_id})
+        # Return immediate response indicating training has started
+        return JSONResponse(
+            content={
+                "phaseStatus": "training_started",
+                "message": "Training iteration started successfully",
+                "phaseTrainingStep": 0,
+                "phaseUncertainty": 0.0,
+                "phaseReward": 0.0,
+                "session_id": session_id,
+                "num_feedback": len(in_feedback)
+            }
+        )
+
+    except Exception as e:
+        import traceback
+        error_msg = f"Error starting training iteration: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        
+        return JSONResponse(
+            status_code=500,
+            content={
+                "phaseStatus": "error",
+                "message": f"Failed to start training: {str(e)}",
+                "phaseTrainingStep": 0,
+                "phaseUncertainty": 0.0,
+                "phaseReward": 0.0,
+            }
+        )
 
 
 @router.get("/get_training_status", response_model=dict[str, Any])
@@ -557,12 +679,13 @@ async def get_training_status(request: Request):
         Dictionary with training status
     """
     session_id = request.query_params.get("session_id", None)
+    phase = int(request.query_params.get("phase", "0"))  # Default to phase 0
 
     if session_id is None:
         return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
 
-    # Get handler from cache or create a new one
-    handler = RewardModelHandler(None, session_id)
+    # Get handler from cache or create a new one with phase
+    handler = RewardModelHandler(None, session_id, phase)
 
     # Get training status
     status = handler.get_training_status()
@@ -583,16 +706,44 @@ async def get_training_results(request: Request):
         Dictionary with training results
     """
     session_id = request.query_params.get("session_id", None)
+    phase = int(request.query_params.get("phase", "0"))  # Default to phase 0
 
     if session_id is None:
         return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
 
-    handler = RewardModelHandler(None, session_id)
+    handler = RewardModelHandler(None, session_id, phase)
 
     # Get training results
     results = handler.get_training_results()
-
-    return results
+    
+    # Transform results to match the expected frontend format
+    if "status" not in results or results["status"] != "error":
+        # Check if training is complete
+        training_complete = results.get("training_complete", False)
+        
+        return JSONResponse(
+            content={
+                "phaseStatus": "completed" if training_complete else "training",
+                "message": "Training completed successfully" if training_complete else "Training in progress",
+                "phaseTrainingStep": results.get("metrics", {}).get("training_step", 0),
+                "phaseUncertainty": results.get("uncertainty", 0.0),
+                "phaseReward": results.get("avg_predicted_reward", 0.0),
+                "trainingComplete": training_complete,
+                "modelPath": results.get("trained_model_path", ""),
+                "metrics": results.get("metrics", {}),
+            }
+        )
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "phaseStatus": "error",
+                "message": results.get("message", "Training failed"),
+                "phaseTrainingStep": 0,
+                "phaseUncertainty": 0.0,
+                "phaseReward": 0.0,
+            }
+        )
 
 
 @router.post("/collect_initial_episodes", response_model=dict[str, Any])
@@ -624,43 +775,13 @@ async def collect_initial_episodes(request: Request):
     if exp is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "No experiment found"})
 
-    # Get or create handler instance
-    handler = RewardModelHandler(exp, session_id)
+    # Get phase from query parameters
+    phase = int(request.query_params.get("phase", "0"))  # Default to phase 0
+    
+    # Get or create handler instance with phase
+    handler = RewardModelHandler(exp, session_id, phase)
 
     # Collect initial episodes
     result = handler.initial_episode_collection(num_episodes)
 
     return result
-
-
-@router.post("/evaluate_model", response_model=dict[str, Any])
-async def evaluate_model(request: Request):
-    """
-    Evaluates a trained reward model on episodes.
-
-    Args:
-        request: The HTTP request
-
-    Returns:
-        Dictionary with evaluation results
-    """
-    session_id = request.query_params.get("session_id", None)
-    model_path = request.query_params.get("model_path", None)
-    num_episodes = int(request.query_params.get("num_episodes", "10"))
-
-    if session_id is None:
-        return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
-
-    if model_path is None:
-        return JSONResponse(status_code=400, content={"status": "error", "message": "No model path given"})
-
-    # Get handler from cache or create a new one
-    handler = RewardModelHandler(None, session_id)  #
-
-    # Evaluate model - this would be implemented in the handler
-    # For now, return a placeholder
-    return {
-        "status": "success",
-        "message": f"Model evaluation requested for {model_path}",
-        "metrics": {"average_reward": 0.0, "uncertainty": 0.0, "num_episodes": num_episodes},
-    }
