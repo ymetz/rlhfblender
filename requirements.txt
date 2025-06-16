@@ -14,5 +14,4 @@ minigrid
 gspread
 umap-learn
 aiortc
-python-socketio[asyncio_client]
 av
