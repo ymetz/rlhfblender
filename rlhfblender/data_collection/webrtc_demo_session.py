@@ -4,11 +4,10 @@ import logging
 import os
 import time
 from datetime import datetime
-from fractions import Fraction
 from typing import Dict, Optional
 
 import numpy as np
-from aiortc import MediaStreamTrack, RTCDataChannel, RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCDataChannel, RTCPeerConnection, RTCSessionDescription, RTCConfiguration, VideoStreamTrack
 from av import VideoFrame
 
 from rlhfblender.data_collection.environment_handler import get_environment
@@ -55,75 +54,42 @@ webrtc_logger = setup_webrtc_logging()
 _demo_sessions: Dict[str, "WebRTCDemoSession"] = {}
 
 
-class EnvironmentVideoTrack(MediaStreamTrack):
-    """Custom video track that streams environment renders."""
-
-    kind = "video"
-
+class EnvironmentVideoTrack(VideoStreamTrack):
+    """Minimal working video track."""
+    
     def __init__(self, session_id: str):
-        super().__init__()
+        super().__init__()  # CRITICAL - must call parent init
         self.session_id = session_id
-        self.frame_queue = asyncio.Queue(maxsize=10)
-        self.running = True
-        self.frame_count = 0
-        webrtc_logger.debug(f"Created EnvironmentVideoTrack for session {session_id}")
-
+        self.counter = 0
+        webrtc_logger.info(f"Created video track for {session_id}")
+        
     async def recv(self):
-        """Return the next video frame."""
-        if not self.running:
-            webrtc_logger.debug(f"Video track stopped for {self.session_id}")
-            raise Exception("Track stopped")
-
-        try:
-            # Get frame with timeout to prevent hanging
-            frame_data = await asyncio.wait_for(self.frame_queue.get(), timeout=1.0)
-
-            if frame_data is None:
-                webrtc_logger.warning(f"Received None frame data for {self.session_id}")
-                raise Exception("No frame available")
-
-            self.frame_count += 1
-
-            # Convert numpy array to VideoFrame
-            frame = VideoFrame.from_ndarray(frame_data, format="rgb24")
-            frame.pts = time.time_ns() // 1000  # microseconds
-            frame.time_base = Fraction(1, 1000000)  # 1 microsecond
-
-            if self.frame_count % 30 == 0:  # Log every second
-                webrtc_logger.debug(f"Sent frame {self.frame_count} for {self.session_id}, shape: {frame_data.shape}")
-
-            return frame
-
-        except asyncio.TimeoutError:
-            # Return a black frame if no data available
-            webrtc_logger.debug(f"Video frame timeout for {self.session_id}, sending black frame")
-            black_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
-            frame.pts = time.time_ns() // 1000
-            frame.time_base = Fraction(1, 1000000)
-            return frame
-
-    def add_frame(self, frame_data: np.ndarray):
-        """Add a new frame to the queue (non-blocking)."""
-        if not self.running:
-            return
-
-        try:
-            self.frame_queue.put_nowait(frame_data)
-            webrtc_logger.debug(f"Added frame to queue for {self.session_id}, queue size: {self.frame_queue.qsize()}")
-        except asyncio.QueueFull:
-            # Drop oldest frame if queue is full
-            webrtc_logger.debug(f"Frame queue full for {self.session_id}, dropping oldest frame")
-            try:
-                self.frame_queue.get_nowait()
-                self.frame_queue.put_nowait(frame_data)
-            except asyncio.QueueEmpty:
-                pass
-
-    def stop(self):
-        """Stop the video track."""
-        self.running = False
-
+        """Generate and return a video frame."""
+        pts, time_base = await self.next_timestamp()
+        
+        # Log to confirm recv is being called
+        if self.counter % 30 == 0:  # Log once per second
+            webrtc_logger.info(f"recv() called {self.counter} times")
+        
+        # Create a simple test pattern
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        # Add moving elements to verify it's updating
+        bar_pos = (self.counter * 5) % 640
+        img[:, bar_pos:bar_pos+20, 0] = 255  # Red moving bar
+        
+        # Add counter in corner
+        cv = self.counter % 255
+        img[0:50, 0:50] = [cv, cv, cv]
+        
+        self.counter += 1
+        
+        # Create frame
+        frame = VideoFrame.from_ndarray(img, format="rgb24")
+        frame.pts = pts
+        frame.time_base = time_base
+        
+        return frame
 
 class WebRTCDemoSession:
     """WebRTC-based demo session for real-time environment interaction."""
@@ -255,6 +221,16 @@ class WebRTCDemoSession:
                 # Since render_mode is set at initialization, just call render() without mode
                 test_render = self.env.render()
 
+                # save a test frame as png to verify rendering
+                if test_render is not None and isinstance(test_render, np.ndarray):
+                    test_render = (test_render * 255).astype(np.uint8)
+                    test_frame_path = os.path.join("data", "current_demos", f"{self.session_id}_test_frame.png")
+                    os.makedirs(os.path.dirname(test_frame_path), exist_ok=True)
+                    from PIL import Image
+                    Image.fromarray(test_render).save(test_frame_path)
+                else:
+                    test_render = None    
+
                 print(
                     f"Frame shape: {test_render.shape}, dtype: {test_render.dtype}, min: {test_render.min()}, max: {test_render.max()}"
                 )
@@ -276,44 +252,51 @@ class WebRTCDemoSession:
             webrtc_logger.error(f"Error initializing environment: {e}", exc_info=True)
             return False
 
+
     async def setup_webrtc(self, offer_sdp: str) -> str:
         """Setup WebRTC peer connection."""
         try:
             webrtc_logger.info(f"Setting up WebRTC for session {self.session_id}")
-            webrtc_logger.debug(f"Offer SDP length: {len(offer_sdp)} chars")
+            
+            # Log the offer to see what's requested
+            webrtc_logger.debug(f"Offer requests video: {'m=video' in offer_sdp}")
 
             # Create peer connection
             self.pc = RTCPeerConnection()
-            webrtc_logger.debug("Created RTCPeerConnection")
 
-            # Create video track
+            # Create and add video track FIRST
             self.video_track = EnvironmentVideoTrack(self.session_id)
             self.pc.addTrack(self.video_track)
-            webrtc_logger.debug("Added video track")
-
-            # Create data channel for control input
-            self.data_channel = self.pc.createDataChannel("control")
-            if self.data_channel:
-                self.data_channel.on("message", self._on_data_channel_message)
-                webrtc_logger.debug("Created data channel for control")
+            webrtc_logger.info("Added video track to peer connection")
 
             # Set remote description
-            await self.pc.setRemoteDescription(RTCSessionDescription(sdp=offer_sdp, type="offer"))
-            webrtc_logger.debug("Set remote description")
+            offer = RTCSessionDescription(sdp=offer_sdp, type="offer")
+            await self.pc.setRemoteDescription(offer)
 
             # Create answer
             answer = await self.pc.createAnswer()
             await self.pc.setLocalDescription(answer)
-            webrtc_logger.debug("Created and set local answer")
+            
+            # VERIFY the answer includes video
+            answer_sdp = answer.sdp
+            if 'm=video' in answer_sdp:
+                webrtc_logger.info("✓ Answer includes video track")
+                # Find the video section
+                video_section = answer_sdp[answer_sdp.find('m=video'):answer_sdp.find('m=', answer_sdp.find('m=video')+1)]
+                webrtc_logger.debug(f"Video section in answer: {video_section[:200]}...")
+            else:
+                webrtc_logger.error("✗ Answer does NOT include video track!")
+                
+            # Also check if the track is actually ready
+            webrtc_logger.info(f"Video track ID: {self.video_track.id}")
+            webrtc_logger.info(f"Video track readyState: {self.video_track.readyState}")
 
-            webrtc_logger.info(f"WebRTC setup completed for session {self.session_id}")
-            webrtc_logger.debug(f"Answer SDP length: {len(answer.sdp)} chars")
-
-            return answer.sdp
+            return answer_sdp
 
         except Exception as e:
             webrtc_logger.error(f"Error setting up WebRTC: {e}", exc_info=True)
             raise
+
 
     def _on_data_channel_message(self, message):
         """Handle incoming control messages."""
@@ -451,8 +434,7 @@ class WebRTCDemoSession:
                                         if render_counter <= 5:
                                             webrtc_logger.debug("Converted frame from float to uint8")
 
-                                    # Add frame to video track
-                                    self.video_track.add_frame(frame)
+                                    webrtc_logger.debug(f"Added frame {render_counter} to video track queue")
 
                                     if render_counter % 30 == 0:  # Log every second
                                         webrtc_logger.debug(
@@ -521,15 +503,13 @@ class WebRTCDemoSession:
         if self.env:
             self.env.close()
 
-
-# WebRTC signaling functions for HTTP endpoints
 async def handle_webrtc_offer(session_id: str, offer_sdp: str) -> dict:
     """Handle WebRTC offer for demo session."""
     try:
         webrtc_logger.info(f"Handling WebRTC offer for session {session_id}")
 
         if session_id not in _demo_sessions:
-            webrtc_logger.error(f"Demo session {session_id} not found in active sessions: {list(_demo_sessions.keys())}")
+            webrtc_logger.error(f"Demo session {session_id} not found")
             return {"success": False, "error": "Demo session not found"}
 
         session = _demo_sessions[session_id]
@@ -537,17 +517,16 @@ async def handle_webrtc_offer(session_id: str, offer_sdp: str) -> dict:
         # Setup WebRTC and get answer
         answer_sdp = await session.setup_webrtc(offer_sdp)
 
-        # Start demo loop
+        # Start demo loop AFTER WebRTC is setup
         task = asyncio.create_task(session.start_demo_loop())
-        # Store task reference to prevent GC
         session._demo_task = task
-        webrtc_logger.info(f"Started demo loop task for session {session_id}")
-
+        
         return {"success": True, "answer": answer_sdp}
 
     except Exception as e:
         webrtc_logger.error(f"Error handling WebRTC offer: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
+
 
 
 async def handle_control_message(session_id: str, message: dict) -> dict:
@@ -580,6 +559,34 @@ async def handle_control_message(session_id: str, message: dict) -> dict:
 
     except Exception as e:
         webrtc_logger.error(f"Error handling control message: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+async def handle_ice_candidate(session_id: str, candidate: dict) -> dict:
+    """Handle ICE candidate for demo session."""
+    try:
+        webrtc_logger.debug(f"Handling ICE candidate for session {session_id}: {candidate}")
+
+        if session_id not in _demo_sessions:
+            webrtc_logger.warning(f"Demo session {session_id} not found for ICE candidate")
+            return {"success": False, "error": "Demo session not found"}
+
+        session = _demo_sessions[session_id]
+        
+        if session.pc:
+            from aiortc import RTCIceCandidate
+            ice_candidate = RTCIceCandidate(
+                candidate=candidate.get("candidate"),
+                sdpMid=candidate.get("sdpMid"),
+                sdpMLineIndex=candidate.get("sdpMLineIndex")
+            )
+            await session.pc.addIceCandidate(ice_candidate)
+            webrtc_logger.debug(f"Added ICE candidate for session {session_id}")
+
+        return {"success": True}
+
+    except Exception as e:
+        webrtc_logger.error(f"Error handling ICE candidate: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 
