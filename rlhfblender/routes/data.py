@@ -588,41 +588,60 @@ async def gym_offer(request: Request):
 
     log_info("Created gym session for %s", request.client.host)
 
-    # For now, let's create a simple test track that definitely works
-    # We'll use the same pattern as test_offer but with a custom track
+    # Import GymEnvironmentTrack for real gymnasium rendering
+    from rlhfblender.data_collection.minimal_webrtc_test import GymEnvironmentTrack
     
-    # Create a black video track as a fallback
-    import numpy as np
-    from aiortc import VideoStreamTrack
-    from av import VideoFrame
-    
-    class SimpleTestTrack(VideoStreamTrack):
-        def __init__(self):
-            super().__init__()
-            self.counter = 0
-            
-        async def recv(self):
-            pts, time_base = await self.next_timestamp()
-            
-            # Create simple animated pattern
-            img = np.zeros((480, 640, 3), dtype=np.uint8)
-            bar_pos = (self.counter * 5) % 640
-            img[:, bar_pos:bar_pos+20, 0] = 255  # Red moving bar
-            
-            # Add counter in corner
-            cv = self.counter % 255
-            img[0:50, 0:50] = [cv, cv, cv]
-            
-            self.counter += 1
-            
-            frame = VideoFrame.from_ndarray(img, format="rgb24")
-            frame.pts = pts
-            frame.time_base = time_base
-            
-            return frame
-    
-    test_track = SimpleTestTrack()
-    pc.addTrack(test_track)
+    # Try to create gymnasium environment track, fallback to test track
+    try:
+
+        gym_track = GymEnvironmentTrack(
+            session_id=session_id,
+            exp=exp, 
+            db_env=db_env,
+            seed=42
+        )
+        pc.addTrack(gym_track)
+        print(f"Created gymnasium track for {db_env.registration_id}")
+        
+        # Store for control message handling
+        minimal_webrtc_test.gym_sessions[session_id] = gym_track
+        
+    except Exception as e:
+        print(f"Failed to create gymnasium track: {e}")
+        print("Falling back to SimpleTestTrack...")
+        
+        # Fallback to simple test track
+        import numpy as np
+        from aiortc import VideoStreamTrack
+        from av import VideoFrame
+        
+        class SimpleTestTrack(VideoStreamTrack):
+            def __init__(self):
+                super().__init__()
+                self.counter = 0
+                
+            async def recv(self):
+                pts, time_base = await self.next_timestamp()
+                
+                # Create simple animated pattern
+                img = np.zeros((480, 640, 3), dtype=np.uint8)
+                bar_pos = (self.counter * 5) % 640
+                img[:, bar_pos:bar_pos+20, 0] = 255  # Red moving bar
+                
+                # Add counter in corner
+                cv = self.counter % 255
+                img[0:50, 0:50] = [cv, cv, cv]
+                
+                self.counter += 1
+                
+                frame = VideoFrame.from_ndarray(img, format="rgb24")
+                frame.pts = pts
+                frame.time_base = time_base
+                
+                return frame
+        
+        test_track = SimpleTestTrack()
+        pc.addTrack(test_track)
     
     # Store session for later cleanup
     #minimal_webrtc_test.gym_sessions[session_id] = test_track
@@ -635,8 +654,10 @@ async def gym_offer(request: Request):
                 if message.startswith("ping"):
                     channel.send("pong" + message[4:])
                 else:
-                    # Handle control messages (for now just log)
+                    # Handle control messages - forward to gymnasium track
                     print(f"Control message: {message}")
+                    if session_id in minimal_webrtc_test.gym_sessions:
+                        minimal_webrtc_test.gym_sessions[session_id].handle_control_message(message)
 
     @pc.on("connectionstatechange")
     async def on_conn_state():
