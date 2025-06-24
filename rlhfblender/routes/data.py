@@ -1,19 +1,19 @@
 import asyncio
 import os
+import uuid
 from enum import Enum
 from typing import Any
-import uuid
 
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration
-from aiortc.rtcconfiguration import RTCIceServer
 import numpy as np
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaBlackhole, MediaPlayer
+from aiortc.rtcconfiguration import RTCIceServer
 from databases import Database
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from aiortc.contrib.media import MediaBlackhole, MediaPlayer
 from pydantic import BaseModel
 
-from rlhfblender.data_collection import framework_selector
+from rlhfblender.data_collection import framework_selector, webrtc_demo_session
 from rlhfblender.data_collection.demo_session import (
     create_new_session,
     demo_perform_step,
@@ -23,14 +23,7 @@ from rlhfblender.data_collection.episode_recorder import (
 )
 from rlhfblender.data_collection.feedback_translator import FeedbackTranslator
 from rlhfblender.data_collection.reward_learning_handler import RewardModelHandler
-from rlhfblender.data_collection.webrtc_demo_session import (
-    create_webrtc_demo_session,
-    handle_control_message,
-    handle_ice_candidate,
-    handle_webrtc_offer,
-    stop_webrtc_demo_session,
-)
-from rlhfblender.data_collection import minimal_webrtc_test
+from rlhfblender.data_collection.webrtc_demo_session import GymEnvironmentTrack
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.feedback_models import UnprocessedFeedback
 from rlhfblender.data_models.global_models import (
@@ -438,49 +431,6 @@ async def initialize_demo_session(request: Request):
     }
 
 
-@router.post("/initialize_webrtc_demo_session")
-async def initialize_webrtc_demo_session(request: Request):
-    """
-    Initialize a WebRTC-based demo session for real-time environment interaction.
-    This provides low-latency video streaming and keyboard control support.
-    """
-    request = await request.json()
-    env_id = request.get("env_id", None)
-    exp_id = request.get("exp_id", None)
-    seed = request.get("seed", 42)
-    session_id = request.get("session_id", None)
-
-    if not session_id or not exp_id or not env_id:
-        return JSONResponse(status_code=400, content={"success": False, "message": "Missing required parameters"})
-
-    # Get experiment and environment data
-    exp = await db_handler.get_single_entry(database, Experiment, key=exp_id)
-    db_env = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
-
-    if not exp or not db_env:
-        return JSONResponse(status_code=404, content={"success": False, "message": "Experiment or environment not found"})
-
-    action_space = db_env.action_space_info if db_env else {}
-
-    try:
-        # Create WebRTC demo session
-        webrtc_session_id, demo_number = await create_webrtc_demo_session(session_id, exp, db_env, int(seed))
-
-        return {
-            "success": True,
-            "session_id": webrtc_session_id,
-            "demo_number": demo_number,
-            "action_space": action_space,
-            "webrtc_enabled": True,
-        }
-
-    except Exception as e:
-        print(f"Error initializing WebRTC demo session: {e}")
-        return JSONResponse(
-            status_code=500, content={"success": False, "message": f"Failed to initialize WebRTC demo session: {str(e)}"}
-        )
-
-
 @router.post("/demo_step")
 async def demo_step(request: Request):
     """
@@ -520,37 +470,6 @@ async def end_demo_session(request: Request):
         return {"success": success, "session_type": "webrtc"}
 
 
-@router.post("/webrtc_offer")
-async def webrtc_offer(request: Request):
-    """
-    Handle WebRTC offer for demo session
-    """
-    request_data = await request.json()
-    session_id = request_data.get("session_id")
-    offer_sdp = request_data.get("offer")
-
-    if not session_id or not offer_sdp:
-        return JSONResponse(status_code=400, content={"success": False, "error": "Missing session_id or offer"})
-
-    result = await handle_webrtc_offer(session_id, offer_sdp)
-    return JSONResponse(content=result)
-
-
-@router.post("/webrtc_control")
-async def webrtc_control(request: Request):
-    """
-    Handle control messages for WebRTC demo session
-    """
-    request_data = await request.json()
-    session_id = request_data.get("session_id")
-    message = request_data.get("message", {})
-
-    if not session_id:
-        return JSONResponse(status_code=400, content={"success": False, "error": "Missing session_id"})
-
-    result = await handle_control_message(session_id, message)
-    return JSONResponse(content=result)
-
 @router.post("/gym_offer")
 async def gym_offer(request: Request):
     """
@@ -558,11 +477,11 @@ async def gym_offer(request: Request):
     Body JSON: {sdp, type, session_id, experiment_id, environment_id}
     """
     params = await request.json()
-    
+
     try:
         client_offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
         session_id = params["session_id"]
-        experiment_id = params["experiment_id"] 
+        experiment_id = params["experiment_id"]
         environment_id = params["environment_id"]
     except KeyError as e:
         raise HTTPException(400, detail=f"Missing required parameter: {e}")
@@ -570,83 +489,30 @@ async def gym_offer(request: Request):
     exp = await db_handler.get_single_entry(database, Experiment, key=15)
     if exp is None:
         raise HTTPException(404, detail="Experiment not found")
-        
+
     db_env = await db_handler.get_single_entry(database, Environment, key=12)
     if db_env is None:
         raise HTTPException(404, detail="Environment not found")
-    
-    ice_servers = [
-    RTCIceServer(urls=["stun:stun.l.google.com:19302"])
-    ]
+
+    ice_servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
-    pc_id = f"GymConnection({uuid.uuid4()})"
-    #minimal_webrtc_test.pcs.add(pc)
 
-    def log_info(msg, *a):
-        print(pc_id + " " + msg, *a)
-
-    log_info("Created gym session for %s", request.client.host)
-
-    # Import GymEnvironmentTrack for real gymnasium rendering
-    from rlhfblender.data_collection.minimal_webrtc_test import GymEnvironmentTrack
-    
     # Try to create gymnasium environment track, fallback to test track
     try:
 
-        gym_track = GymEnvironmentTrack(
-            session_id=session_id,
-            exp=exp, 
-            db_env=db_env,
-            seed=42
-        )
+        gym_track = GymEnvironmentTrack(session_id=session_id, exp=exp, db_env=db_env, seed=42)
         pc.addTrack(gym_track)
         print(f"Created gymnasium track for {db_env.registration_id}")
-        
+
         # Store for control message handling
-        minimal_webrtc_test.gym_sessions[session_id] = gym_track
-        
+        webrtc_demo_session.gym_sessions[session_id] = gym_track
+
     except Exception as e:
         print(f"Failed to create gymnasium track: {e}")
         print("Falling back to SimpleTestTrack...")
-        
-        # Fallback to simple test track
-        import numpy as np
-        from aiortc import VideoStreamTrack
-        from av import VideoFrame
-        
-        class SimpleTestTrack(VideoStreamTrack):
-            def __init__(self):
-                super().__init__()
-                self.counter = 0
-                
-            async def recv(self):
-                pts, time_base = await self.next_timestamp()
-                
-                # Create simple animated pattern
-                img = np.zeros((480, 640, 3), dtype=np.uint8)
-                bar_pos = (self.counter * 5) % 640
-                img[:, bar_pos:bar_pos+20, 0] = 255  # Red moving bar
-                
-                # Add counter in corner
-                cv = self.counter % 255
-                img[0:50, 0:50] = [cv, cv, cv]
-                
-                self.counter += 1
-                
-                frame = VideoFrame.from_ndarray(img, format="rgb24")
-                frame.pts = pts
-                frame.time_base = time_base
-                
-                return frame
-        
-        test_track = SimpleTestTrack()
-        pc.addTrack(test_track)
-    
-    # Store session for later cleanup
-    #minimal_webrtc_test.gym_sessions[session_id] = test_track
 
-    @pc.on("datachannel") 
+    @pc.on("datachannel")
     def on_datachannel(channel):
         @channel.on("message")
         def on_message(message):
@@ -656,37 +522,31 @@ async def gym_offer(request: Request):
                 else:
                     # Handle control messages - forward to gymnasium track
                     print(f"Control message: {message}")
-                    if session_id in minimal_webrtc_test.gym_sessions:
-                        minimal_webrtc_test.gym_sessions[session_id].handle_control_message(message)
+                    if session_id in webrtc_demo_session.gym_sessions:
+                        webrtc_demo_session.gym_sessions[session_id].handle_control_message(message)
 
     @pc.on("connectionstatechange")
     async def on_conn_state():
-        log_info("Connection state is %s", pc.connectionState)
         if pc.connectionState == "failed":
             await pc.close()
-            minimal_webrtc_test.pcs.discard(pc)
-            if session_id in minimal_webrtc_test.gym_sessions:
-                del minimal_webrtc_test.gym_sessions[session_id]
-
+            webrtc_demo_session.pcs.discard(pc)
+            if session_id in webrtc_demo_session.gym_sessions:
+                del webrtc_demo_session.gym_sessions[session_id]
 
     await pc.setRemoteDescription(client_offer)
-    
+
     answer = await pc.createAnswer()
 
     await pc.setLocalDescription(answer)
 
-    return JSONResponse({
-        "sdp": pc.localDescription.sdp,
-        "type": pc.localDescription.type,
-        "session_id": session_id
-    })
+    return JSONResponse({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "session_id": session_id})
 
 
 @router.on_event("shutdown")
 async def on_shutdown():
-    coros = [pc.close() for pc in minimal_webrtc_test.pcs]
+    coros = [pc.close() for pc in webrtc_demo_session.pcs]
     await asyncio.gather(*coros)
-    minimal_webrtc_test.pcs.clear()
+    webrtc_demo_session.pcs.clear()
 
 
 class FeedbackItem(BaseModel):
@@ -786,22 +646,6 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
                 "phaseReward": 0.0,
             },
         )
-    
-@router.post("/webrtc_ice_candidate")
-async def webrtc_ice_candidate_endpoint(request: Request):
-    try:
-        data = await request.json()
-        session_id = data.get("session_id")
-        candidate = data.get("candidate")
-
-        if not session_id or not candidate:
-            return {"success": False, "error": "Missing session_id or candidate"}
-
-        result = await handle_ice_candidate(session_id, candidate)
-        return result
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 
 @router.get("/get_training_status", response_model=dict[str, Any])
