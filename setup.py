@@ -42,6 +42,7 @@ setup(
         "rl_zoo3>=2.3.0",
         "minigrid>=2.0.0",
         "highway-env>=1.8.2",
+        "metaworld>=3.0.0",
         "sb3-contrib>=2.0.0",
         # "imitation>=1.0.0",
         "fastapi",
