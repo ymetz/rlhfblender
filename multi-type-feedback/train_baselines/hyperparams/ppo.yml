@@ -626,7 +626,7 @@ roundabout-v0:
 merge-v0:
     <<: *highway-defaults
 
-metaworld-sweep-into-v2: &metaworld-defaults
+metaworld-sweep-into-v3: &metaworld-defaults
     normalize: false
     policy: 'MlpPolicy'
     policy_kwargs: "dict(
@@ -643,10 +643,10 @@ metaworld-sweep-into-v2: &metaworld-defaults
     gae_lambda: 0.92
     n_timesteps: !!float 2e6
 
-metaworld-button-press-v2:
+metaworld-button-press-v3:
     <<: *metaworld-defaults
 
-metaworld-pick-place-v2:
+metaworld-pick-place-v3:
     <<: *metaworld-defaults
 
 #metaworld-pick-out-of-hole-v2:

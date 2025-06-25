@@ -15,7 +15,6 @@ from minigrid.wrappers import FlatObsWrapper
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.atari_wrappers import AtariWrapper
 from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecEnvWrapper, VecNormalize
-from train_baselines.utils import ppo_make_metaworld_env
 from train_baselines.wrappers import Gym3ToGymnasium
 
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
@@ -51,7 +50,7 @@ class TrainingUtils:
             environment = FlatObsWrapper(gym.make(env_name))
         elif "metaworld" in env_name:
             environment_name = env_name.replace("metaworld-", "")
-            environment = ppo_make_metaworld_env(environment_name, seed) if seed is not None else ppo_make_metaworld_env(environment_name, random.randint(0, 10000))
+            environment = gym.make("Meta-World/MT1", env_name=environment_name, seed=seed if seed is not None else random.randint(0, 10000))
         else:
             environment = gym.make(env_name)
 

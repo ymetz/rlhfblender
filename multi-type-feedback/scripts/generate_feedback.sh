@@ -3,7 +3,7 @@
 # Set the experiment parameters
 #envs=("Swimmer-v5" "HalfCheetah-v5" "Walker2d-v5")
 #envs=("ALE/Pong-v5" "ALE/BeamRider-v5" "ALE/MsPacman-v5" "ALE/Enduro-v5") #"ALE/Pong-v5" "ALE/BeamRider-v5" "ALE/MsPacman-v5" "ALE/Enduro-v5")
-#envs=("metaworld-sweep-into-v2" "metaworld-pick-place-v2" "metaworld-button-press-v2")
+#envs=("metaworld-sweep-into-v3" "metaworld-pick-place-v3" "metaworld-button-press-v3")
 envs=("LunarLander-v3")
 seeds=(1789 1687123 12 912391 330)
 

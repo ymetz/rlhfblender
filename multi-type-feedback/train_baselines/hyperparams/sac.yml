@@ -279,7 +279,7 @@ NeckEnvRelative-v2:
   policy_kwargs: "dict(log_std_init=-2, net_arch=[256, 256])"
 
 # === Meta-World
-metaworld-sweep-into-v2: &metaworld-defaults
+metaworld-sweep-into-v3: &metaworld-defaults
     policy: 'MlpPolicy'
     policy_kwargs: "dict(net_arch=[256, 256])"
     gamma: 0.99
@@ -287,8 +287,8 @@ metaworld-sweep-into-v2: &metaworld-defaults
     ent_coef: 'auto'
     n_timesteps: !!float 1e6
 
-metaworld-button-press-v2:
+metaworld-button-press-v3:
     <<: *metaworld-defaults
 
-metaworld-pick-place-v2:
+metaworld-pick-place-v3:
     <<: *metaworld-defaults

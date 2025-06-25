@@ -66,7 +66,7 @@ def numpy_to_python(obj):
 
 
 def get_metaworld_env(
-    env_name: str = "pick-place-v2",
+    env_name: str = "pick-place-v3",
     n_envs: int = 1,
     environment_config: Optional[Dict[str, Any]] = None,
     seed: Optional[int] = None,
@@ -78,54 +78,18 @@ def get_metaworld_env(
         raise ValueError("MetaWorld environments currently only support n_envs=1")
 
     try:
-        from metaworld import MT1
+        import metaworld
 
     except ImportError:
         raise ImportError("Please install MetaWorld to use MetaWorld environments")
 
     # Initialize MT1 benchmark
-    mt1 = MT1(env_name, seed=seed)
-
-    # Create environment
-    env = mt1.train_classes[env_name]()
-    env.set_task(mt1.train_tasks[0])
-
-    # Wrap in a class that converts to Gymnasium interface
-    wrapped_env = MetaWorldGymWrapper(env)
+    mt1 = gym.make("MetaWorld/MT1", env_name=env_name, seed=seed)
 
     # Create vectorized environment
-    vec_env = DummyVecEnv([lambda: wrapped_env])
+    vec_env = DummyVecEnv([lambda: mt1])
 
     return vec_env
-
-
-class MetaWorldGymWrapper(gym.Env):
-    """
-    Wraps MetaWorld environments to follow the Gymnasium interface.
-    """
-
-    def __init__(self, env):
-        self.env = env
-        self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=self.env.observation_space.shape, dtype=np.float32
-        )
-        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=self.env.action_space.shape, dtype=np.float32)
-
-    def reset(self, seed=None):
-        if seed is not None:
-            self.env.seed(seed)
-        obs = self.env.reset()
-        return obs, {}
-
-    def step(self, action):
-        obs, reward, terminated, info = self.env.step(action)
-        return obs, reward, terminated, False, info
-
-    def render(self):
-        return self.env.render()
-
-    def close(self):
-        self.env.close()
 
 
 def get_environment(
@@ -271,11 +235,8 @@ def initial_registration(
             importlib.import_module(env_module)
 
     # Check if this is a MetaWorld environment
+    is_metaworld = "metaworld" in env_id.lower()
     environment_id = env_id.replace("metaworld-", "")
-    is_metaworld = any(
-        name in environment_id.lower()
-        for name in ["pick-place-v2", "button-press-v2", "door-open-v2", "drawer-close-v2", "sweep", "sweep-into-v2"]
-    )
 
     if is_metaworld:
         env = get_metaworld_env(environment_id).envs[0]

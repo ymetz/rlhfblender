@@ -29,17 +29,6 @@ from stable_baselines3.common.vec_env import (
     VecNormalize,
 )
 
-# metaworld compatability
-try:
-    import metaworld
-    import metaworld.envs.mujoco.env_dict as _envs_dict
-
-    from train_baselines.wrappers import MetaWorldMonitor
-except ImportError:
-    # metaworld is not installed
-    _envs_dict = None
-    MetaWorldMonitor = None
-
 # For custom activation fn
 from torch import nn as nn
 
@@ -244,7 +233,6 @@ def create_test_env(
     # Avoid potential shared memory issue
     vec_env_cls = SubprocVecEnv if n_envs > 1 else DummyVecEnv
 
-    # Fix for gym 0.26, to keep old behavior
     env_kwargs = env_kwargs or {}
     env_kwargs = deepcopy(env_kwargs)
     if "render_mode" not in env_kwargs and should_render:
@@ -515,27 +503,13 @@ def get_model_path(
 
 
 # ======= Metaworld compabtability ========
-
-
-def ppo_make_metaworld_env(env_id, seed):
-    env_name = env_id.replace("metaworld-", "")
-    env_cls = _envs_dict.ALL_V2_ENVIRONMENTS[env_name]
-    env = env_cls(render_mode="rgb_array")
-
-    env._freeze_rand_vec = False
-    env._set_task_called = True
-    env.seed(seed)
-
-    return TimeLimit(env, 500)
-
-
 def make_vec_metaworld_env(
     env_id: str,
     n_envs: int = 1,
     reward_thres: float = 0.5,
     seed: Optional[int] = 1234,
     start_index: int = 0,
-    monitor_dir: Optional[str] = None,
+    monitor_dir: Optional[str] = "logs",
     wrapper_class: Optional[Callable[[gym.Env], gym.Env]] = None,
     env_kwargs: Optional[Dict[str, Any]] = None,
     vec_env_cls: Optional[Type[Union[DummyVecEnv, SubprocVecEnv]]] = None,
@@ -562,13 +536,16 @@ def make_vec_metaworld_env(
     :param monitor_kwargs: Keyword arguments to pass to the ``Monitor`` class constructor.
     :return: The wrapped environment
     """
+    import metaworld # noqa: F401 - for registration of MetaWorld environments
+    from train_baselines.wrappers import MetaWorldMonitor
+
     env_kwargs = {} if env_kwargs is None else env_kwargs
     vec_env_kwargs = {} if vec_env_kwargs is None else vec_env_kwargs
     monitor_kwargs = {} if monitor_kwargs is None else monitor_kwargs
 
     def make_env(rank):
         def _init():
-            env = ppo_make_metaworld_env(env_id, seed + rank)
+            env = gym.make("Meta-World/MT1", env_name=env_id, seed=seed, **env_kwargs)
             if seed is not None:
                 env.action_space.seed(seed + rank)
             # Wrap the env in a Monitor wrapper

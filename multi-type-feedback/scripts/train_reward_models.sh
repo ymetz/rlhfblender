@@ -3,7 +3,7 @@
 # Set the experiment parameters
 #envs=("Swimmer-v5" "HalfCheetah-v5" "Walker2d-v5")
 #envs=("Ant-v5" "Hopper-v5" "Humanoid-v5")
-#envs=("metaworld-button-press-v2" "metaworld-sweep-into-v2" "metaworld-pick-place-v2")
+#envs=("metaworld-button-press-v3" "metaworld-sweep-into-v3" "metaworld-pick-place-v3")
 #envs=("roundabout-v0" "merge-v0" "highway-fast-v0")
 #envs=("roundabout-v0" "merge-v0" "highway-fast-v0")
 #envs=("Swimmer-v5" "HalfCheetah-v5" "Walker2d-v5")

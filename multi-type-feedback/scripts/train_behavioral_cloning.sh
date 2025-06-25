@@ -1,7 +1,7 @@
 #!/bin/bash
 
 envs=("Ant-v5" "Hopper-v5" "Humanoid-v5" "HalfCheetah-v5" "Walker2d-v5" "Swimmer-v5")
-#envs=("metaworld-button-press-v2" "metaworld-sweep-into-v2" "metaworld-pick-place-v2")
+#envs=("metaworld-button-press-v3" "metaworld-sweep-into-v3" "metaworld-pick-place-v3")
 #envs=("merge-v0" "highway-fast-v0" "roundabout-v0")
 #seeds=(1789 1687123 12 912391 330)
 seeds=(1789 1687123 12)

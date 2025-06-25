@@ -18,7 +18,6 @@ from minigrid.wrappers import FlatObsWrapper
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.atari_wrappers import WarpFrame
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from train_baselines.utils import ppo_make_metaworld_env
 from train_baselines.wrappers import Gym3ToGymnasium
 
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
@@ -298,7 +297,7 @@ def main():
         environment = SaveResetEnvWrapper(FlatObsWrapper(gym.make(args.environment)))
     elif "metaworld" in args.environment:
         environment_name = args.environment.replace("metaworld-", "")
-        environment = SaveResetEnvWrapper(ppo_make_metaworld_env(environment_name, args.seed))
+        environment = SaveResetEnvWrapper(gym.make("Meta-World/MT1", env_name=environment_name, seed=args.seed))
     else:
         environment = SaveResetEnvWrapper(gym.make(args.environment))
 

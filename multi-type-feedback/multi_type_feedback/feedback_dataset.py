@@ -26,9 +26,9 @@ discount_factors = {
     "highway-fast-v0": 0.8,
     "merge-v0": 0.8,
     "roundabout-v0": 0.8,
-    "metaworld-sweep-into-v2": 0.99,
-    "metaworld-button-press-v2": 0.99,
-    "metaworld-pick-place-v2": 0.99,
+    "metaworld-sweep-into-v3": 0.99,
+    "metaworld-button-press-v3": 0.99,
+    "metaworld-pick-place-v3": 0.99,
 }
 
 

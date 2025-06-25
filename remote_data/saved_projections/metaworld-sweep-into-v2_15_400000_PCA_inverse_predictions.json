@@ -125711,7 +125711,7 @@
       -0.07420521229505539
     ]
   ],
-  "source_file": "metaworld-sweep-into-v2_15_400000_PCA.json",
+  "source_file": "metaworld-sweep-into-v3_15_400000_PCA.json",
   "prediction_timestamp": "2025-04-29 10:57:39",
   "summary": {
     "grid_rewards_mean": 0.010007953187450767,
