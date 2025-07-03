@@ -537,39 +537,60 @@ class InverseProjectionHandler:
         }
 
     @staticmethod
-    def generate_bivariate_colormap(resolution=256):
+    def interpolate_brbg(t):
         """
-        Generate a bivariate colormap from:
-        - Blue (high prediction) to Yellow (low prediction)
-        - Certainty shown via saturation (high certainty = vivid, low = grayscale)
-
-        Output:
-            colormap: (resolution x resolution x 3) RGB values in [0, 1]
+        Python implementation of d3.interpolateBrBG color scheme.
+        
+        Args:
+            t: Value between 0 and 1
+            
+        Returns:
+            RGB color as numpy array [r, g, b] in [0, 1] range
         """
-        # Define corner colors and convert to float for interpolation
-        top_left = np.array([255, 255, 169], dtype=float) / 255.0  # high certainty, low prediction
-        top_right = np.array([0, 150, 255], dtype=float) / 255.0  # high certainty, high prediction
-        bottom_left = np.array([140, 140, 140], dtype=float) / 255.0  # low certainty, low prediction
-        bottom_right = np.array([0, 0, 0], dtype=float) / 255.0  # low certainty, high prediction
-
-        # Interpolate grid
-        grid = np.zeros((resolution, resolution, 3))
-        for i in range(resolution):
-            for j in range(resolution):
-                v = i / (resolution - 1)  # certainty
-                h = j / (resolution - 1)  # prediction
-                top = (1 - h) * top_left + h * top_right
-                bottom = (1 - h) * bottom_left + h * bottom_right
-                grid[i, j] = v * top + (1 - v) * bottom
-
-        return grid
+        # BrBG color scheme (Brown-Blue-Green) color stops
+        # Based on d3.interpolateBrBG
+        colors = [
+            [0.329, 0.188, 0.020],  # Dark brown
+            [0.549, 0.318, 0.039],  # Brown
+            [0.749, 0.506, 0.176],  # Light brown
+            [0.874, 0.761, 0.490],  # Tan
+            [0.964, 0.909, 0.764],  # Light tan
+            [0.961, 0.961, 0.961],  # White (center)
+            [0.780, 0.917, 0.898],  # Light blue-green
+            [0.502, 0.804, 0.757],  # Blue-green
+            [0.207, 0.592, 0.561],  # Teal
+            [0.004, 0.424, 0.376],  # Dark teal
+            [0.000, 0.235, 0.188],  # Very dark teal
+        ]
+        
+        colors = np.array(colors)
+        
+        # Clamp t to [0, 1]
+        t = np.clip(t, 0, 1)
+        
+        # Scale t to color array indices
+        scaled_t = t * (len(colors) - 1)
+        
+        # Find the two colors to interpolate between
+        idx = int(np.floor(scaled_t))
+        idx = min(idx, len(colors) - 2)  # Ensure we don't go out of bounds
+        
+        # Interpolation factor
+        frac = scaled_t - idx
+        
+        # Linear interpolation between the two colors
+        color1 = colors[idx]
+        color2 = colors[idx + 1]
+        
+        return color1 + frac * (color2 - color1)
 
     @staticmethod
     def generate_vsup_colormap(resolution=256, num_bins=5):
         """
-        Generate a true Value-Suppressing Uncertainty Palette:
-        - Sequential colormap for value (e.g., blue gradient)
-        - Value differences become less distinguishable as uncertainty increases
+        Generate a Value-Suppressing Uncertainty Palette matching frontend VSUP logic:
+        - Uses BrBG color scheme for prediction values
+        - Uses interpolation to white for uncertainty (matching VSUP "usl" mode)
+        - uncertainty=0 -> full color, uncertainty=1 -> white
         - Optional quantization into discrete bins
 
         Parameters:
@@ -581,14 +602,6 @@ class InverseProjectionHandler:
         --------
         colormap: (resolution x resolution x 3) RGB values in [0, 1]
         """
-        # Create base sequential colormap for values (blue gradient)
-        from matplotlib.colors import LinearSegmentedColormap
-
-        # Create diverging colormap for values (blue to orange)
-        value_cmap = LinearSegmentedColormap.from_list(
-            "value", [(0.0, (0.32, 0.188, 0.019)), (1.0, (0.0, 0.235, 0.188))]  # Dark Yellow for low values
-        )  # Dark blue for high values
-
         # Create grid
         grid = np.zeros((resolution, resolution, 3))
 
@@ -605,19 +618,13 @@ class InverseProjectionHandler:
                     v_center = (value_bins[j] + value_bins[j + 1]) / 2
                     u_center = (uncertainty_bins[i] + uncertainty_bins[i + 1]) / 2
 
-                    # Calculate color based on bin center
-                    base_color = value_cmap(v_center)[:3]  # Get RGB only
+                    # Get base color from BrBG scheme based on prediction
+                    base_color = InverseProjectionHandler.interpolate_brbg(v_center)
 
-                    # Apply uncertainty effect - as uncertainty increases:
-                    # 1. Move color toward light gray
-                    # 2. Reduce value differentiation
-                    gray_level = 0.8  # Light gray
-                    uncertainty_effect = u_center**1.5  # Non-linear to emphasize high uncertainty
-
-                    # Mix base color with gray based on uncertainty
-                    adjusted_color = (1 - uncertainty_effect) * np.array(base_color) + uncertainty_effect * np.array(
-                        [gray_level, gray_level, gray_level]
-                    )
+                    # Apply uncertainty effect - interpolate with white
+                    # uncertainty=0 -> full color, uncertainty=1 -> white
+                    white = np.array([1.0, 1.0, 1.0])
+                    adjusted_color = (1 - u_center) * base_color + u_center * white
 
                     # Fill the bin area with this color
                     v_min, v_max = int(value_bins[j] * resolution), int(value_bins[j + 1] * resolution)
@@ -637,24 +644,14 @@ class InverseProjectionHandler:
                 for j in range(resolution):
                     v = j / (resolution - 1)  # value (0-1)
 
-                    # Get base color from value
-                    base_color = value_cmap(v)[:3]
+                    # Get base color from BrBG scheme based on prediction
+                    base_color = InverseProjectionHandler.interpolate_brbg(v)
 
-                    # Apply uncertainty effect with smooth transition
-                    gray_level = 0.8
-                    uncertainty_effect = u**1.5
-
-                    # Additional value suppression - compress the value range as uncertainty increases
-                    if uncertainty_effect > 0.5:
-                        # Calculate how much to move toward the mean value (0.5)
-                        value_suppression = (uncertainty_effect - 0.5) * 2  # 0-1 range
-                        v_compressed = v * (1 - value_suppression) + 0.5 * value_suppression
-                        base_color = value_cmap(v_compressed)[:3]
-
-                    # Mix with gray
-                    adjusted_color = (1 - uncertainty_effect) * np.array(base_color) + uncertainty_effect * np.array(
-                        [gray_level, gray_level, gray_level]
-                    )
+                    # Apply uncertainty effect - interpolate with white
+                    # This matches VSUP's: d3.interpolateLab(vcolor, "#fff")(uScale(data.u))
+                    # uncertainty=0 -> full color, uncertainty=1 -> white
+                    white = np.array([1.0, 1.0, 1.0])
+                    adjusted_color = (1 - u) * base_color + u * white
 
                     grid[i, j] = adjusted_color
 

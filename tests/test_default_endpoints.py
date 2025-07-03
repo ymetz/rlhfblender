@@ -3,6 +3,7 @@ Test the API endpoints.
 """
 
 import os
+os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,9 +16,6 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
-
-# Set DB environment variable
-os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
 
 # wait for app startup
