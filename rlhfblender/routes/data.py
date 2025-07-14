@@ -3,6 +3,9 @@ import os
 import uuid
 from enum import Enum
 from typing import Any
+import tempfile
+import base64
+import cv2
 
 import numpy as np
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
@@ -285,6 +288,13 @@ class ActionLabelRequest(BaseModel):
     envId: str
 
 
+class ClusterFrameRequest(BaseModel):
+    """Request model for extracting frames from cluster selection"""
+    cluster_indices: list[int]  # List of step indices within their respective episodes
+    episode_data: list[dict]    # List of episode information for each trajectory
+    max_states_to_show: int = 12
+
+
 @router.post("/get_action_label_urls", response_model=list[str])
 async def get_action_label_urls(request: ActionLabelRequest):
     """
@@ -303,6 +313,87 @@ async def get_action_label_urls(request: ActionLabelRequest):
 
     # Return the urls
     return [f"/action_labels/{db_env_name}/{file}" for file in action_label_files]
+
+
+@router.post("/get_cluster_frames", response_model=list[str])
+async def get_cluster_frames(request: ClusterFrameRequest):
+    """
+    Extract frames from videos for cluster selection.
+    Returns base64-encoded images for the specified steps from each trajectory.
+    Each cluster_index corresponds to a step within its respective episode.
+    """
+    try:
+        frame_images = []
+        
+        # Process each cluster index with its corresponding episode data
+        for cluster_index, episode_info in zip(request.cluster_indices, request.episode_data):
+            # Extract episode details
+            env_name = episode_info.get("env_name", "")
+            benchmark_id = episode_info.get("benchmark_id", 0)
+            checkpoint_step = episode_info.get("checkpoint_step", 0)
+            episode_num = episode_info.get("episode_num", 0)
+            
+            # Construct video path using same pattern as get_video endpoint
+            video_path = os.path.join(
+                "data",
+                "renders",
+                process_env_name(env_name),
+                f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
+                f"{episode_num}.mp4",
+            )
+            
+            if not os.path.exists(video_path):
+                # Skip if video doesn't exist but log the issue
+                print(f"Warning: Video not found at {video_path}")
+                continue
+                
+            # Extract frame at the specified step index within this episode
+            frame_base64 = extract_frame_from_video(video_path, cluster_index)
+            if frame_base64:
+                frame_images.append(frame_base64)
+        
+        return frame_images
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error extracting frames: {str(e)}")
+
+
+def extract_frame_from_video(video_path: str, frame_index: int) -> str | None:
+    """
+    Extract a specific frame from a video file and return as base64-encoded string.
+    """
+    try:
+        # Open the video file
+        cap = cv2.VideoCapture(video_path)
+        
+        if not cap.isOpened():
+            return None
+            
+        # Set frame position
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        
+        # Read the frame
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            return None
+            
+        # Convert BGR to RGB
+        #frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_rgb = frame
+        
+        # Encode frame as JPEG
+        _, buffer = cv2.imencode('.jpg', frame_rgb, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        
+        # Convert to base64
+        frame_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return f"data:image/jpeg;base64,{frame_base64}"
+        
+    except Exception as e:
+        print(f"Error extracting frame from {video_path} at index {frame_index}: {e}")
+        return None
 
 
 @router.post("/reset_sampler")

@@ -371,7 +371,7 @@ async def generate_data(benchmark_dicts: list[dict]):
                 )
             else:
                 if renders is not None and len(renders.shape) == 4 and renders.shape[0] > 0:
-                    save_image = renders[0]
+                    save_image = renders[-1]  # Use the last frame of the episode
                 else:
                     save_image = np.zeros((128, 128, 3), dtype=np.uint8)  # Placeholder image
                 # Save first frame of the episode
