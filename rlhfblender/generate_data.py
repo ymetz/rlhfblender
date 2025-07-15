@@ -102,8 +102,12 @@ if __name__ == "__main__":
             sys.exit(1)
         # turn into dict
         for kwarg in args.env_kwargs:
-            key, value = kwarg.split(":")
-            env_kwargs[key] = value
+            try:
+                key, value = kwarg.split(":")
+                env_kwargs[key] = value
+            except ValueError:
+                print(f"Invalid env_kwargs format: {kwarg}. Expected format is key:value.")
+                sys.exit(1)
 
     # Initialize database
     asyncio.run(init_db())
@@ -115,6 +119,7 @@ if __name__ == "__main__":
             entry_point=args.env_gym_entrypoint,
             display_name=args.env_display_name,
             additional_gym_packages=args.additional_gym_packages,
+            env_kwargs=env_kwargs,
             env_description=args.env_description,
             project=args.project,
             action_names=args.action_names,

@@ -128,7 +128,7 @@ async def register_experiment(
             exp_name=exp_name,
             env_id=env_id,
             path=path,
-            environment_config=env_kwargs,
+            environment_config={"env_kwargs": env_kwargs},
             framework=framework,
             **exp_kwargs,
         )
@@ -370,8 +370,8 @@ async def generate_data(benchmark_dicts: list[dict]):
                     episode_data["actions"][episode_idx],
                 )
             else:
-                if renders is not None and len(renders.shape) == 4 and renders.shape[0] > 0:
-                    save_image = renders[-1]  # Use the last frame of the episode
+                if renders is not None and len(renders.shape) == 4 and renders.shape[0] > 1:
+                    save_image = renders[-2]  # Use the second-to-last frame of the episode
                 else:
                     save_image = np.zeros((128, 128, 3), dtype=np.uint8)  # Placeholder image
                 # Save first frame of the episode

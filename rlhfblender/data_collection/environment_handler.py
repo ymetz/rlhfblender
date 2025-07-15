@@ -119,6 +119,7 @@ def get_environment(
 
     vec_env_cls = DummyVecEnv
 
+    print(f"Creating environment {env_name} with config: {environment_config}")
     env_kwargs = environment_config.get("env_kwargs", None)
     # add render_mode = 'rgb_array' to env_kwargs
     if env_kwargs is None:
@@ -130,6 +131,7 @@ def get_environment(
         # Register the environment with the given entry point to gym for the current session
         gym.register(id=env_name, entry_point=gym_entry_point)
 
+    print(f"Creating environment {env_name}")
     if "metaworld" in env_name.lower():
         from train_baselines.utils import make_vec_metaworld_env
 

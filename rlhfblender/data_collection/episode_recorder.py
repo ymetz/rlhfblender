@@ -213,6 +213,18 @@ class EpisodeRecorder:
     def handle_rendering(self):
         if self.render:
             render_frame = self.env.render()
+
+            # very special case for metaworld (which has a bug in the rendering) - check if the env is a metaworld env
+            # and has a camera name starting with "corner"
+            # TODO: Remove this special case when the bug is fixed in metaworld/mujoco
+            try:
+                if hasattr(self.env.envs[0].unwrapped, "camera_name") and self.env.envs[0].unwrapped.camera_name.startswith("corner"):
+                    # Rotate 180 degrees (2 times 90 degrees clockwise)
+                    render_frame = np.rot90(render_frame, k=2)
+            except AttributeError:
+                # If the environment does not have a camera_name attribute, we can skip this check
+                pass
+
             self.buffers["renders"].append(np.squeeze(render_frame))
 
     def environment_step(self, actions):
