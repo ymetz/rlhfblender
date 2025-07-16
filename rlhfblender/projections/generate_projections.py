@@ -8,7 +8,6 @@ with a grid of samples. The results are cached for use in the web interface.
 import argparse
 import asyncio
 import glob
-import hashlib
 import json
 import os
 import sys

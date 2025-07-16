@@ -6,6 +6,8 @@ from typing import Any
 import tempfile
 import base64
 import cv2
+import time
+import random
 
 import numpy as np
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
@@ -39,6 +41,9 @@ from rlhfblender.utils import convert_to_serializable, process_env_name
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/data")
+
+# Simulation store for web demo
+simulation_store = {}
 
 
 @router.get("/get_available_frameworks", response_model=list[str])
@@ -673,6 +678,41 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
     if not experiment_id:
         return JSONResponse(status_code=400, content={"status": "error", "message": "Missing experiment_id parameter"})
 
+    # Check if we should simulate training
+    simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
+    
+    if simulate_training:
+        # Start simulated training
+        simulation_key = f"{session_id}_{phase}"
+        
+        # Get the next training step number (increment from previous phases)
+        training_step = 1
+        for key, data in simulation_store.items():
+            if key.startswith(f"{session_id}_") and "final_training_step" in data:
+                training_step = max(training_step, data["final_training_step"] + 1)
+        
+        simulation_store[simulation_key] = {
+            "status": "training",
+            "start_time": time.time(),
+            "training_step": training_step,
+            "uncertainty": random.uniform(0.1, 0.5),
+            "avg_reward": random.uniform(0.3, 0.8),
+            "progress": 0.0,
+        }
+        
+        return JSONResponse(
+            content={
+                "phaseStatus": "training_started",
+                "message": "Training iteration started successfully",
+                "phaseTrainingStep": training_step,
+                "phaseUncertainty": 0.0,
+                "phaseReward": 0.0,
+                "session_id": session_id,
+                "num_feedback": 0,
+            }
+        )
+
+    # Original training logic for non-simulation mode
     exp = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
     if exp is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "No experiment found"})
@@ -756,6 +796,43 @@ async def get_training_status(request: Request):
     if session_id is None:
         return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
 
+    # Check if we should simulate training
+    simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
+    
+    if simulate_training:
+        simulation_key = f"{session_id}_{phase}"
+        if simulation_key in simulation_store:
+            sim_data = simulation_store[simulation_key]
+            elapsed_time = time.time() - sim_data["start_time"]
+            
+            # Calculate progress (complete after 5 seconds)
+            progress = min(elapsed_time / 5.0, 1.0)
+            sim_data["progress"] = progress
+            # Keep the training step constant during the 5-second simulation
+            
+            if progress >= 1.0:
+                sim_data["status"] = "completed"
+            
+            return JSONResponse(
+                content={
+                    "status": sim_data["status"],
+                    "message": (
+                        "Training in progress"
+                        if sim_data["status"] == "training"
+                        else "Training completed"
+                    ),
+                    "progress": progress,
+                    "training_step": sim_data["training_step"],
+                }
+            )
+        else:
+            return JSONResponse(
+                content={
+                    "status": "idle",
+                    "message": "No training in progress",
+                }
+            )
+
     # Get handler from cache or create a new one with phase
     handler = RewardModelHandler(None, session_id, phase)
 
@@ -782,6 +859,67 @@ async def get_training_results(request: Request):
 
     if session_id is None:
         return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
+
+    # Check if we should simulate training
+    simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
+    
+    if simulate_training:
+        simulation_key = f"{session_id}_{phase}"
+        if simulation_key in simulation_store:
+            sim_data = simulation_store[simulation_key]
+            elapsed_time = time.time() - sim_data["start_time"]
+            
+            # Calculate progress (complete after 5 seconds)
+            progress = min(elapsed_time / 5.0, 1.0)
+            training_complete = progress >= 1.0
+            
+            # Update simulation data
+            sim_data["progress"] = progress
+            # Keep the training step constant during the 5-second simulation
+            
+            if training_complete:
+                sim_data["status"] = "completed"
+                # Store final training step for next phase increment
+                final_step_key = f"{session_id}_final"
+                simulation_store[final_step_key] = {
+                    "final_training_step": sim_data["training_step"]
+                }
+                # Clean up simulation data after completion
+                del simulation_store[simulation_key]
+            
+            return JSONResponse(
+                content={
+                    "phaseStatus": "completed" if training_complete else "training",
+                    "message": (
+                        "Training completed successfully"
+                        if training_complete
+                        else "Training in progress"
+                    ),
+                    "phaseTrainingStep": sim_data["training_step"],
+                    "phaseUncertainty": sim_data["uncertainty"],
+                    "phaseReward": sim_data["avg_reward"],
+                    "trainingComplete": training_complete,
+                    "modelPath": "",
+                    "metrics": {
+                        "training_step": sim_data["training_step"],
+                        "progress": progress,
+                        "simulated": True,
+                    },
+                }
+            )
+        else:
+            return JSONResponse(
+                content={
+                    "phaseStatus": "idle",
+                    "message": "No training data available",
+                    "phaseTrainingStep": 0,
+                    "phaseUncertainty": 0.0,
+                    "phaseReward": 0.0,
+                    "trainingComplete": False,
+                    "modelPath": "",
+                    "metrics": {},
+                }
+            )
 
     handler = RewardModelHandler(None, session_id, phase)
 
