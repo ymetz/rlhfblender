@@ -5,6 +5,7 @@ Test the DATA API endpoints
 """
 
 import os
+
 os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
 from fastapi.testclient import TestClient

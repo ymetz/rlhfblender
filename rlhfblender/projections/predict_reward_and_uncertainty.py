@@ -27,7 +27,6 @@ from train_baselines.utils import ALGOS
 from rlhfblender.data_handling.database_handler import get_single_entry
 
 # For loading policies/agents
-from rlhfblender.data_models.agent import BaseAgent
 from rlhfblender.data_models.global_models import Experiment
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))

@@ -3,6 +3,7 @@ Test the API endpoints.
 """
 
 import os
+
 os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
 import pytest

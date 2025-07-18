@@ -1,8 +1,9 @@
+import abc
 import argparse
 import os
 import random
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Protocol, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -14,10 +15,15 @@ from gymnasium.wrappers import FrameStackObservation, TransformObservation
 from minigrid.wrappers import FlatObsWrapper
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.atari_wrappers import AtariWrapper
-from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecEnvWrapper, VecNormalize
-from train_baselines.wrappers import Gym3ToGymnasium
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    VecEnv,
+    VecEnvWrapper,
+    VecNormalize,
+)
 
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
+from train_baselines.wrappers import Gym3ToGymnasium
 
 try:
     import minigrid
@@ -28,29 +34,44 @@ try:
     import highway_env
 except ImportError:
     print("Cannot import highway env")
-
+try:
+    import metaworld
+except ImportError:
+    print("Cannot import metaworld")
 try:
     from procgen import ProcgenGym3Env
+
+    from train_baselines.wrappers import Gym3ToGymnasium
 except ImportError:
     print("Cannot import procgen")
 
 
 class TrainingUtils:
     @staticmethod
-    def setup_environment(env_name: str, seed: Optional[int] = None, save_reset_wrapper: bool = True) -> gym.Env:
+    def setup_environment(
+        env_name: str, seed: Optional[int] = None, save_reset_wrapper: bool = True
+    ) -> gym.Env:
         """Create and configure the environment based on the environment name."""
         if "procgen" in env_name:
             _, short_name, _ = env_name.split("-")
             environment = Gym3ToGymnasium(ProcgenGym3Env(num=1, env_name=short_name))
-            environment = TransformObservation(environment, lambda obs: obs["rgb"], environment.observation_space)
+            environment = TransformObservation(
+                environment, lambda obs: obs["rgb"], environment.observation_space
+            )
         elif "ALE/" in env_name:
             environment = FrameStackObservation(AtariWrapper(gym.make(env_name)), 4)
-            environment = TransformObservation(environment, lambda obs: obs.squeeze(-1), environment.observation_space)
+            environment = TransformObservation(
+                environment, lambda obs: obs.squeeze(-1), environment.observation_space
+            )
         elif "MiniGrid" in env_name:
             environment = FlatObsWrapper(gym.make(env_name))
         elif "metaworld" in env_name:
             environment_name = env_name.replace("metaworld-", "")
-            environment = gym.make("Meta-World/MT1", env_name=environment_name, seed=seed if seed is not None else random.randint(0, 10000))
+            environment = gym.make(
+                "Meta-World/MT1",
+                env_name=environment_name,
+                seed=seed if seed is not None else random.randint(0, 10000),
+            )
         else:
             environment = gym.make(env_name)
 
@@ -63,17 +84,23 @@ class TrainingUtils:
     def setup_base_parser() -> argparse.ArgumentParser:
         """Create a base argument parser with common arguments."""
         parser = argparse.ArgumentParser()
-        parser.add_argument("--environment", type=str, default="HalfCheetah-v5", help="Environment name")
+        parser.add_argument(
+            "--environment", type=str, default="HalfCheetah-v5", help="Environment name"
+        )
         parser.add_argument("--algorithm", type=str, default="ppo", help="RL algorithm")
         parser.add_argument("--seed", type=int, default=12, help="Random seed")
-        parser.add_argument("--n-feedback", type=int, default=-1, help="Number of feedback instances")
+        parser.add_argument(
+            "--n-feedback", type=int, default=-1, help="Number of feedback instances"
+        )
         parser.add_argument(
             "--noise-level",
             type=float,
             default=0.0,
             help="Noise level to add to feedback/demonstrations",
         )
-        parser.add_argument("--wandb-project-name", default="dynamic_rlhf", help="W&B project name")
+        parser.add_argument(
+            "--wandb-project-name", default="dynamic_rlhf", help="W&B project name"
+        )
         return parser
 
     @staticmethod
@@ -93,9 +120,15 @@ class TrainingUtils:
     @staticmethod
     def get_model_ids(args: argparse.Namespace) -> Tuple[str, str]:
         """Generate feedback and model IDs based on arguments."""
-        env_name = args.environment if "ALE" not in args.environment else args.environment.replace("/", "-")
+        env_name = (
+            args.environment
+            if "ALE" not in args.environment
+            else args.environment.replace("/", "-")
+        )
         feedback_id = f"{args.algorithm}_{env_name}_{args.seed}"
-        model_id = f"{feedback_id}_{getattr(args, 'feedback_type', 'default')}_{args.seed}"
+        model_id = (
+            f"{feedback_id}_{getattr(args, 'feedback_type', 'default')}_{args.seed}"
+        )
 
         if args.noise_level > 0.0:
             model_id = f"{model_id}_noise_{str(args.noise_level)}"
@@ -121,14 +154,20 @@ class TrainingUtils:
 
         if top_n_models:
             try:
-                run_eval_scores = pd.read_csv(os.path.join(checkpoints_path, "collected_results.csv"))
+                run_eval_scores = pd.read_csv(
+                    os.path.join(checkpoints_path, "collected_results.csv")
+                )
                 run_eval_scores = (
                     run_eval_scores.loc[run_eval_scores["env"] == env_name]
                     .sort_values(by=["eval_score"], ascending=False)
                     .head(top_n_models)["run"]
                     .to_list()
                 )
-                expert_model_paths = [path for path in expert_model_paths if path.split(os.path.sep)[-1] in run_eval_scores]
+                expert_model_paths = [
+                    path
+                    for path in expert_model_paths
+                    if path.split(os.path.sep)[-1] in run_eval_scores
+                ]
             except:
                 print("[WARN] No eval benchmark results available.")
 
@@ -136,7 +175,9 @@ class TrainingUtils:
         model_class = PPO if algorithm == "ppo" else SAC
 
         for expert_model_path in expert_model_paths:
-            if os.path.isfile(os.path.join(expert_model_path, env_name, "vecnormalize.pkl")):
+            if os.path.isfile(
+                os.path.join(expert_model_path, env_name, "vecnormalize.pkl")
+            ):
                 norm_env = VecNormalize.load(
                     os.path.join(expert_model_path, env_name, "vecnormalize.pkl"),
                     DummyVecEnv([lambda: environment]),
@@ -269,3 +310,31 @@ class L2RegulationCallback(pytorch_lightning.Callback):
 
         # Log current L2 value
         trainer.logger.log_metrics({"l2_regularization": self.current_l2})
+
+
+class RewardFn(Protocol):
+    """Abstract class for reward function.
+
+    Requires implementation of __call__() to compute the reward given a batch of
+    states, actions, next states and dones.
+    """
+
+    @abc.abstractmethod
+    def __call__(
+        self,
+        state: np.ndarray,
+        action: np.ndarray,
+        next_state: np.ndarray,
+        done: np.ndarray,
+    ) -> np.ndarray:
+        """Compute rewards for a batch of transitions.
+
+        Args:
+            state: Current states of shape `(batch_size,) + state_shape`.
+            action: Actions of shape `(batch_size,) + action_shape`.
+            next_state: Successor states of shape `(batch_size,) + state_shape`.
+            done: End-of-episode (terminal state) indicator of shape `(batch_size,)`.
+
+        Returns:
+            Computed rewards of shape `(batch_size,`).
+        """  # noqa: DAR202

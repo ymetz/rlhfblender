@@ -1,14 +1,14 @@
 import asyncio
+import base64
 import os
+import random
+import tempfile
+import time
 import uuid
 from enum import Enum
 from typing import Any
-import tempfile
-import base64
-import cv2
-import time
-import random
 
+import cv2
 import numpy as np
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer
@@ -295,8 +295,9 @@ class ActionLabelRequest(BaseModel):
 
 class ClusterFrameRequest(BaseModel):
     """Request model for extracting frames from cluster selection"""
+
     cluster_indices: list[int]  # List of step indices within their respective episodes
-    episode_data: list[dict]    # List of episode information for each trajectory
+    episode_data: list[dict]  # List of episode information for each trajectory
     max_states_to_show: int = 12
 
 
@@ -329,7 +330,7 @@ async def get_cluster_frames(request: ClusterFrameRequest):
     """
     try:
         frame_images = []
-        
+
         # Process each cluster index with its corresponding episode data
         for cluster_index, episode_info in zip(request.cluster_indices, request.episode_data):
             # Extract episode details
@@ -337,7 +338,7 @@ async def get_cluster_frames(request: ClusterFrameRequest):
             benchmark_id = episode_info.get("benchmark_id", 0)
             checkpoint_step = episode_info.get("checkpoint_step", 0)
             episode_num = episode_info.get("episode_num", 0)
-            
+
             # Construct video path using same pattern as get_video endpoint
             video_path = os.path.join(
                 "data",
@@ -346,19 +347,19 @@ async def get_cluster_frames(request: ClusterFrameRequest):
                 f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
                 f"{episode_num}.mp4",
             )
-            
+
             if not os.path.exists(video_path):
                 # Skip if video doesn't exist but log the issue
                 print(f"Warning: Video not found at {video_path}")
                 continue
-                
+
             # Extract frame at the specified step index within this episode
             frame_base64 = extract_frame_from_video(video_path, cluster_index)
             if frame_base64:
                 frame_images.append(frame_base64)
-        
+
         return frame_images
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error extracting frames: {str(e)}")
 
@@ -370,32 +371,32 @@ def extract_frame_from_video(video_path: str, frame_index: int) -> str | None:
     try:
         # Open the video file
         cap = cv2.VideoCapture(video_path)
-        
+
         if not cap.isOpened():
             return None
-            
+
         # Set frame position
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-        
+
         # Read the frame
         ret, frame = cap.read()
         cap.release()
-        
+
         if not ret:
             return None
-            
+
         # Convert BGR to RGB
-        #frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame_rgb = frame
-        
+
         # Encode frame as JPEG
-        _, buffer = cv2.imencode('.jpg', frame_rgb, [cv2.IMWRITE_JPEG_QUALITY, 90])
-        
+        _, buffer = cv2.imencode(".jpg", frame_rgb, [cv2.IMWRITE_JPEG_QUALITY, 90])
+
         # Convert to base64
-        frame_base64 = base64.b64encode(buffer).decode('utf-8')
-        
+        frame_base64 = base64.b64encode(buffer).decode("utf-8")
+
         return f"data:image/jpeg;base64,{frame_base64}"
-        
+
     except Exception as e:
         print(f"Error extracting frame from {video_path} at index {frame_index}: {e}")
         return None
@@ -680,17 +681,17 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
 
     # Check if we should simulate training
     simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
-    
+
     if simulate_training:
         # Start simulated training
         simulation_key = f"{session_id}_{phase}"
-        
+
         # Get the next training step number (increment from previous phases)
         training_step = 1
         for key, data in simulation_store.items():
             if key.startswith(f"{session_id}_") and "final_training_step" in data:
                 training_step = max(training_step, data["final_training_step"] + 1)
-        
+
         simulation_store[simulation_key] = {
             "status": "training",
             "start_time": time.time(),
@@ -699,7 +700,7 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
             "avg_reward": random.uniform(0.3, 0.8),
             "progress": 0.0,
         }
-        
+
         return JSONResponse(
             content={
                 "phaseStatus": "training_started",
@@ -798,29 +799,25 @@ async def get_training_status(request: Request):
 
     # Check if we should simulate training
     simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
-    
+
     if simulate_training:
         simulation_key = f"{session_id}_{phase}"
         if simulation_key in simulation_store:
             sim_data = simulation_store[simulation_key]
             elapsed_time = time.time() - sim_data["start_time"]
-            
+
             # Calculate progress (complete after 5 seconds)
             progress = min(elapsed_time / 5.0, 1.0)
             sim_data["progress"] = progress
             # Keep the training step constant during the 5-second simulation
-            
+
             if progress >= 1.0:
                 sim_data["status"] = "completed"
-            
+
             return JSONResponse(
                 content={
                     "status": sim_data["status"],
-                    "message": (
-                        "Training in progress"
-                        if sim_data["status"] == "training"
-                        else "Training completed"
-                    ),
+                    "message": ("Training in progress" if sim_data["status"] == "training" else "Training completed"),
                     "progress": progress,
                     "training_step": sim_data["training_step"],
                 }
@@ -862,39 +859,33 @@ async def get_training_results(request: Request):
 
     # Check if we should simulate training
     simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
-    
+
     if simulate_training:
         simulation_key = f"{session_id}_{phase}"
         if simulation_key in simulation_store:
             sim_data = simulation_store[simulation_key]
             elapsed_time = time.time() - sim_data["start_time"]
-            
+
             # Calculate progress (complete after 5 seconds)
             progress = min(elapsed_time / 5.0, 1.0)
             training_complete = progress >= 1.0
-            
+
             # Update simulation data
             sim_data["progress"] = progress
             # Keep the training step constant during the 5-second simulation
-            
+
             if training_complete:
                 sim_data["status"] = "completed"
                 # Store final training step for next phase increment
                 final_step_key = f"{session_id}_final"
-                simulation_store[final_step_key] = {
-                    "final_training_step": sim_data["training_step"]
-                }
+                simulation_store[final_step_key] = {"final_training_step": sim_data["training_step"]}
                 # Clean up simulation data after completion
                 del simulation_store[simulation_key]
-            
+
             return JSONResponse(
                 content={
                     "phaseStatus": "completed" if training_complete else "training",
-                    "message": (
-                        "Training completed successfully"
-                        if training_complete
-                        else "Training in progress"
-                    ),
+                    "message": ("Training completed successfully" if training_complete else "Training in progress"),
                     "phaseTrainingStep": sim_data["training_step"],
                     "phaseUncertainty": sim_data["uncertainty"],
                     "phaseReward": sim_data["avg_reward"],

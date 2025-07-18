@@ -1,4 +1,5 @@
 import os
+
 os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
 import gymnasium as gym
@@ -8,6 +9,7 @@ import pytest
 # Assuming your code is in a module named 'rlhfblender'
 from rlhfblender.data_collection.episode_recorder import EpisodeRecorder, convert_infos
 from rlhfblender.data_models.agent import RandomAgent
+
 
 class TestEpisodeRecorder:
 

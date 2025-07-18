@@ -218,7 +218,9 @@ class EpisodeRecorder:
             # and has a camera name starting with "corner"
             # TODO: Remove this special case when the bug is fixed in metaworld/mujoco
             try:
-                if hasattr(self.env.envs[0].unwrapped, "camera_name") and self.env.envs[0].unwrapped.camera_name.startswith("corner"):
+                if hasattr(self.env.envs[0].unwrapped, "camera_name") and self.env.envs[0].unwrapped.camera_name.startswith(
+                    "corner"
+                ):
                     # Rotate 180 degrees (2 times 90 degrees clockwise)
                     render_frame = np.rot90(render_frame, k=2)
             except AttributeError:

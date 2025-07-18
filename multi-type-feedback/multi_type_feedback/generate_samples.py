@@ -1,4 +1,3 @@
-import argparse
 import bisect
 import os
 import pickle
@@ -7,23 +6,16 @@ import re
 from pathlib import Path
 from typing import List, Type, Union
 
-# necessary to import ale_py/procgen, otherwise it will not be found
 import gymnasium as gym
 import numpy as np
-import pandas as pd
-import torch
-from gymnasium.wrappers.stateful_observation import FrameStackObservation
-from gymnasium.wrappers.transform_observation import TransformObservation
-from minigrid.wrappers import FlatObsWrapper
 from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.atari_wrappers import WarpFrame
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from train_baselines.wrappers import Gym3ToGymnasium
 
-from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
+from multi_type_feedback.utils import TrainingUtils
 
 
 def one_hot_vector(k, max_val):
+    """Convert action index to one-hot vector."""
     vec = np.zeros(max_val)
     np.put(vec, k, 1)
     return vec
@@ -31,8 +23,8 @@ def one_hot_vector(k, max_val):
 
 def create_segments(arr, start_indices, done_indices, segment_length):
     """
-    Creates array segments with target length (segment_length) and minimum length min_segment_len,
-    selects the longest contiguous array within a segment [start_indices: start_indeces+segment_length]
+    Creates array segments with target length (segment_length),
+    selects the longest contiguous array within a segment [start_indices: start_indices+segment_length]
     """
     segments = []
 
@@ -75,75 +67,81 @@ def create_segments(arr, start_indices, done_indices, segment_length):
 
 
 def discounted_sum_numpy(rewards, gamma):
+    """Calculate discounted sum of rewards."""
     return np.sum(rewards * (gamma ** np.arange(len(rewards))))
 
 
-def generate_feedback(
+def generate_samples(
     model_class: Type[Union[PPO, SAC]],
     expert_models: List[Union[PPO, SAC]],
     environment: gym.Env,
     environment_name: str = "HalfCheetah-v5",
-    checkpoints_path: str = "rl_checkpoints",
-    total_steps_factor: int = 50,
-    n_feedback: int = 100,
+    checkpoints_path: str = "gt_agents",
+    total_steps_factor: int = 5,
+    n_samples: int = 1000,
     segment_len: int = 50,
-    min_segment_len: int = 25,
-    algorithm: str = "sac",
+    algorithm: str = "ppo",
     device: str = "cuda",
-    binning_type: str = "width",
     action_one_hot: bool = False,
     random_sample: bool = False,
 ) -> dict:
-    """Generate agent's observations and feedback in the training environment."""
-    feedback_id = f"{algorithm}_{environment_name.replace('/', '-')}"
+    """Generate agent's observations and samples in the training environment."""
+
+    env_name = (
+        environment_name
+        if "ALE" not in environment_name
+        else environment_name.replace("/", "-")
+    )
 
     if not random_sample:
+        # Get available checkpoint indices
         possible_checkpoint_indices = [
             str(model_dir.split("_")[-1])
             for model_dir in os.listdir(os.path.join(checkpoints_path, algorithm))
-            if f"{environment_name.replace('/', '-')}" in model_dir
-        ]
-        checkpoints_dir = os.path.join(checkpoints_path, algorithm, f"{environment_name.replace('/', '-')}_1")
-
-        print(f"Generating feedback for: {feedback_id}")
-
-        # Adaptive oversampling
-        oversampling_factor = 1.0
-        target_n_feedback = int(n_feedback * oversampling_factor)
-
-        checkpoint_files = [file for file in os.listdir(checkpoints_dir) if re.search(r"rl_model_.*\.zip", file)] or [
-            f"{environment_name}.zip"
+            if env_name in model_dir
         ]
 
-        total_steps = n_feedback * total_steps_factor
+        checkpoints_dir = os.path.join(checkpoints_path, algorithm, f"{env_name}_1")
+
+        print(f"Generating samples for: {algorithm}_{env_name}")
+
+        # Get checkpoint files
+        checkpoint_files = [
+            file
+            for file in os.listdir(checkpoints_dir)
+            if re.search(r"rl_model_.*\.zip", file)
+        ] or [f"{env_name}.zip"]
+
+        total_steps = n_samples * total_steps_factor
         num_checkpoints = len(checkpoint_files) + 1
         steps_per_checkpoint = total_steps // num_checkpoints
-        feedback_per_checkpoint = target_n_feedback // num_checkpoints
+        samples_per_checkpoint = n_samples // num_checkpoints
         gamma = expert_models[0][0].gamma
 
-        checkpoint_files = ["random"] + sorted(checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group()))
+        checkpoint_files = ["random"] + sorted(
+            checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group())
+        )
 
     else:
         print(f"Generating random samples for: {environment_name}")
         checkpoint_files = ["random"]
-        target_n_feedback = n_feedback
-        total_steps = n_feedback * total_steps_factor
+        total_steps = n_samples * total_steps_factor
         num_checkpoints = 1
         steps_per_checkpoint = total_steps
-        feedback_per_checkpoint = target_n_feedback
+        samples_per_checkpoint = n_samples
         gamma = expert_models[0][0].gamma
 
     print(
         f"""
-    Feedback Generation Debug Info:
-      Feedback ID: {feedback_id}
+    Sample Generation Info:
+      Environment: {environment_name}
+      Algorithm: {algorithm}
       Number of Checkpoints: {num_checkpoints}
       Checkpoint Files: {checkpoint_files}
       Total Steps: {total_steps}
       Steps per Checkpoint: {steps_per_checkpoint}
-      Target Feedback: {n_feedback}
-      Oversampled Generated Feedback Instances: {target_n_feedback}
-      Feedback per Checkpoint: {feedback_per_checkpoint}
+      Target Samples: {n_samples}
+      Samples per Checkpoint: {samples_per_checkpoint}
       Env. Gamma: {gamma}
     """
     )
@@ -153,22 +151,30 @@ def generate_feedback(
 
     segments = []
     state_copies = []
+
     for model_file in checkpoint_files:
-        feedback = []
-        fb_indices = random.sample(range(steps_per_checkpoint - segment_len + 1), k=feedback_per_checkpoint + 1)
-        final_segment_indices = sorted(set(fb_indices))
+        trajectory = []
+        sample_indices = random.sample(
+            range(steps_per_checkpoint - segment_len + 1),
+            k=min(samples_per_checkpoint + 1, steps_per_checkpoint - segment_len + 1),
+        )
+        final_segment_indices = sorted(set(sample_indices))
 
         if model_file != "random":
-            # replace the _1 index by other possible indices, this only works if all models have exactly the same number of checkpoints
-            # model_path = checkpoints_dir.replace("_1", f"_{random.choice(possible_checkpoint_indices)}")
-            model_path = checkpoints_dir.replace("_1", "_5")
+            # Use specified checkpoint index
+            checkpoint_
+            model_path = checkpoints_dir.replace(
+                "_1", f"_{random.choice(possible_checkpoint_indices)}"
+            )
             model = model_class.load(
                 os.path.join(model_path, model_file),
                 custom_objects={"learning_rate": 0.0, "lr_schedule": lambda _: 0.0},
             )
-            norm_env_path = os.path.join(model_path, environment_name, "vecnormalize.pkl")
+            norm_env_path = os.path.join(model_path, env_name, "vecnormalize.pkl")
             norm_env = (
-                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment])) if os.path.isfile(norm_env_path) else None
+                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment]))
+                if os.path.isfile(norm_env_path)
+                else None
             )
         else:
             model = None
@@ -188,158 +194,123 @@ def generate_feedback(
             else:
                 actions = environment.action_space.sample()
 
-            next_observation, reward, terminated, truncated, _ = environment.step(actions)
+            next_observation, reward, terminated, truncated, _ = environment.step(
+                actions
+            )
             done = terminated or truncated
 
             if action_one_hot:
                 actions = one_hot_vector(actions, one_hot_dim)
 
-            feedback.append((np.expand_dims(observation, axis=0), actions, reward, done))
+            trajectory.append(
+                (np.expand_dims(observation, axis=0), actions, reward, done)
+            )
 
             observation = next_observation if not done else environment.reset()[0]
 
-            if step % 100 == 0:
-                print(f"Generate {step} steps ouf of {total_steps}")
+            if step % 1000 == 0:
+                print(f"Generated {step} steps out of {steps_per_checkpoint}")
 
         segments.extend(
             create_segments(
-                feedback,
+                trajectory,
                 final_segment_indices,
-                np.where([f[3] for f in feedback])[0],
+                np.where([t[3] for t in trajectory])[0],
                 segment_len,
             )
         )
-        print(len(segments))
 
-        print(f"Generated segments: {len(segments)} of target {target_n_feedback}")
+        print(f"Generated segments: {len(segments)} of target {n_samples}")
 
     return {"segments": segments}
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--experiment", type=int, default=0, help="Experiment number")
-    parser.add_argument("--algorithm", type=str, default="ppo", help="RL algorithm")
-    parser.add_argument("--environment", type=str, default="HalfCheetah-v5", help="Environment")
+    parser = TrainingUtils.setup_base_parser()
     parser.add_argument(
         "--n-steps-factor",
         type=int,
-        default=int(20),
-        help="Number of steps sampled for each feedback instance",
+        default=5,
+        help="Number of steps sampled for each sample instance",
     )
-    parser.add_argument(
-        "--n-feedback",
-        type=int,
-        default=int(1000),
-        help="How many feedback instances should be generated",
-    )
-    parser.add_argument("--seed", type=int, default=6389, help="TODO: Seed for env and stuff")
     parser.add_argument(
         "--segment-len",
         type=int,
         default=50,
-        help="How long is the segment we generate feedback for",
+        help="Segment length for sample generation",
     )
-    parser.add_argument("--save-folder", type=str, default="samples", help="Where to save the feedback")
-    parser.add_argument("--top-n-models", type=int, default=3)
-    parser.add_argument("--random", action="store_true")
+    parser.add_argument(
+        "--save-folder", type=str, default="samples", help="Save folder for samples"
+    )
+    parser.add_argument(
+        "--top-n-models", type=int, default=3, help="Top N models to use"
+    )
+    parser.add_argument(
+        "--expert-model-base-path",
+        type=str,
+        default="gt_agents",
+        help="Expert model base path",
+    )
+    parser.add_argument(
+        "--checkpoint-index",
+        type=int,
+        default=5,
+        help="Specific checkpoint index to use",
+    )
+    parser.add_argument(
+        "--random", action="store_true", help="Generate random samples only"
+    )
+    parser.add_argument(
+        "--n-samples",
+        type=int,
+        default=1000,
+        help="Number of samples to generate",
+    )
+
     args = parser.parse_args()
 
-    np.random.seed(args.seed)
-    random.seed(args.seed)
+    TrainingUtils.set_seeds(args.seed)
+    device = TrainingUtils.get_device()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    feedback_id = f"{args.algorithm}_{args.environment}"
+    feedback_id, _ = TrainingUtils.get_model_ids(args)
+
     if not args.random:
-        feedback_path = Path(__file__).parents[1].resolve() / args.save_folder / f"{feedback_id}_{args.seed}.pkl"
+        sample_path = Path(args.save_folder) / f"{feedback_id}_{args.seed}.pkl"
     else:
-        feedback_path = Path(__file__).parents[1].resolve() / args.save_folder / f"random_{args.environment}.pkl"
-    checkpoints_path = "../main/gt_agents"
+        sample_path = Path(args.save_folder) / f"random_{args.environment}.pkl"
 
-    # load "ensemble" of expert agents
-    env_name = args.environment if "ALE" not in args.environment else args.environment.replace("/", "-")
-    expert_model_paths = [
-        os.path.join(checkpoints_path, args.algorithm, model)
-        for model in os.listdir(os.path.join(checkpoints_path, args.algorithm))
-        if env_name in model
-    ]
-    orig_len = len(expert_model_paths)
-    # expert_model = (PPO if args.algorithm == "ppo" else SAC).load(
-    #    os.path.join(checkpoints_path, args.algorithm, f"{args.environment.replace("/", "-")}_1", "best_model.zip")
-    # )
+    environment = TrainingUtils.setup_environment(args.environment, args.seed)
 
-    try:
-        run_eval_scores = pd.read_csv(os.path.join(checkpoints_path, "collected_results.csv"))
-        run_eval_scores = (
-            run_eval_scores.loc[run_eval_scores["env"] == args.environment]
-            .sort_values(by=["eval_score"], ascending=False)
-            .head(args.top_n_models)["run"]
-            .to_list()
-        )
-        expert_model_paths = [path for path in expert_model_paths if path.split(os.path.sep)[-1] in run_eval_scores]
-    except:
-        print("[WARN] No eval benchmark results are available. Check you eval benchmarks")
-
-    if "procgen" in args.environment:
-        from procgen import ProcgenGym3Env  # noqa: F401
-
-        _, short_name, _ = args.environment.split("-")
-        environment = Gym3ToGymnasium(ProcgenGym3Env(num=1, env_name=short_name))
-        environment = SaveResetEnvWrapper(
-            TransformObservation(environment, lambda obs: obs["rgb"], environment.observation_space)
-        )
-    elif "ALE/" in args.environment:
-        environment = FrameStackObservation(WarpFrame(gym.make(args.environment)), 4)
-        environment = SaveResetEnvWrapper(
-            TransformObservation(environment, lambda obs: obs.squeeze(-1), environment.observation_space)
-        )
-    elif "MiniGrid" in args.environment:
-        environment = SaveResetEnvWrapper(FlatObsWrapper(gym.make(args.environment)))
-    elif "metaworld" in args.environment:
-        environment_name = args.environment.replace("metaworld-", "")
-        environment = SaveResetEnvWrapper(gym.make("Meta-World/MT1", env_name=environment_name, seed=args.seed))
-    else:
-        environment = SaveResetEnvWrapper(gym.make(args.environment))
-
-    expert_models = []
-    for expert_model_path in expert_model_paths:
-        if os.path.isfile(os.path.join(expert_model_path, env_name, "vecnormalize.pkl")):
-            norm_env = VecNormalize.load(
-                os.path.join(expert_model_path, env_name, "vecnormalize.pkl"),
-                DummyVecEnv([lambda: environment]),
-            )
-        else:
-            norm_env = None
-        expert_models.append(
-            (
-                (PPO if args.algorithm == "ppo" else SAC).load(os.path.join(expert_model_path, f"{env_name}.zip")),
-                norm_env,
-            )
-        )
-
-    model_class = PPO if args.algorithm == "ppo" else SAC
-
-    is_discrete_action = isinstance(environment.action_space, gym.spaces.Discrete)
-
-    feedback = generate_feedback(
-        model_class,
-        expert_models,
+    # Load expert models for gamma value
+    expert_models = TrainingUtils.load_expert_models(
+        args.environment,
+        args.algorithm,
+        str(args.expert_model_base_path),
         environment,
+        args.top_n_models,
+    )
+
+    # Generate samples
+    samples = generate_samples(
+        model_class=PPO if args.algorithm == "ppo" else SAC,
+        expert_models=expert_models,
+        environment=environment,
         environment_name=args.environment,
+        checkpoints_path=str(args.expert_model_base_path),
         total_steps_factor=args.n_steps_factor,
-        n_feedback=args.n_feedback,
+        n_samples=args.n_samples,
         segment_len=args.segment_len,
-        checkpoints_path=checkpoints_path,
         algorithm=args.algorithm,
         device=device,
         random_sample=args.random,
-        action_one_hot=is_discrete_action,
+        action_one_hot=isinstance(environment.action_space, gym.spaces.Discrete),
     )
 
-    feedback_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(feedback_path, "wb") as feedback_file:
-        print("FB path", feedback_path)
-        pickle.dump(feedback, feedback_file, protocol=pickle.HIGHEST_PROTOCOL)
+    # Save samples
+    sample_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(sample_path, "wb") as f:
+        pickle.dump(samples, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"Samples saved to: {sample_path}")
 
 
 if __name__ == "__main__":

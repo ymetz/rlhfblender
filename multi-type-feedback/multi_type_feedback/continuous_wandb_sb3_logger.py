@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Dict, Optional, Tuple
+import os
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import wandb
@@ -40,7 +41,12 @@ class WandbOutputFormat(KVWriter):
         self.global_step = global_step_offset
         self._is_closed = False
 
-    def write(self, key_values: Dict[str, Any], key_excluded: Dict[str, Tuple[str, ...]], step: int = 0) -> None:
+    def write(
+        self,
+        key_values: Dict[str, Any],
+        key_excluded: Dict[str, Tuple[str, ...]],
+        step: int = 0,
+    ) -> None:
         """
         Write key-value pairs to W&B, filtering excluded keys.
 
@@ -50,12 +56,16 @@ class WandbOutputFormat(KVWriter):
         :param key_excluded: Dictionary of keys to excluded formats
         :param step: Step parameter (ignored in favor of global_step)
         """
-        assert not self._is_closed, "The WandbOutputFormat was closed, please re-create one."
+        assert (
+            not self._is_closed
+        ), "The WandbOutputFormat was closed, please re-create one."
 
         # Filter out excluded keys
         log_dict = {}
 
-        for (key, value), (_, excluded) in zip(sorted(key_values.items()), sorted(key_excluded.items())):
+        for (key, value), (_, excluded) in zip(
+            sorted(key_values.items()), sorted(key_excluded.items())
+        ):
             if excluded is not None and "wandb" in excluded:
                 continue
 
@@ -84,13 +94,17 @@ class WandbOutputFormat(KVWriter):
                             log_dict[key] = value
                     except:
                         # If conversion fails, skip this key
-                        logger.warning(f"Skipping logging of {key}: unsupported type {type(value)}")
+                        logger.warning(
+                            f"Skipping logging of {key}: unsupported type {type(value)}"
+                        )
             else:
                 # Try to log other values, but this might fail for complex types
                 try:
                     log_dict[key] = value
                 except:
-                    logger.warning(f"Skipping logging of {key}: unsupported type {type(value)}")
+                    logger.warning(
+                        f"Skipping logging of {key}: unsupported type {type(value)}"
+                    )
 
         # Add global step to the logged metrics
         log_dict["global_step"] = step
@@ -194,7 +208,9 @@ def create_continuous_wandb_logger(
     additional_log_formats = []
     if additional_formats:
         for format_str in additional_formats:
-            if format_str.lower() != "wandb":  # Skip 'wandb' format as we handle it ourselves
+            if (
+                format_str.lower() != "wandb"
+            ):  # Skip 'wandb' format as we handle it ourselves
                 additional_log_formats.append(make_output_format(format_str, folder))
 
     # Create and return the logger

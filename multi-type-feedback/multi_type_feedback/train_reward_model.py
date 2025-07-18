@@ -22,6 +22,26 @@ from multi_type_feedback.networks import (
 )
 from multi_type_feedback.utils import TrainingUtils
 
+# for convenice sake, todo: make dynamic in the future
+discount_factors = {
+    "HalfCheetah-v5": 0.98,
+    "Hopper-v5": 0.99,
+    "Swimmer-v5": 0.9999,
+    "Ant-v5": 0.99,
+    "Walker2d-v5": 0.99,
+    "ALE/BeamRider-v5": 0.99,
+    "ALE/MsPacman-v5": 0.99,
+    "ALE/Enduro-v5": 0.99,
+    "ALE/Pong-v5": 0.99,
+    "Humanoid-v5": 0.99,
+    "highway-fast-v0": 0.8,
+    "merge-v0": 0.8,
+    "roundabout-v0": 0.8,
+    "metaworld-sweep-into-v2": 0.99,
+    "metaworld-button-press-v2": 0.99,
+    "metaworld-pick-place-v2": 0.99,
+}
+
 # Utilize Tensor Cores of NVIDIA GPUs
 torch.set_float32_matmul_precision("high")
 
@@ -32,6 +52,8 @@ def train_reward_model(
     feedback_type: FeedbackType,
     dataset: FeedbackDataset,
     maximum_epochs: int = 100,
+    cpu_count: int = 4,
+    algorithm: str = "sac",
     environment: str = "HalfCheetah-v3",
     gradient_clip_value: Union[float, None] = None,
     split_ratio: float = 0.8,
@@ -46,7 +68,9 @@ def train_reward_model(
 ):
     """Train a reward model given trajectories data."""
     training_set_size = math.floor(split_ratio * len(dataset))
-    train_set, val_set = random_split(dataset, lengths=[training_set_size, len(dataset) - training_set_size])
+    train_set, val_set = random_split(
+        dataset, lengths=[training_set_size, len(dataset) - training_set_size]
+    )
 
     train_loader = DataLoader(
         train_set,
@@ -110,15 +134,33 @@ def train_reward_model(
 
 def main():
     parser = TrainingUtils.setup_base_parser()
-    parser.add_argument("--feedback-type", type=str, default="evaluative", help="Type of feedback")
-    parser.add_argument("--n-ensemble", type=int, default=4, help="Number of ensemble models")
-    parser.add_argument("--no-loading-bar", action="store_true", help="Disable loading bar")
-    parser.add_argument("--feedback-folder", type=str, default="feedback", help="Folder to load feedback from")
-    parser.add_argument("--save-folder", type=str, default="reward_models", help="Save folder for trained reward models")
+    parser.add_argument(
+        "--feedback-type", type=str, default="evaluative", help="Type of feedback"
+    )
+    parser.add_argument(
+        "--n-ensemble", type=int, default=4, help="Number of ensemble models"
+    )
+    parser.add_argument(
+        "--no-loading-bar", action="store_true", help="Disable loading bar"
+    )
+    parser.add_argument(
+        "--feedback-folder",
+        type=str,
+        default="feedback",
+        help="Folder to load feedback from",
+    )
+    parser.add_argument(
+        "--save-folder",
+        type=str,
+        default="reward_models",
+        help="Save folder for trained reward models",
+    )
     args = parser.parse_args()
 
     TrainingUtils.set_seeds(args.seed)
-    environment = TrainingUtils.setup_environment(args.environment, args.seed, save_reset_wrapper=False)
+    environment = TrainingUtils.setup_environment(
+        args.environment, save_reset_wrapper=False
+    )
 
     feedback_id, model_id = TrainingUtils.get_model_ids(args)
 
@@ -130,12 +172,22 @@ def main():
     )(
         input_spaces=(environment.observation_space, environment.action_space),
         hidden_dim=256,
-        action_hidden_dim=(16 if "procgen" in args.environment or "ALE" in args.environment else 32),
-        layer_num=(3 if "procgen" in args.environment or "ALE" in args.environment else 6),
-        cnn_channels=((16, 32, 32) if "procgen" in args.environment or "ALE" in args.environment else None),
+        action_hidden_dim=(
+            16 if "procgen" in args.environment or "ALE" in args.environment else 32
+        ),
+        layer_num=(
+            3 if "procgen" in args.environment or "ALE" in args.environment else 6
+        ),
+        cnn_channels=(
+            (16, 32, 32)
+            if "procgen" in args.environment or "ALE" in args.environment
+            else None
+        ),
         output_dim=1,
         loss_function=(
-            calculate_single_reward_loss if args.feedback_type in ["evaluative", "descriptive"] else calculate_pairwise_loss
+            calculate_single_reward_loss
+            if args.feedback_type in ["evaluative", "descriptive"]
+            else calculate_pairwise_loss
         ),
         learning_rate=1e-5,
         ensemble_count=args.n_ensemble,
@@ -146,9 +198,12 @@ def main():
         args.feedback_type,
         args.n_feedback,
         noise_level=args.noise_level,
-        env=environment if args.feedback_type in "demonstrative" else None,
+        env=environment if args.feedback_type == "demonstrative" else None,
         env_name=args.environment,
         seed=args.seed,
+        discount_factor=discount_factors.get(
+            args.environment, 0.99
+        ),  # adapt for custom envs
     )
 
     train_reward_model(

@@ -37,7 +37,9 @@ def calculate_pairwise_loss(network: LightningModule, batch: Tensor):
     (obs1, actions1, mask1), (obs2, actions2, mask2) = pair_data
 
     # Compute network outputs
-    outputs1 = network(obs1, actions1)  # Shape: (batch_size, segment_length, output_dim)
+    outputs1 = network(
+        obs1, actions1
+    )  # Shape: (batch_size, segment_length, output_dim)
     outputs2 = network(obs2, actions2)
 
     # Sum over sequence dimension
@@ -66,7 +68,7 @@ def calculate_single_reward_loss(network: LightningModule, batch: Tensor):
     total_rewards = (outputs * masks).sum(dim=1).squeeze(-1)
 
     # Ensure targets have the correct shape
-    targets = targets.float().unsqueeze(1)  # Shape: (batch_size, 1)
+    targets = targets.float().squeeze()  # Shape: (batch_size,)
 
     # Compute loss
     loss = nn.MSELoss()(total_rewards, targets)
@@ -105,7 +107,9 @@ class SingleNetwork(LightningModule):
 
         action_is_discrete = isinstance(action_space, gym.spaces.Discrete)
 
-        input_dim = np.prod(obs_space.shape) + (np.prod(action_space.shape) if not action_is_discrete else action_space.n)
+        input_dim = np.prod(obs_space.shape) + (
+            np.prod(action_space.shape) if not action_is_discrete else action_space.n
+        )
 
         # Initialize the network
         layers_unit = [input_dim] + [hidden_dim] * (layer_num - 1)
@@ -131,7 +135,13 @@ class SingleNetwork(LightningModule):
             layers.append(last_activation())
 
             if self.ensemble_count > 1:
-                layers.append(Masksembles1D(channels=output_dim, n=self.ensemble_count, scale=self.masksemble_scale).float())
+                layers.append(
+                    Masksembles1D(
+                        channels=output_dim,
+                        n=self.ensemble_count,
+                        scale=self.masksemble_scale,
+                    ).float()
+                )
 
         self.network = nn.Sequential(*layers)
 
@@ -162,7 +172,9 @@ class SingleNetwork(LightningModule):
         actions_flat = actions.reshape(-1, action_dim)
 
         # Concatenate observations and actions
-        batch = torch.cat((obs_flat, actions_flat), dim=1)  # Shape: (batch_size * segment_length, obs_dim + action_dim)
+        batch = torch.cat(
+            (obs_flat, actions_flat), dim=1
+        )  # Shape: (batch_size * segment_length, obs_dim + action_dim)
 
         # Pass through the network
         output = self.network(batch)  # Shape: (batch_size * segment_length, output_dim)
@@ -183,7 +195,6 @@ class SingleNetwork(LightningModule):
         """Compute the loss for validation."""
         loss = self.loss_function(self, batch)
         self.log("val_loss", loss, prog_bar=True)
-        return loss
 
     def configure_optimizers(self):
         """Configure optimizer to optimize the neural network."""
@@ -233,11 +244,14 @@ class SingleCnnNetwork(LightningModule):
         action_shape = action_space.shape if action_space.shape else 1
         self.action_in = nn.Linear(action_shape, action_hidden_dim)
         self.masksemble_out = Masksembles1D(
-            channels=action_hidden_dim, n=self.ensemble_count, scale=self.masksemble_scale
+            channels=action_hidden_dim,
+            n=self.ensemble_count,
+            scale=self.masksemble_scale,
         ).float()
 
         self.fc = nn.Linear(
-            self.compute_flattened_size(obs_space.shape, cnn_channels) + action_hidden_dim,
+            self.compute_flattened_size(obs_space.shape, cnn_channels)
+            + action_hidden_dim,
             output_dim,
         )
 
@@ -249,10 +263,14 @@ class SingleCnnNetwork(LightningModule):
     def residual_block(self, in_channels):
         return nn.Sequential(
             nn.ReLU(),
-            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
+            Masksembles2D(
+                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
+            ).float(),
             self.conv_layer(in_channels, in_channels),
             nn.ReLU(),
-            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
+            Masksembles2D(
+                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
+            ).float(),
             self.conv_layer(in_channels, in_channels),
         )
 
@@ -266,7 +284,9 @@ class SingleCnnNetwork(LightningModule):
 
     def compute_flattened_size(self, observation_space, cnn_channels):
         with torch.no_grad():
-            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(-1)
+            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(
+                -1
+            )
             sample_output = self.conv_layers(sample_input).flatten(start_dim=1)
             return sample_output.shape[-1]
 
@@ -277,7 +297,9 @@ class SingleCnnNetwork(LightningModule):
         _, _, action_dim = actions.shape
 
         # Process observations through convolutional layers
-        obs_flat = observations.reshape(batch_size * segment_length, channels, height, width)
+        obs_flat = observations.reshape(
+            batch_size * segment_length, channels, height, width
+        )
         x = self.conv_layers(obs_flat)
         x = self.flatten(x)
         x = F.relu(x)
@@ -308,7 +330,6 @@ class SingleCnnNetwork(LightningModule):
         """Compute the loss for validation."""
         loss = self.loss_function(self, batch)
         self.log("val_loss", loss, prog_bar=True)
-        return loss
 
     def configure_optimizers(self):
         """Configure optimizer to optimize the neural network."""

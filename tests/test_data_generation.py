@@ -1,4 +1,5 @@
 import os
+
 os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
 import pytest
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from rlhfblender.app import app
 from rlhfblender.generate_data import generate_data
+
 
 class DataGerationTests:
 

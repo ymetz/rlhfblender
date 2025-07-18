@@ -540,10 +540,10 @@ class InverseProjectionHandler:
     def interpolate_brbg(t):
         """
         Python implementation of d3.interpolateBrBG color scheme.
-        
+
         Args:
             t: Value between 0 and 1
-            
+
         Returns:
             RGB color as numpy array [r, g, b] in [0, 1] range
         """
@@ -562,26 +562,26 @@ class InverseProjectionHandler:
             [0.004, 0.424, 0.376],  # Dark teal
             [0.000, 0.235, 0.188],  # Very dark teal
         ]
-        
+
         colors = np.array(colors)
-        
+
         # Clamp t to [0, 1]
         t = np.clip(t, 0, 1)
-        
+
         # Scale t to color array indices
         scaled_t = t * (len(colors) - 1)
-        
+
         # Find the two colors to interpolate between
         idx = int(np.floor(scaled_t))
         idx = min(idx, len(colors) - 2)  # Ensure we don't go out of bounds
-        
+
         # Interpolation factor
         frac = scaled_t - idx
-        
+
         # Linear interpolation between the two colors
         color1 = colors[idx]
         color2 = colors[idx + 1]
-        
+
         return color1 + frac * (color2 - color1)
 
     @staticmethod

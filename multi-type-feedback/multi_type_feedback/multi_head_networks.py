@@ -34,18 +34,32 @@ class MultiHeadNetwork(LightningModule):
         super().__init__()
 
         if feedback_types is None:
-            feedback_types = ["evaluative", "comparative", "demonstrative", "descriptive"]
+            feedback_types = [
+                "evaluative",
+                "comparative",
+                "demonstrative",
+                "descriptive",
+            ]
 
         self.feedback_types = feedback_types
         self.learning_rate = learning_rate
         self.ensemble_count = ensemble_count
         self.masksemble_scale = masksemble_scale
+        
+        # Create learned normalization parameters for each feedback type (for training)
+        self.loss_scale = nn.Parameter(torch.ones(len(feedback_types)))
+        self.loss_bias = nn.Parameter(torch.zeros(len(feedback_types)))
+        self.feedback_type_map = {
+            fb_type: i for i, fb_type in enumerate(feedback_types)
+        }
 
         obs_space, action_space = input_spaces
         action_is_discrete = isinstance(action_space, gym.spaces.Discrete)
 
         # Determine input dimension
-        input_dim = np.prod(obs_space.shape) + (np.prod(action_space.shape) if not action_is_discrete else action_space.n)
+        input_dim = np.prod(obs_space.shape) + (
+            np.prod(action_space.shape) if not action_is_discrete else action_space.n
+        )
 
         # Create shared backbone
         backbone_layers = []
@@ -97,7 +111,11 @@ class MultiHeadNetwork(LightningModule):
 
                 if self.ensemble_count > 1:
                     head_layers.append(
-                        Masksembles1D(channels=output_dim, n=self.ensemble_count, scale=self.masksemble_scale).float()
+                        Masksembles1D(
+                            channels=output_dim,
+                            n=self.ensemble_count,
+                            scale=self.masksemble_scale,
+                        ).float()
                     )
 
             self.heads[feedback_type] = nn.Sequential(*head_layers)
@@ -157,6 +175,8 @@ class MultiHeadNetwork(LightningModule):
         """Compute loss for training."""
         # Use the appropriate loss function for this feedback type
         if feedback_type in self.feedback_types:
+            feedback_idx = self.feedback_type_map[feedback_type]
+            
             # For single-reward feedback types
             if feedback_type in ["evaluative", "descriptive", "supervised"]:
                 data, targets = in_data
@@ -164,16 +184,23 @@ class MultiHeadNetwork(LightningModule):
                 observations, actions, masks = data[0], data[1], data[2]
 
                 # Forward pass
-                outputs = self.forward(observations, actions, feedback_type=feedback_type)
+                outputs = self.forward(
+                    observations, actions, feedback_type=feedback_type
+                )
 
                 # Sum over the sequence dimension to get total rewards per segment
                 total_rewards = (outputs * masks).sum(dim=1).squeeze(-1)
 
+                # Apply learned normalization for training-time gradient balancing
+                scale = torch.abs(self.loss_scale[feedback_idx]) + 1e-6  # Ensure positive
+                bias = self.loss_bias[feedback_idx]
+                normalized_rewards = total_rewards * scale + bias
+
                 # Ensure targets have the correct shape
-                targets = targets.float().unsqueeze(1)  # Shape: (batch_size, 1)
+                targets = targets.float().squeeze()  # Shape: (batch_size,)
 
                 # Compute loss
-                loss = nn.MSELoss()(total_rewards, targets)
+                loss = nn.MSELoss()(normalized_rewards, targets)
 
             # For pairwise feedback types
             else:
@@ -195,8 +222,16 @@ class MultiHeadNetwork(LightningModule):
                 rewards1 = (outputs1 * mask1).sum(dim=1).squeeze(-1)
                 rewards2 = (outputs2 * mask2).sum(dim=1).squeeze(-1)
 
+                # Apply learned normalization for training-time gradient balancing
+                scale = torch.abs(self.loss_scale[feedback_idx]) + 1e-6  # Ensure positive
+                bias = self.loss_bias[feedback_idx]
+                normalized_rewards1 = rewards1 * scale + bias
+                normalized_rewards2 = rewards2 * scale + bias
+
                 # Stack rewards and compute log softmax
-                rewards = torch.stack([rewards1, rewards2], dim=1)  # Shape: (batch_size, 2)
+                rewards = torch.stack(
+                    [normalized_rewards1, normalized_rewards2], dim=1
+                )  # Shape: (batch_size, 2)
                 log_probs = F.log_softmax(rewards, dim=1)
 
                 # Compute NLL loss
@@ -209,14 +244,14 @@ class MultiHeadNetwork(LightningModule):
     def training_step(self, batch, batch_idx):
         feedback_type, in_data = batch
 
-        loss = self._calculate_loss(in_data, feedback_type[0])
+        loss = self._calculate_loss(in_data, feedback_type)
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True, prog_bar=False)
         self.log("train_loss", loss, on_epoch=True, prog_bar=False)
         return loss
 
     def validation_step(self, batch, batch_idx):
         feedback_type, in_data = batch
-        loss = self._calculate_loss(in_data, feedback_type[0])
+        loss = self._calculate_loss(in_data, feedback_type)
         self.log(f"val_loss_{feedback_type}", loss, on_epoch=True, prog_bar=False)
         self.log("val_loss", loss, on_epoch=True, prog_bar=False)
         return loss

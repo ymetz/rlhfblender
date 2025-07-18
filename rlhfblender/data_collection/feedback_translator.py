@@ -1,5 +1,5 @@
 # feedback_translator.py
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from rlhfblender.data_collection.feedback_dataset_adapter import UnifiedFeedbackDataset
 from rlhfblender.data_models.feedback_models import (

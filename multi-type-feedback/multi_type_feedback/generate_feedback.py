@@ -9,7 +9,6 @@ import warnings
 from pathlib import Path
 from typing import List, Type, Union
 
-# necessary to import ale_py/procgen, otherwise it will not be found
 import gymnasium as gym
 import numpy as np
 import torch
@@ -26,7 +25,9 @@ except ImportError:
     collect_results = None
 
 
-def predict_expert_value(expert_model: Union[PPO, SAC], observation: np.ndarray, actions: Tensor = None) -> Tensor:
+def predict_expert_value(
+    expert_model: Union[PPO, SAC], observation: np.ndarray, actions: Tensor = None
+) -> Tensor:
     """Return the value from the expert's value function for a given observation and actions."""
 
     expert_model, norm_env = expert_model
@@ -38,7 +39,9 @@ def predict_expert_value(expert_model: Union[PPO, SAC], observation: np.ndarray,
     with torch.no_grad():
         return torch.min(
             (
-                torch.cat(expert_model.policy.critic_target(observation, actions), dim=1)
+                torch.cat(
+                    expert_model.policy.critic_target(observation, actions), dim=1
+                )
                 if isinstance(expert_model, SAC)
                 else expert_model.policy.predict_values(observation)
             ),
@@ -61,7 +64,11 @@ def get_state_dimensions(segments):
         np.concatenate(
             (
                 first_state[0].squeeze(0).flatten(),
-                (np.expand_dims(first_state[1], 0) if first_state[1].ndim == 0 else first_state[1]),
+                (
+                    np.expand_dims(first_state[1], 0)
+                    if first_state[1].ndim == 0
+                    else first_state[1]
+                ),
             )
         )
     )
@@ -107,7 +114,9 @@ def memory_efficient_clustering(segments, n_feedback):
     # Initialize KMeans
     state_dim = get_state_dimensions(segments)
     total_states = count_total_states(segments)
-    kmeans = MiniBatchKMeans(n_clusters=n_feedback, batch_size=n_feedback, random_state=42)
+    kmeans = MiniBatchKMeans(
+        n_clusters=n_feedback, batch_size=n_feedback, random_state=42
+    )
 
     # First pass: Train KMeans
     print("Training KMeans...")
@@ -299,7 +308,9 @@ def debug_feedback_output(feedback_data):
     print(f"Number of demos: {len(feedback_data['demos'])}")
     print(f"Number of corrections: {len(feedback_data['corrections'])}")
     print(f"Number of cluster descriptions: {len(feedback_data['description'])}")
-    print(f"Number of description preferences: {len(feedback_data['description_preference'])}")
+    print(
+        f"Number of description preferences: {len(feedback_data['description_preference'])}"
+    )
     print(f"Number of optimality gaps: {len(feedback_data['opt_gaps'])}")
 
     # Additional checks
@@ -341,7 +352,9 @@ def generate_feedback(
         for model_dir in os.listdir(os.path.join(checkpoints_path, algorithm))
         if f"{environment_name.replace('/', '-')}" in model_dir
     ]
-    checkpoints_dir = os.path.join(checkpoints_path, algorithm, f"{environment_name.replace('/', '-')}_1")
+    checkpoints_dir = os.path.join(
+        checkpoints_path, algorithm, f"{environment_name.replace('/', '-')}_1"
+    )
 
     print(f"Generating feedback for: {feedback_id}")
 
@@ -349,9 +362,11 @@ def generate_feedback(
     oversampling_factor = oversampling_factor
     target_n_feedback = int(n_feedback * oversampling_factor)
 
-    checkpoint_files = [file for file in os.listdir(checkpoints_dir) if re.search(r"rl_model_.*\.zip", file)] or [
-        f"{environment_name}.zip"
-    ]
+    checkpoint_files = [
+        file
+        for file in os.listdir(checkpoints_dir)
+        if re.search(r"rl_model_.*\.zip", file)
+    ] or [f"{environment_name}.zip"]
 
     total_steps = n_feedback * total_steps_factor
     num_checkpoints = len(checkpoint_files) + 1
@@ -359,7 +374,9 @@ def generate_feedback(
     feedback_per_checkpoint = target_n_feedback // num_checkpoints
     gamma = expert_models[0][0].gamma
 
-    checkpoint_files = ["random"] + sorted(checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group()))
+    checkpoint_files = ["random"] + sorted(
+        checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group())
+    )
 
     if action_one_hot:
         one_hot_dim = environment.action_space.n  # only works for discrete spaces
@@ -384,19 +401,27 @@ def generate_feedback(
     state_copies = []
     for model_file in checkpoint_files:
         feedback = []
-        fb_indices = random.sample(range(steps_per_checkpoint - segment_len + 1), k=feedback_per_checkpoint + 1)
+        fb_indices = random.sample(
+            range(steps_per_checkpoint - segment_len + 1), k=feedback_per_checkpoint + 1
+        )
         final_segment_indices = sorted(set(fb_indices))
 
         if model_file != "random":
             # replace the _1 index by other possible indices, this only works if all models have exactly the same number of checkpoints
-            model_path = checkpoints_dir.replace("_1", f"_{random.choice(possible_checkpoint_indices)}")
+            model_path = checkpoints_dir.replace(
+                "_1", f"_{random.choice(possible_checkpoint_indices)}"
+            )
             model = model_class.load(
                 os.path.join(model_path, model_file),
                 custom_objects={"learning_rate": 0.0, "lr_schedule": lambda _: 0.0},
             )
-            norm_env_path = os.path.join(model_path, environment_name, "vecnormalize.pkl")
+            norm_env_path = os.path.join(
+                model_path, environment_name, "vecnormalize.pkl"
+            )
             norm_env = (
-                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment])) if os.path.isfile(norm_env_path) else None
+                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment]))
+                if os.path.isfile(norm_env_path)
+                else None
             )
         else:
             model = None
@@ -416,7 +441,9 @@ def generate_feedback(
             else:
                 action = environment.action_space.sample()
 
-            next_observation, reward, terminated, truncated, _ = environment.step(action)
+            next_observation, reward, terminated, truncated, _ = environment.step(
+                action
+            )
             done = terminated or truncated
 
             if action_one_hot:
@@ -490,14 +517,18 @@ def generate_feedback(
                 if action_one_hot:
                     action = one_hot_vector(action, one_hot_dim)
 
-                demo.append((np.expand_dims(obs, axis=0), action, rew, done, exp_model_index))
+                demo.append(
+                    (np.expand_dims(obs, axis=0), action, rew, done, exp_model_index)
+                )
                 obs = new_obs
 
                 if done:
                     break
 
             current_demos.append(demo)
-            current_expert_model_returns.append(discounted_sum_numpy([d[2] for d in demo], gamma))
+            current_expert_model_returns.append(
+                discounted_sum_numpy([d[2] for d in demo], gamma)
+            )
 
         best_index = np.argmax(current_expert_model_returns)
         best_demo = current_demos[best_index]
@@ -547,7 +578,9 @@ def generate_feedback(
 
     # now we can sample the pairs after we have pruned segments
     tolerance = np.std(opt_gaps) / 10.0
-    preferences = get_preference_pairs(segments, opt_gaps, n_feedback, tolerance=tolerance)
+    preferences = get_preference_pairs(
+        segments, opt_gaps, n_feedback, tolerance=tolerance
+    )
 
     print("[INFO] Successfully generated comparative feedback")
 
@@ -566,14 +599,19 @@ def generate_feedback(
     del corrections
     del demo_data
 
-    cluster_representatives, cluster_rewards, kmeans = memory_efficient_clustering(segments=segments, n_feedback=n_feedback)
+    cluster_representatives, cluster_rewards, kmeans = memory_efficient_clustering(
+        segments=segments, n_feedback=n_feedback
+    )
 
     obs_dim = np.prod(segments[0][0][0].squeeze(0).shape)
     cluster_descriptions = [
-        (rep[:obs_dim], rep[obs_dim:], reward) for rep, reward in zip(cluster_representatives, cluster_rewards)
+        (rep[:obs_dim], rep[obs_dim:], reward)
+        for rep, reward in zip(cluster_representatives, cluster_rewards)
     ]
     tolerance = np.std(cluster_rewards) / 10.0
-    descr_preferences = get_preference_pairs_descript(cluster_descriptions, cluster_rewards, n_feedback, tolerance=tolerance)
+    descr_preferences = get_preference_pairs_descript(
+        cluster_descriptions, cluster_rewards, n_feedback, tolerance=tolerance
+    )
 
     # After clustering is done, restore demos and corrections
     with open(demo_file, "rb") as f:
@@ -607,12 +645,23 @@ def main():
         default=50,
         help="Segment length for feedback generation",
     )
-    parser.add_argument("--min-segment-len", type=int, default=None, help="Minimum segment length")
-    parser.add_argument("--oversampling_factor", type=float, default=1.5, help="Oversampling factor")
-    parser.add_argument("--save-folder", type=str, default="feedback", help="Save folder")
-    parser.add_argument("--top-n-models", type=int, default=3, help="Top N models to use")
     parser.add_argument(
-        "--expert-model-base-path", type=str, default="train_baselines/gt_agents", help="Expert model base path"
+        "--min-segment-len", type=int, default=None, help="Minimum segment length"
+    )
+    parser.add_argument(
+        "--oversampling_factor", type=float, default=1.5, help="Oversampling factor"
+    )
+    parser.add_argument(
+        "--save-folder", type=str, default="feedback", help="Save folder"
+    )
+    parser.add_argument(
+        "--top-n-models", type=int, default=3, help="Top N models to use"
+    )
+    parser.add_argument(
+        "--expert-model-base-path",
+        type=str,
+        default="gt_agents",
+        help="Expert model base path",
     )
     args = parser.parse_args()
 
@@ -628,7 +677,11 @@ def main():
     # scripts
     if collect_results is not None:
         try:
-            collect_results(args.expert_model_base_path.replace("\\", "/"), [args.algorithm], str(args.expert_model_base_path))
+            collect_results(
+                args.expert_model_base_path.replace("\\", "/"),
+                [args.algorithm],
+                str(args.expert_model_base_path),
+            )
         except:
             warnings.warn(
                 """No expert benchmark results could be found. Only random policies are available. Make sure to train expert models with train_baselines,
