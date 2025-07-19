@@ -145,7 +145,7 @@ class ProjectionHandler:
         else:
             raise ValueError("Joint projection path must be a .json metadata file or .pkl handler file")
 
-    def fit(self, data: np.array, sequence_length: int, step_range=None, episode_indices=None, actions=None, suffix=""):
+    def fit(self, data: np.ndarray, sequence_length: int, step_range=None, episode_indices=None, actions=None, suffix=""):
         """
         Fit the embedding method to the data.
 

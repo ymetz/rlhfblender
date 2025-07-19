@@ -26,7 +26,7 @@ from rlhfblender.data_models.global_models import (
     TrackingItem,
 )
 from rlhfblender.logger import CSVLogger, GoogleSheetsLogger, JSONLogger, SQLLogger
-from rlhfblender.routes import data, projection
+from rlhfblender.routes import data, demo_generation, dynamic_rlhf, projection
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend
 # from fastapi_sessions.frontends.implementations import SessionCookie, CookieParameters
@@ -47,6 +47,8 @@ app = FastAPI(
 )
 app.include_router(data.router)
 app.include_router(projection.router)
+app.include_router(dynamic_rlhf.router)
+app.include_router(demo_generation.router)
 
 app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_files")), name="files")
 app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")

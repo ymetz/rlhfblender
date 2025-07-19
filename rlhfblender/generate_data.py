@@ -17,6 +17,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate data for RLHFBlender")
     parser.add_argument("--exp", type=str, help="The experiment name.", default="")
     parser.add_argument("--env", type=str, help="The environment id.", default="", required=True)
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        help="The algorithm used for training. Defaults to None (e.g. when benchmarking with a random model).",
+        default=None,
+    )
     parser.add_argument("--num-episodes", type=int, help="The number of episodes to run.", default=10)
 
     group = parser.add_mutually_exclusive_group()
@@ -147,6 +153,7 @@ if __name__ == "__main__":
                 env_id=args.env,
                 env_kwargs=env_kwargs,
                 path=model_path,
+                algorithm=args.algorithm.lower() if args.algorithm else None,
                 framework="random" if args.random else args.framework,
                 project=args.project,
             )

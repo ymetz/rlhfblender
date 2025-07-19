@@ -159,7 +159,9 @@ def main():
 
     TrainingUtils.set_seeds(args.seed)
     environment = TrainingUtils.setup_environment(
-        args.environment, save_reset_wrapper=False
+        args.environment, args.seed,
+        env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs),
+        save_reset_wrapper=False
     )
 
     feedback_id, model_id = TrainingUtils.get_model_ids(args)

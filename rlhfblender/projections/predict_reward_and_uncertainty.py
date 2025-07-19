@@ -60,16 +60,36 @@ class RewardUncertaintyPredictor:
         """Load the reward model from checkpoint"""
         print(f"Loading reward model from {self.reward_model_path}")
 
+        # Fix PyTorch Lightning version issue if present
+        self._fix_checkpoint_version()
+
+        # Try loading with different network architectures
         try:
-            # First try loading as CNN network
+            # First try SingleCnnNetwork for CNN environments
             self.reward_model = SingleCnnNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
-        except Exception as e:
-            print(f"Failed to load as CNN network: {e}")
-            # Try loading as regular network
-            self.reward_model = SingleNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
+        except Exception:
+            try:
+                # Then try SingleNetwork for other environments
+                self.reward_model = SingleNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
+            except Exception:
+                # Finally try unified network
+                from multi_type_feedback.unified_network import UnifiedNetwork
+
+                self.reward_model = UnifiedNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
 
         self.reward_model.eval()
-        print(f"Successfully loaded reward model")
+        print("Successfully loaded reward model")
+
+    def _fix_checkpoint_version(self):
+        """Fix missing pytorch-lightning_version in checkpoint"""
+        checkpoint = torch.load(self.reward_model_path, map_location=self.device)
+
+        if "pytorch-lightning_version" not in checkpoint:
+            import pytorch_lightning as pl
+
+            checkpoint["pytorch-lightning_version"] = pl.__version__
+            torch.save(checkpoint, self.reward_model_path)
+            print("Fixed missing pytorch-lightning_version in checkpoint")
 
     def _load_policy_model(self):
         """Load the policy model from checkpoint"""

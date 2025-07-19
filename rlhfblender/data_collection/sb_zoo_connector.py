@@ -51,7 +51,7 @@ class StableBaselines3Agent(TrainedAgent):
             algo = config["algo"]
         except Exception:
             print("Could not read an algorithm from the config file, defaulting to PPO")
-            algo = "ppo"
+            algo = exp.algorithm.lower() if exp.algorithm else "ppo"
 
         # for some models, we use schedules for training, but we don't need them here for inference, we set it to 0
         self.model = ALGOS[algo].load(path, device=device, custom_objects={"learning_rate": 0.0, "clip_range": 0.0})

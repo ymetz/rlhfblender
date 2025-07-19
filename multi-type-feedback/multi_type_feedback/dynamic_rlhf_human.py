@@ -1,9 +1,10 @@
-import uuid
+import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple
 
 import gymnasium as gym
+from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 import numpy as np
 import pytorch_lightning
 import torch
@@ -114,6 +115,7 @@ class DynamicRLHF:
             "demonstrative",
             "descriptive",
         ],
+        n_training_iterations: int = 5,
         n_feedback_per_iteration: int = 50,
         feedback_buffer_size: int = 2000,
         rl_steps_per_iteration: int = 5000,
@@ -138,6 +140,7 @@ class DynamicRLHF:
         self.env_kwargs = env_kwargs  # Store environment kwargs
         self.algorithm = algorithm
         self.feedback_types = feedback_types
+        self.n_training_iterations = n_training_iterations
         self.n_feedback_per_iteration = n_feedback_per_iteration
         self.feedback_buffer_size = feedback_buffer_size
         self.rl_steps_per_iteration = rl_steps_per_iteration
@@ -156,10 +159,12 @@ class DynamicRLHF:
         self.shared_layer_num = shared_layer_num
         self.head_layer_num = head_layer_num
         self.feedback_embedding_dim = feedback_embedding_dim
+        self.segment_len = 50  # Length of each trajectory segment
 
         # Create a temporary environment to get action space info using proper setup
         temp_env = TrainingUtils.setup_environment(env_name, seed, 
                                                    env_kwargs=env_kwargs)
+        self.action_space = temp_env.action_space  # Store action space
         self.action_one_hot = isinstance(temp_env.action_space, gym.spaces.Discrete)
         if self.action_one_hot:
             self.one_hot_dim = temp_env.action_space.n
@@ -187,7 +192,8 @@ class DynamicRLHF:
             self.exp_manager.reward_function = self.reward_function
 
         # Perform initial reward model training before initializing RL agent
-        if self.initial_feedback_count > 0:
+        # Only if oracle is available (for automatic feedback generation)
+        if self.initial_feedback_count > 0 and self.oracle is not None:
             self.rl_agent = None  # need for collect_trajectories
             self._initialize_reward_models_with_random_feedback()
 
@@ -198,7 +204,7 @@ class DynamicRLHF:
         if custom_sb3_logger:
             self.rl_agent.set_logger(custom_sb3_logger)
 
-    def _init_rl_agent(self) -> Union[PPO, SAC]:
+    def _init_rl_agent(self) -> PPO | SAC:
         """Initialize the RL agent using ExperimentManager."""
         if self.exp_manager:
             # Use ExperimentManager to create the model
@@ -210,22 +216,32 @@ class DynamicRLHF:
                 raise ValueError("ExperimentManager failed to setup experiment")
         else:
             # Fallback to the original method if no ExperimentManager
-            temp_env = gym.make(self.env_name)
+            # Get hyperparameters with defaults
+            hyperparams = dict(self._hyperparams) if self._hyperparams else {}
+            
+            # Set default policy if not specified
+            if "policy" not in hyperparams:
+                hyperparams["policy"] = "MlpPolicy"
+            
+            temp_env = TrainingUtils.setup_environment(
+                self.env_name, self.seed, env_kwargs=self.env_kwargs
+            )
+            
             if self.algorithm == "ppo":
                 return PPO(
                     env=temp_env,
                     verbose=1,
                     seed=self.seed,
                     device=self.device,
-                    **self._hyperparams,
+                    **hyperparams,
                 )
             else:
                 return SAC(
-                    env=TrainingUtils.setup_environment(self.env_name, self.seed, env_kwargs=self.env_kwargs),
+                    env=temp_env,
                     verbose=1,
                     seed=self.seed,
                     device=self.device,
-                    **self._hyperparams,
+                    **hyperparams,
                 )
 
     def _init_reward_models(self):
@@ -295,7 +311,8 @@ class DynamicRLHF:
 
         # Create appropriate model based on environment
         if "ALE/" in self.env_name or "procgen" in self.env_name:
-            model = MultiHeadCnnNetwork(
+            # Use regular MultiHeadNetwork with CNN channels for CNN environments
+            model = MultiHeadNetwork(
                 input_spaces=(observation_space, action_space),
                 shared_layer_num=self.shared_layer_num,
                 head_layer_num=self.head_layer_num,
@@ -304,7 +321,7 @@ class DynamicRLHF:
                 output_dim=1,
                 feedback_types=self.feedback_types,
                 learning_rate=1e-5,
-                cnn_channels=(16, 32, 32),
+                cnn_channels=[16, 32, 32],
                 ensemble_count=self.num_ensemble_models,
             )
         else:
@@ -358,7 +375,16 @@ class DynamicRLHF:
         return {"unified": model}
 
     def _initialize_reward_models_with_random_feedback(self):
-        """Collect initial random feedback and train reward models before RL training begins."""
+        """
+        Initialize reward models. In the new asynchronous workflow, we skip initial feedback collection
+        and start with untrained reward models that will be trained once human feedback is collected.
+        """
+        if self.oracle is None:
+            print("\nSkipping initial feedback collection - using asynchronous workflow.")
+            print("Reward models will be trained once human feedback is loaded.")
+            return
+        
+        # Legacy oracle-based initialization (for backward compatibility)
         print(
             f"\nInitializing reward models with {self.initial_feedback_count} random feedback samples..."
         )
@@ -380,8 +406,8 @@ class DynamicRLHF:
                 self.n_feedback_per_iteration, temp_env
             )
 
-            # Always use random sampling for initial feedback
-            feedback, batch_counts = self.sample_feedback_random(
+            # Use oracle for initial feedback (legacy mode)
+            feedback, batch_counts = self._sample_feedback_with_oracle(
                 trajectories, initial_states
             )
 
@@ -440,12 +466,58 @@ class DynamicRLHF:
                 metrics_to_log[f"initial_reward_model/{feedback_type}_loss"] = loss
             self.wandb.log(metrics_to_log)
 
+    def _sample_feedback_with_oracle(
+        self, trajectories: list[list], initial_states: list[np.ndarray]
+    ) -> tuple[list[dict], dict[str, int]]:
+        """
+        Legacy method to sample feedback using oracle (for backward compatibility).
+        Only used when oracle is provided.
+        """
+        feedback_distribution = np.ones(len(self.feedback_types)) / len(
+            self.feedback_types
+        )
+        selected_types = np.random.choice(
+            self.feedback_types,
+            size=len(trajectories),
+            p=feedback_distribution,
+        )
+
+        feedback_counts = defaultdict(int)
+        all_feedback = []
+
+        for trajectory, initial_state, feedback_type in zip(
+            trajectories, initial_states, selected_types
+        ):
+            feedback_dict = {}
+
+            # Handle different feedback types
+            if feedback_type in ["comparative", "descriptive_preference"]:
+                # Need a second trajectory for comparison
+                trajectory2, _ = self.collect_trajectories(1)
+                feedback = self.oracle.get_feedback(
+                    (trajectory, trajectory2[0]), initial_state, feedback_type
+                )
+            else:
+                feedback = self.oracle.get_feedback(
+                    trajectory, initial_state, feedback_type
+                )
+
+            feedback_dict[feedback_type] = feedback
+            feedback_counts[feedback_type] += 1
+            all_feedback.append(feedback_dict)
+
+        return all_feedback, feedback_counts
+
     def collect_trajectories(
-        self, n_trajectories: int, env: gym.Env = None
-    ) -> Tuple[List[List[Tuple[np.ndarray, np.ndarray, float, bool]]], List[Any]]:
-        """Collect trajectories using current policy."""
+        self, n_trajectories: int, env: gym.Env | None = None, render: bool = False
+    ) -> Tuple[List[List[Tuple[np.ndarray, np.ndarray, float, bool, float]]], List[Any]]:
+        """Collect trajectories using current policy, including reward model uncertainties."""
         if env is None:
-            env = TrainingUtils.setup_environment(self.env_name, self.seed, env_kwargs=self.env_kwargs)
+            # add render_mode="rgb_array" if rendering is enabled
+            env_kwargs = self.env_kwargs.copy()
+            if render:
+                env_kwargs["render_mode"] = "rgb_array"#
+            env = TrainingUtils.setup_environment(self.env_name, self.seed, env_kwargs=env_kwargs)
             should_close = True
         else:
             should_close = False
@@ -459,19 +531,31 @@ class DynamicRLHF:
             # Use the original approach for saving initial states
             initial_states.append(env.save_state(observation=obs))
 
-            for _ in range(self.oracle.segment_len):
+            if render:
+                render_img = env.render()
+
+            for _ in range(self.segment_len):
                 if self.rl_agent is None:
                     # this is the case for initial generation, use random agent here
                     action = env.action_space.sample()
                 else:
                     action, _ = self.rl_agent.predict(obs, deterministic=False)
+                
+                # Compute uncertainty for current state-action pair
+                uncertainty = self._compute_step_uncertainty(obs, action)
+                
                 next_obs, reward, terminated, truncated, _ = env.step(action)
                 if self.action_one_hot:
                     action = one_hot_vector(action, self.one_hot_dim)
+                if render:
+                    next_render = env.render()
                 done = terminated or truncated
 
-                trajectory.append((np.expand_dims(obs, axis=0), action, reward, done))
+                # Very special case for bug in metaworld...comment out for other envs
+                render_img = np.rot90(render_img, k=2)
+                trajectory.append((np.expand_dims(obs, axis=0), action, reward, done, uncertainty, render_img))
                 obs = next_obs
+                render_img = next_render if render else None
 
                 if done:
                     break
@@ -812,6 +896,31 @@ class DynamicRLHF:
 
         return trajectory_uncertainty
 
+    def _compute_step_uncertainty(
+        self, 
+        state: np.ndarray, 
+        action: np.ndarray
+    ) -> float:
+        """Compute uncertainty for a single state-action pair across all trained reward models."""
+        # If no reward models have been trained yet, return high uncertainty
+        trained_models = [fb_type for fb_type in self.feedback_types 
+                         if len(self.feedback_buffers[fb_type]) > 0]
+        
+        if not trained_models:
+            return 1.0  # High uncertainty when no models trained
+        
+        # Create a single-step trajectory for uncertainty computation
+        single_step_trajectory = [(np.expand_dims(state, axis=0), action, 0.0, False)]
+        
+        # Compute uncertainty across all trained feedback types
+        uncertainties = []
+        for feedback_type in trained_models:
+            uncertainty = self.compute_model_uncertainty(single_step_trajectory, feedback_type)
+            uncertainties.append(uncertainty)
+        
+        # Return average uncertainty across all trained models
+        return np.mean(uncertainties) if uncertainties else 1.0
+
     def compute_trajectory_overall_uncertainty(
         self, trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]], 
         strategy: str = "average"
@@ -912,106 +1021,26 @@ class DynamicRLHF:
     def sample_feedback_uncertainty(
         self, trajectories: List[List], initial_states: List[np.ndarray]
     ) -> tuple[List[Dict], Dict[str, int]]:
-        """Sample feedback types based on ensemble variance for each reward model."""
-        # Calculate uncertainties for each trajectory and feedback type
-        trajectory_uncertainties = []
-
-        for trajectory in trajectories:
-            uncertainties = {}
-            for feedback_type in self.feedback_types:
-                if (
-                    len(self.feedback_buffers[feedback_type]) > 0
-                ):  # Only if model has been trained
-                    uncertainty = self.compute_model_uncertainty(
-                        trajectory, feedback_type
-                    )
-                else:
-                    # If no feedback yet, set high uncertainty to encourage exploration
-                    uncertainty = float("inf")
-                uncertainties[feedback_type] = uncertainty
-            trajectory_uncertainties.append(uncertainties)
-
-        # Sample feedback types based on uncertainties
-        feedback_counts = defaultdict(int)
-        all_feedback = []
-
-        # For each trajectory, sample feedback type with probability proportional to uncertainty
-        for trajectory, initial_state, uncertainties in zip(
-            trajectories, initial_states, trajectory_uncertainties
-        ):
-            # Normalize uncertainties to probabilities
-            total_uncertainty = sum(uncertainties.values())
-            if total_uncertainty == float("inf"):
-                # If no feedback yet for some types, sample uniformly from those
-                untrained_types = [
-                    ft
-                    for ft in self.feedback_types
-                    if len(self.feedback_buffers[ft]) == 0
-                ]
-                feedback_type = np.random.choice(untrained_types)
-            else:
-                probs = [
-                    uncertainties[ft] / total_uncertainty for ft in self.feedback_types
-                ]
-                feedback_type = np.random.choice(self.feedback_types, p=probs)
-
-            # Handle different feedback types
-            feedback_dict = {}
-            if feedback_type in ["comparative", "descriptive_preference"]:
-                # Need a second trajectory for comparison
-                trajectory2, _ = self.collect_trajectories(1)
-                feedback = self.oracle.get_feedback(
-                    (trajectory, trajectory2[0]), initial_state, feedback_type
-                )
-            else:
-                feedback = self.oracle.get_feedback(
-                    trajectory, initial_state, feedback_type
-                )
-
-            feedback_dict[feedback_type] = feedback
-            feedback_counts[feedback_type] += 1
-            all_feedback.append(feedback_dict)
-
-        return all_feedback, feedback_counts
+        """
+        DEPRECATED: This method relied on oracle feedback and is not used in the asynchronous workflow.
+        In the new workflow, human feedback is collected via the frontend.
+        """
+        raise NotImplementedError(
+            "sample_feedback_uncertainty is deprecated. "
+            "Use the asynchronous workflow with frontend human feedback collection instead."
+        )
 
     def sample_feedback_random(
         self, trajectories: List[List], initial_states: List[np.ndarray]
     ) -> tuple[List[Dict], Dict[str, int]]:
-        """Randomly sample feedback types."""
-        feedback_distribution = np.ones(len(self.feedback_types)) / len(
-            self.feedback_types
+        """
+        DEPRECATED: This method relied on oracle feedback and is not used in the asynchronous workflow.
+        In the new workflow, human feedback is collected via the frontend.
+        """
+        raise NotImplementedError(
+            "sample_feedback_random is deprecated. "
+            "Use the asynchronous workflow with frontend human feedback collection instead."
         )
-        selected_types = np.random.choice(
-            self.feedback_types,
-            size=len(trajectories),
-            p=feedback_distribution,
-        )
-
-        feedback_counts = defaultdict(int)
-        all_feedback = []
-
-        for trajectory, initial_state, feedback_type in zip(
-            trajectories, initial_states, selected_types
-        ):
-            feedback_dict = {}
-
-            # Handle different feedback types
-            if feedback_type in ["comparative", "descriptive_preference"]:
-                # Need a second trajectory for comparison
-                trajectory2, _ = self.collect_trajectories(1)
-                feedback = self.oracle.get_feedback(
-                    (trajectory, trajectory2[0]), initial_state, feedback_type
-                )
-            else:
-                feedback = self.oracle.get_feedback(
-                    trajectory, initial_state, feedback_type
-                )
-
-            feedback_dict[feedback_type] = feedback
-            feedback_counts[feedback_type] += 1
-            all_feedback.append(feedback_dict)
-
-        return all_feedback, feedback_counts
 
     def update_feedback_buffers(self, new_feedback: List[Dict]):
         """Update feedback buffers with new feedback while maintaining size limit."""
@@ -1258,6 +1287,240 @@ class DynamicRLHF:
                 final_rewards[i] = r_i.mean()
 
         return final_rewards.cpu().numpy()  # shape: [batch_size,]
+
+    def save_reward_models_checkpoint(self, checkpoint_step: int, exp_id: str) -> dict[str, str]:
+        """
+        Save reward models for a specific checkpoint for use with projection system.
+        
+        Args:
+            checkpoint_step: The checkpoint step number
+            exp_id: Experiment ID
+            
+        Returns:
+            Dictionary mapping feedback types to saved model paths
+        """
+        from pathlib import Path
+        import pytorch_lightning as pl
+        
+        # Create checkpoint directory
+        checkpoint_dir = Path(f"multi-type-feedback/reward_models/checkpoints")
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        saved_models = {}
+        
+        if self.reward_model_type == "separate":
+            # Save each feedback type's model separately
+            for feedback_type, model in self.reward_models.items():
+                # Create a descriptive filename
+                model_filename = f"{self.algorithm}_{self.env_name.lower().replace('-', '_')}_{exp_id}_{feedback_type}_{checkpoint_step}.ckpt"
+                model_path = checkpoint_dir / model_filename
+                
+                # Create proper PyTorch Lightning checkpoint
+                checkpoint_dict = {
+                    'state_dict': model.state_dict(),
+                    'lr_schedulers': [],
+                    'epoch': checkpoint_step,
+                    'global_step': checkpoint_step,
+                    'pytorch-lightning_version': pl.__version__,
+                    'hyper_parameters': model.hparams,
+                    'optimizer_states': [],
+                    'callbacks': {}
+                }
+                
+                torch.save(checkpoint_dict, model_path)
+                saved_models[feedback_type] = str(model_path)
+                print(f"Saved {feedback_type} reward model to: {model_path}")
+        
+        elif self.reward_model_type in ["multi-head", "unified"]:
+            # Save the single model that handles all feedback types
+            model = list(self.reward_models.values())[0]
+            model_filename = f"{self.algorithm}_{self.env_name.lower().replace('-', '_')}_{exp_id}_{self.reward_model_type}_{checkpoint_step}.ckpt"
+            model_path = checkpoint_dir / model_filename
+            
+            # Create proper PyTorch Lightning checkpoint
+            checkpoint_dict = {
+                'state_dict': model.state_dict(),
+                'lr_schedulers': [],
+                'epoch': checkpoint_step,
+                'global_step': checkpoint_step,
+                'pytorch-lightning_version': pl.__version__,
+                'hyper_parameters': model.hparams,
+                'optimizer_states': [],
+                'callbacks': {}
+            }
+            
+            torch.save(checkpoint_dict, model_path)
+            saved_models["unified"] = str(model_path)
+            print(f"Saved {self.reward_model_type} reward model to: {model_path}")
+        
+        return saved_models
+
+    def save(self, save_path: str) -> None:
+        """
+        Save the DynamicRLHF model including RL agent, reward models, and training state.
+        
+        Args:
+            save_path: Base path to save the model (without extension)
+        """
+        save_path = Path(save_path)
+        save_path.mkdir(parents=True, exist_ok=True)
+        
+        # Save the RL agent (StableBaselines3)
+        rl_agent_path = save_path / "rl_agent"
+        self.rl_agent.save(str(rl_agent_path))
+        
+        # Save reward models
+        reward_models_path = save_path / "reward_models"
+        reward_models_path.mkdir(exist_ok=True)
+        
+        for feedback_type, model in self.reward_models.items():
+            model_path = reward_models_path / f"{feedback_type}.ckpt"
+            torch.save(model.state_dict(), model_path)
+        
+        # Save training state and configuration
+        state_data = {
+            "env_name": self.env_name,
+            "env_kwargs": self.env_kwargs,
+            "algorithm": self.algorithm,
+            "feedback_types": self.feedback_types,
+            "n_feedback_per_iteration": self.n_feedback_per_iteration,
+            "feedback_buffer_size": self.feedback_buffer_size,
+            "rl_steps_per_iteration": self.rl_steps_per_iteration,
+            "reward_training_epochs": self.reward_training_epochs,
+            "device": self.device,
+            "num_ensemble_models": self.num_ensemble_models,
+            "initial_feedback_count": self.initial_feedback_count,
+            "reward_model_type": self.reward_model_type,
+            "shared_layer_num": self.shared_layer_num,
+            "head_layer_num": self.head_layer_num,
+            "feedback_embedding_dim": self.feedback_embedding_dim,
+            "action_one_hot": self.action_one_hot,
+            "one_hot_dim": getattr(self, 'one_hot_dim', None),
+            "feedback_buffers": self.feedback_buffers,
+            # Save Welford's algorithm state for reward standardization
+            "reward_mean": self.reward_mean.cpu().numpy() if self.reward_mean is not None else None,
+            "squared_distance_from_mean": self.squared_distance_from_mean.cpu().numpy() if self.squared_distance_from_mean is not None else None,
+            "reward_counters": self.reward_counters.cpu().numpy() if self.reward_counters is not None else None,
+        }
+        
+        state_path = save_path / "state.pkl"
+        with open(state_path, "wb") as f:
+            pickle.dump(state_data, f)
+        
+        print(f"DynamicRLHF model saved to {save_path}")
+
+    @classmethod
+    def load(cls, load_path: str, oracle: FeedbackOracle = None, exp_manager: ExperimentManager = None) -> "DynamicRLHF":
+        """
+        Load a DynamicRLHF model from disk.
+        
+        Args:
+            load_path: Base path to load the model from
+            oracle: FeedbackOracle instance (required for full functionality)
+            exp_manager: ExperimentManager instance (optional)
+            
+        Returns:
+            Loaded DynamicRLHF instance
+        """
+        load_path = Path(load_path)
+        
+        # Load training state and configuration
+        state_path = load_path / "state.pkl"
+        with open(state_path, "rb") as f:
+            state_data = pickle.load(f)
+        
+        # Create DynamicRLHF instance with saved configuration
+        drlhf = cls(
+            oracle=oracle,
+            env_name=state_data["env_name"],
+            env_kwargs=state_data["env_kwargs"],
+            algorithm=state_data["algorithm"],
+            feedback_types=state_data["feedback_types"],
+            n_feedback_per_iteration=state_data["n_feedback_per_iteration"],
+            feedback_buffer_size=state_data["feedback_buffer_size"],
+            rl_steps_per_iteration=state_data["rl_steps_per_iteration"],
+            reward_training_epochs=state_data["reward_training_epochs"],
+            device=state_data["device"],
+            num_ensemble_models=state_data["num_ensemble_models"],
+            initial_feedback_count=state_data["initial_feedback_count"],
+            reward_model_type=state_data["reward_model_type"],
+            shared_layer_num=state_data["shared_layer_num"],
+            head_layer_num=state_data["head_layer_num"],
+            feedback_embedding_dim=state_data["feedback_embedding_dim"],
+            exp_manager=exp_manager,
+        )
+        
+        # Load the RL agent
+        rl_agent_path = load_path / "rl_agent.zip"
+        if drlhf.algorithm == "ppo":
+            drlhf.rl_agent = PPO.load(str(rl_agent_path))
+        else:
+            drlhf.rl_agent = SAC.load(str(rl_agent_path))
+        
+        # Load reward models
+        reward_models_path = load_path / "reward_models"
+        for feedback_type, model in drlhf.reward_models.items():
+            model_path = reward_models_path / f"{feedback_type}.ckpt"
+            if model_path.exists():
+                model.load_state_dict(torch.load(model_path, map_location=drlhf.device))
+                model.to(drlhf.device)
+        
+        # Restore training state
+        drlhf.action_one_hot = state_data["action_one_hot"]
+        if state_data.get("one_hot_dim") is not None:
+            drlhf.one_hot_dim = state_data["one_hot_dim"]
+        drlhf.feedback_buffers = state_data["feedback_buffers"]
+        
+        # Restore Welford's algorithm state
+        if state_data["reward_mean"] is not None:
+            drlhf.reward_mean = torch.tensor(state_data["reward_mean"]).to(drlhf.device)
+        if state_data["squared_distance_from_mean"] is not None:
+            drlhf.squared_distance_from_mean = torch.tensor(state_data["squared_distance_from_mean"]).to(drlhf.device)
+        if state_data["reward_counters"] is not None:
+            drlhf.reward_counters = torch.tensor(state_data["reward_counters"]).to(drlhf.device)
+        
+        print(f"DynamicRLHF model loaded from {load_path}")
+        return drlhf
+
+    def load_feedback_dataset(self, feedback_dataset_path: str) -> dict:
+        """
+        Load processed feedback dataset and integrate it into DynamicRLHF feedback buffers.
+        
+        Args:
+            feedback_dataset_path: Path to the processed feedback dataset
+            
+        Returns:
+            Dictionary with feedback loading statistics
+        """
+        try:
+            # Load feedback dataset
+            with open(feedback_dataset_path, "rb") as f:
+                feedback_data = pickle.load(f)
+            
+            # Statistics tracking
+            stats = {"loaded_counts": defaultdict(int), "total_loaded": 0}
+            
+            # Process feedback data by type
+            for feedback_type, feedback_items in feedback_data.items():
+                if feedback_type in self.feedback_types:
+                    # Add to feedback buffers
+                    for item in feedback_items:
+                        if len(self.feedback_buffers[feedback_type]) >= self.feedback_buffer_size:
+                            # Remove oldest feedback
+                            self.feedback_buffers[feedback_type].pop(0)
+                        self.feedback_buffers[feedback_type].append(item)
+                        stats["loaded_counts"][feedback_type] += 1
+                        stats["total_loaded"] += 1
+            
+            print(f"Loaded feedback dataset from {feedback_dataset_path}")
+            print(f"Feedback counts: {dict(stats['loaded_counts'])}")
+            
+            return stats
+            
+        except Exception as e:
+            print(f"Error loading feedback dataset: {e}")
+            return {"error": str(e)}
+
 
     def train(self, total_timesteps: int, sampling_strategy: str = "random", query_sampling_strategy: str = "none", query_sampling_multiplier: float = 2.0):
         """

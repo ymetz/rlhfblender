@@ -671,7 +671,8 @@ def main():
     feedback_id, _ = TrainingUtils.get_model_ids(args)
     feedback_path = Path(args.save_folder) / f"{feedback_id}.pkl"
 
-    environment = TrainingUtils.setup_environment(args.environment, args.seed)
+    environment = TrainingUtils.setup_environment(args.environment, args.seed, 
+                                                  env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs))
 
     # try to load most recent benchmark scores for expert models, works if experts were created via train_baselines
     # scripts

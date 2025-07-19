@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Optional
 
 import cv2
 import gymnasium as gym
@@ -15,6 +16,9 @@ from rlhfblender.utils import process_env_name
 
 # Initialize database
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
+
+DATA_ROOT_DIR = "data"
+BENCHMARK_DIR = "saved_benchmarks"
 
 
 async def init_db():
@@ -112,6 +116,7 @@ async def register_env(
 async def register_experiment(
     exp_name: str,
     env_id: str,
+    algorithm: str | None = None,
     env_kwargs: dict | None = None,
     path: str | None = "",
     framework: str = "StableBaselines3",
@@ -128,6 +133,7 @@ async def register_experiment(
             exp_name=exp_name,
             env_id=env_id,
             path=path,
+            algorithm=algorithm.lower() if algorithm else "",
             environment_config={"env_kwargs": env_kwargs},
             framework=framework,
             **exp_kwargs,
@@ -170,6 +176,7 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
                 exp_name=exp_name,
                 env_id=benchmark_run["env"],
                 path=benchmark_run["path"],
+                algorithm=benchmark_run.get("algorithm", None),
                 framework=benchmark_run.get("framework", "random"),
                 env_kwargs=benchmark_run.get("env_kwargs", {}),
             )
@@ -283,9 +290,6 @@ def encode_video(renders: np.ndarray, path: str) -> None:
 
 async def generate_data(benchmark_dicts: list[dict]):
     """Main async method to generate data."""
-    DATA_ROOT_DIR = "data"
-    BENCHMARK_DIR = "saved_benchmarks"
-
     requests = []
     skipped = 0
     for item in benchmark_dicts:
@@ -310,6 +314,14 @@ async def generate_data(benchmark_dicts: list[dict]):
 
     benchmarked_experiments = await run_benchmark(requests)
 
+    if len(benchmarked_experiments) > 0:
+        print(f"Processing benchmark data for {len(benchmarked_experiments)} experiments.")
+        await _process_benchmark_data(requests, benchmarked_experiments)
+
+
+async def _process_benchmark_data(requests: list[dict], benchmarked_experiments: list[str]):
+    """Process the benchmark data and create videos, thumbnails, and rewards."""
+
     # Now create the video/thumbnail/reward data etc.
     for benchmark_run, exp_id in zip(requests, benchmarked_experiments, strict=False):
         # Path to benchmark file
@@ -317,7 +329,7 @@ async def generate_data(benchmark_dicts: list[dict]):
             process_env_name(benchmark_run["env"]),
             f"{process_env_name(benchmark_run['env'])}_{exp_id}_{benchmark_run['checkpoint_step']}.npz",
         )
-        data = np.load(f"data/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
+        data = np.load(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
         episode_data = split_data(data)
 
         for episode_idx, _ in enumerate(episode_data["dones"]):
@@ -335,11 +347,19 @@ async def generate_data(benchmark_dicts: list[dict]):
             )
             np.save(
                 f"data/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{episode_idx}.npy",
-                np.cumsum(episode_data["rewards"][episode_idx]),
+                np.array([rew for rew in episode_data["rewards"][episode_idx]]),
             )
 
-            # Save uncertainty data if available
-            if "infos" in episode_data:
+            if "uncertainty" in episode_data:
+                os.makedirs(
+                    f"data/uncertainty/{os.path.splitext(save_file_name)[0]}",
+                    exist_ok=True,
+                )
+                np.save(
+                    f"data/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{episode_idx}.npy",
+                    np.array([unc for unc in episode_data["uncertainty"][episode_idx]]),
+                )
+            elif "infos" in episode_data:
                 os.makedirs(
                     f"data/uncertainty/{os.path.splitext(save_file_name)[0]}",
                     exist_ok=True,

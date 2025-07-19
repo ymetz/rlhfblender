@@ -49,8 +49,8 @@ except ImportError:
 class TrainingUtils:
     @staticmethod
     def setup_environment(
-        env_name: str, seed: Optional[int] = None, save_reset_wrapper: bool = True
-    ) -> gym.Env:
+        env_name: str, seed: Optional[int] = None, env_kwargs: Optional[Dict[str, Any]] = None, save_reset_wrapper: bool = True
+    ) -> gym.Env | SaveResetEnvWrapper:
         """Create and configure the environment based on the environment name."""
         if "procgen" in env_name:
             _, short_name, _ = env_name.split("-")
@@ -59,21 +59,22 @@ class TrainingUtils:
                 environment, lambda obs: obs["rgb"], environment.observation_space
             )
         elif "ALE/" in env_name:
-            environment = FrameStackObservation(AtariWrapper(gym.make(env_name)), 4)
+            environment = FrameStackObservation(AtariWrapper(gym.make(env_name, **(env_kwargs or {}))), 4)
             environment = TransformObservation(
                 environment, lambda obs: obs.squeeze(-1), environment.observation_space
             )
         elif "MiniGrid" in env_name:
-            environment = FlatObsWrapper(gym.make(env_name))
+            environment = FlatObsWrapper(gym.make(env_name, **(env_kwargs or {})))
         elif "metaworld" in env_name:
             environment_name = env_name.replace("metaworld-", "")
             environment = gym.make(
                 "Meta-World/MT1",
                 env_name=environment_name,
                 seed=seed if seed is not None else random.randint(0, 10000),
+                **(env_kwargs or {}),
             )
         else:
-            environment = gym.make(env_name)
+            environment = gym.make(env_name, **(env_kwargs or {}))
 
         if save_reset_wrapper:
             environment = SaveResetEnvWrapper(environment)
@@ -86,6 +87,14 @@ class TrainingUtils:
         parser = argparse.ArgumentParser()
         parser.add_argument(
             "--environment", type=str, default="HalfCheetah-v5", help="Environment name"
+        )
+        parser.add_argument(
+            "--environment-kwargs",
+            type=str,
+            nargs="+",
+            help='Environment Kwargs (e.g. --env-kwargs key1:value1 key2:value2), e.g.: \
+                "env_wrapper:stable_baselines3.common.atari_wrappers.AtariWrapper frame_stack:4"',
+            default=[],
         )
         parser.add_argument("--algorithm", type=str, default="ppo", help="RL algorithm")
         parser.add_argument("--seed", type=int, default=12, help="Random seed")
@@ -192,6 +201,20 @@ class TrainingUtils:
             expert_models.append((model_class.load(model_path), norm_env))
 
         return expert_models
+
+
+    @staticmethod  
+    def parse_env_kwargs(env_kwargs: list[str]) -> Dict[str, Any]:
+        """Parse environment keyword arguments from a list of strings."""
+        env_kwargs_dict = {}
+        for kwarg in env_kwargs:
+            try:
+                key, value = kwarg.split(":")
+                env_kwargs_dict[key] = value
+            except ValueError:
+                print(f"Invalid env_kwargs format: {kwarg}. Expected format is key:value.")
+                raise
+        return env_kwargs_dict
 
     @staticmethod
     def setup_wandb_logging(
