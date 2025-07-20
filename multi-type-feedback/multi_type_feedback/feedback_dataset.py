@@ -8,6 +8,7 @@ from scipy.stats import truncnorm
 from torch.utils.data import Dataset
 
 from multi_type_feedback.datatypes import FeedbackData, FeedbackType, SegmentT
+from multi_type_feedback.utils import discount_factors
 
 
 def truncated_uniform_vectorized(mean, width, low=0, upp=9):

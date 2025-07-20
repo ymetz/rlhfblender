@@ -5,6 +5,7 @@ from multi_type_feedback.feedback_dataset import FeedbackDataset
 
 from rlhfblender.data_models.feedback_models import Segment, StandardizedFeedback, State, Target
 
+DATA_BASE_PATH = "data"  # Base path for data files
 
 class FeedbackDatasetAdapter:
     """Adapts Option 1 feedback objects to work with existing FeedbackDataset"""
@@ -103,6 +104,149 @@ class FeedbackDatasetAdapter:
         return legacy_data
 
     @staticmethod
+    def convert_to_dynamic_rlhf_format(feedbacks: list[StandardizedFeedback]) -> dict[str, Any]:
+        """Convert processed StandardizedFeedback to DynamicRLHF format."""
+        
+        # Group feedbacks by type
+        grouped = {}
+        for fb in feedbacks:
+            grouped.setdefault(fb.feedback_type, []).append(fb)
+
+        def empty_feedback_dict():
+            return {
+                "segments": [], "ratings": [], "preferences": [], "demos": [],
+                "corrections": [], "description": [], "description_preference": [], "opt_gaps": []
+            }
+
+        feedback_by_type = {}
+
+        # Process evaluative feedback (ratings)
+        if "rating" in grouped:
+            data = empty_feedback_dict()
+            for fb in grouped["rating"]:
+                if fb.targets and (segment := FeedbackDatasetAdapter._extract_segment(fb.targets[0])):
+                    data["segments"].append(segment)
+                    score = float(fb.content.score)
+                    data["ratings"].append(score)
+                    data["opt_gaps"].append(-score)
+            
+            if data["segments"]:
+                feedback_by_type["evaluative"] = data
+
+        # Process comparative feedback (ranking/comparison)
+        comparison_types = grouped.get("ranking", []) + grouped.get("comparison", [])
+        if comparison_types:
+            data = empty_feedback_dict()
+            segment_map = {}
+            
+            # Collect unique segments and create preference pairs
+            for fb in comparison_types:
+                # Map segments
+                for i, target in enumerate(fb.targets):
+                    seg_key = str(target.target_id)
+                    if seg_key not in segment_map and (segment := FeedbackDatasetAdapter._extract_segment(target)):
+                        segment_map[seg_key] = len(data["segments"])
+                        data["segments"].append(segment)
+                        pref_value = fb.content.preferences[i] if i < len(fb.content.preferences) else 0
+                        data["opt_gaps"].append(-float(pref_value))
+                
+                # Create preference pairs
+                if (len(fb.targets) >= 2 and len(fb.content.preferences) >= 2 and 
+                    all(str(fb.targets[j].target_id) in segment_map for j in range(2))):
+                    idx1, idx2 = segment_map[str(fb.targets[0].target_id)], segment_map[str(fb.targets[1].target_id)]
+                    pref = 1 if fb.content.preferences[0] > fb.content.preferences[1] else 0
+                    data["preferences"].append([idx1, idx2, pref])
+            
+            if data["segments"]:
+                feedback_by_type["comparative"] = data
+
+        # Process other feedback types
+        type_mappings = {
+            "demonstration": ("demonstrative", "demos", lambda fb: [FeedbackDatasetAdapter._extract_segment(fb.targets[0])] if fb.targets else []),
+            "correction": ("corrective", "corrections", lambda fb: [[FeedbackDatasetAdapter._extract_segment(fb.targets[0]), 
+                                                                FeedbackDatasetAdapter._extract_segment(fb.targets[1])]] 
+                        if len(fb.targets) >= 2 else [])
+        }
+        
+        for fb_type, (output_type, key, extractor) in type_mappings.items():
+            if fb_type in grouped:
+                data = empty_feedback_dict()
+                for fb in grouped[fb_type]:
+                    extracted = extractor(fb)
+                    data[key].extend([item for item in extracted if item])
+                
+                if data[key]:
+                    feedback_by_type[output_type] = data
+
+        # Process descriptive feedback (feature selection)
+        if "feature_selection" in grouped:
+            data = empty_feedback_dict()
+            cluster_rewards = []
+            
+            for fb in grouped["feature_selection"]:
+                if (fb.targets and (segment := FeedbackDatasetAdapter._extract_segment(fb.targets[0])) and segment):
+                    state, action = segment[0][0], segment[0][1]
+                    reward = getattr(fb.content, "importance", 0.0)
+                    data["description"].append((state, action, reward))
+                    cluster_rewards.append(reward)
+            
+            # Create preference pairs
+            for i in range(min(len(data["description"]) - 1, 10)):
+                if cluster_rewards[i] != cluster_rewards[i + 1]:
+                    pref = 1 if cluster_rewards[i] > cluster_rewards[i + 1] else 0
+                    data["description_preference"].append([i, i + 1, pref])
+            
+            if data["description"]:
+                feedback_by_type["descriptive"] = data
+
+        return feedback_by_type
+
+    @staticmethod
+    def save_dynamic_rlhf_format(feedbacks: list[StandardizedFeedback], file_path: str) -> bool:
+        """
+        Convert processed StandardizedFeedback to DynamicRLHF format split by feedback type and save to pickle files.
+        
+        Args:
+            feedbacks: List of processed StandardizedFeedback objects
+            file_path: Base path where to save the pickle files (will add _{feedback_type}.pkl)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        import pickle
+        import os
+        
+        try:
+            # Convert to DynamicRLHF format (split by type)
+            feedback_by_type = FeedbackDatasetAdapter.convert_to_dynamic_rlhf_format(feedbacks)
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            # Save each feedback type to a separate file
+            saved_files = []
+            for feedback_type, data in feedback_by_type.items():
+                type_file_path = f"{os.path.splitext(file_path)[0]}_{feedback_type}.pkl"
+                
+                with open(type_file_path, "wb") as f:
+                    pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+                
+                saved_files.append(type_file_path)
+                print(f"Saved {feedback_type} feedback to: {type_file_path}")
+                print(f"  {feedback_type} summary: {len(data['segments'])} segments, "
+                      f"{len(data['ratings'])} ratings, "
+                      f"{len(data['preferences'])} preferences, "
+                      f"{len(data['demos'])} demos, "
+                      f"{len(data['corrections'])} corrections")
+            
+            print(f"\nTotal files saved: {len(saved_files)}")
+            return True
+            
+        except Exception as e:
+            print(f"Error saving DynamicRLHF format feedback: {e}")
+            return False
+
+    @staticmethod
     def _extract_segment(target: Target) -> list[Tuple[np.ndarray, np.ndarray, float]]:
         """Extract segment data from target using episode reference information"""
         import os
@@ -121,7 +265,7 @@ class FeedbackDatasetAdapter:
 
             # Build episode path using the reference information
             episode_path = os.path.join(
-                "remote_data",  # Updated path based on your directory structure
+                DATA_BASE_PATH,  # Updated path based on your directory structure
                 "episodes",
                 processed_env_name,
                 f"{processed_env_name}_{target.benchmark_id}_{target.checkpoint_step}",

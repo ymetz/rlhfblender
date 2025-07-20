@@ -1,10 +1,10 @@
+import os
 import pickle
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import gymnasium as gym
-from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 import numpy as np
 import pytorch_lightning
 import torch
@@ -20,6 +20,7 @@ from multi_type_feedback.continuous_wandb_sb3_logger import (
 from multi_type_feedback.dynamic_rlhf_callback import RewardModelUpdateCallback
 from multi_type_feedback.feedback_dataset import (
     BufferDataset,
+    LoadFeedbackDataset,
 )
 from multi_type_feedback.feedback_oracle import FeedbackOracle
 from multi_type_feedback.multi_head_networks import (
@@ -45,6 +46,7 @@ from multi_type_feedback.utils import (
     RewardFn,
     TrainingUtils,
     get_project_root,
+    discount_factors,
 )
 from multi_type_feedback.wandb_logger import ContinuousWandbLogger
 from train_baselines.exp_manager import ExperimentManager
@@ -591,7 +593,7 @@ class DynamicRLHF:
                 full_dataset = BufferDataset(buffer_data)
 
                 # Split dataset for validation
-                val_size = int(len(full_dataset) * 0.368)
+                val_size = int(len(full_dataset) * 0.3)
                 train_size = len(full_dataset) - val_size
 
                 if train_size <= 0 or val_size <= 0:
@@ -1355,27 +1357,51 @@ class DynamicRLHF:
         
         return saved_models
 
-    def save(self, save_path: str) -> None:
+    def save(self, save_path: str, checkpoint_step: int = None, exp_id: str = None) -> None:
         """
         Save the DynamicRLHF model including RL agent, reward models, and training state.
+        Uses the same paths as save_reward_models_checkpoint for compatibility with projections.
         
         Args:
             save_path: Base path to save the model (without extension)
+            checkpoint_step: Optional checkpoint step for projection compatibility
+            exp_id: Optional experiment ID for projection compatibility
         """
         save_path = Path(save_path)
         save_path.mkdir(parents=True, exist_ok=True)
         
-        # Save the RL agent (StableBaselines3)
-        rl_agent_path = save_path / "rl_agent"
-        self.rl_agent.save(str(rl_agent_path))
-        
-        # Save reward models
-        reward_models_path = save_path / "reward_models"
-        reward_models_path.mkdir(exist_ok=True)
-        
-        for feedback_type, model in self.reward_models.items():
-            model_path = reward_models_path / f"{feedback_type}.ckpt"
-            torch.save(model.state_dict(), model_path)
+        # If checkpoint_step and exp_id are provided, use projection-compatible paths
+        if checkpoint_step is not None and exp_id is not None:
+            # Use save_reward_models_checkpoint for reward models (projection compatibility)
+            saved_model_paths = self.save_reward_models_checkpoint(checkpoint_step, exp_id)
+            
+            # Save RL agent to projection-compatible path
+            agent_dir = Path("multi-type-feedback/train_baselines/dynamic_rlhf_agents")
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            agent_filename = f"{self.algorithm}_{self.env_name.lower().replace('-', '_')}_{exp_id}_{checkpoint_step}.zip"
+            agent_path = agent_dir / agent_filename
+            self.rl_agent.save(agent_path)  # Remove .zip as save() adds it
+            
+            # Store paths in state data for loading reference
+            state_data_model_paths = saved_model_paths
+            state_data_agent_path = str(agent_path)
+        else:
+            # Use local paths (original behavior for backward compatibility)
+            # Save the RL agent (StableBaselines3)
+            rl_agent_path = save_path / "rl_agent"
+            self.rl_agent.save(rl_agent_path)
+            
+            # Save reward models locally
+            reward_models_path = save_path / "reward_models"
+            reward_models_path.mkdir(exist_ok=True)
+            
+            state_data_model_paths = {}
+            for feedback_type, model in self.reward_models.items():
+                model_path = reward_models_path / f"{feedback_type}.ckpt"
+                torch.save(model.state_dict(), model_path)
+                state_data_model_paths[feedback_type] = str(model_path)
+            
+            state_data_agent_path = str(rl_agent_path) + ".zip"
         
         # Save training state and configuration
         state_data = {
@@ -1401,13 +1427,20 @@ class DynamicRLHF:
             "reward_mean": self.reward_mean.cpu().numpy() if self.reward_mean is not None else None,
             "squared_distance_from_mean": self.squared_distance_from_mean.cpu().numpy() if self.squared_distance_from_mean is not None else None,
             "reward_counters": self.reward_counters.cpu().numpy() if self.reward_counters is not None else None,
+            # Store model and agent paths for loading
+            "saved_model_paths": state_data_model_paths,
+            "saved_agent_path": state_data_agent_path,
+            "checkpoint_step": checkpoint_step,
+            "exp_id": exp_id,
         }
         
-        state_path = save_path / "state.pkl"
+        state_path = str(save_path) + "state.pkl"
         with open(state_path, "wb") as f:
             pickle.dump(state_data, f)
         
         print(f"DynamicRLHF model saved to {save_path}")
+        if checkpoint_step is not None and exp_id is not None:
+            print(f"Models saved to projection-compatible paths for checkpoint {checkpoint_step}")
 
     @classmethod
     def load(cls, load_path: str, oracle: FeedbackOracle = None, exp_manager: ExperimentManager = None) -> "DynamicRLHF":
@@ -1450,20 +1483,48 @@ class DynamicRLHF:
             exp_manager=exp_manager,
         )
         
-        # Load the RL agent
-        rl_agent_path = load_path / "rl_agent.zip"
-        if drlhf.algorithm == "ppo":
-            drlhf.rl_agent = PPO.load(str(rl_agent_path))
+        # Load the RL agent - check if using projection-compatible paths
+        if "saved_agent_path" in state_data:
+            # Load from projection-compatible path
+            agent_path = state_data["saved_agent_path"]
+            print(f"Loading RL agent from projection path: {agent_path}")
         else:
-            drlhf.rl_agent = SAC.load(str(rl_agent_path))
+            # Load from local path (backward compatibility)
+            agent_path = str(Path(load_path) / "rl_agent.zip")
+            print(f"Loading RL agent from local path: {agent_path}")
+            
+        if drlhf.algorithm == "ppo":
+            drlhf.rl_agent = PPO.load(agent_path)
+        else:
+            drlhf.rl_agent = SAC.load(agent_path)
         
-        # Load reward models
-        reward_models_path = load_path / "reward_models"
-        for feedback_type, model in drlhf.reward_models.items():
-            model_path = reward_models_path / f"{feedback_type}.ckpt"
-            if model_path.exists():
-                model.load_state_dict(torch.load(model_path, map_location=drlhf.device))
-                model.to(drlhf.device)
+        # Load reward models - check if using projection-compatible paths
+        if "saved_model_paths" in state_data:
+            # Load from projection-compatible paths
+            saved_model_paths = state_data["saved_model_paths"]
+            print(f"Loading reward models from projection paths")
+            
+            for feedback_type, model in drlhf.reward_models.items():
+                if feedback_type in saved_model_paths:
+                    model_path = saved_model_paths[feedback_type]
+                    print(f"Loading {feedback_type} model from: {model_path}")
+                    if Path(model_path).exists():
+                        # Use PyTorch Lightning's load_from_checkpoint for proper loading
+                        model_class = type(model)
+                        loaded_model = model_class.load_from_checkpoint(model_path)
+                        drlhf.reward_models[feedback_type] = loaded_model
+                        loaded_model.to(drlhf.device)
+                        loaded_model.eval()
+                    else:
+                        print(f"Warning: Model file not found: {model_path}")
+        else:
+            # Load from local paths (backward compatibility)
+            reward_models_path = Path(load_path) / "reward_models"
+            for feedback_type, model in drlhf.reward_models.items():
+                model_path = reward_models_path / f"{feedback_type}.ckpt"
+                if model_path.exists():
+                    model.load_state_dict(torch.load(model_path, map_location=drlhf.device))
+                    model.to(drlhf.device)
         
         # Restore training state
         drlhf.action_one_hot = state_data["action_one_hot"]
@@ -1482,38 +1543,90 @@ class DynamicRLHF:
         print(f"DynamicRLHF model loaded from {load_path}")
         return drlhf
 
-    def load_feedback_dataset(self, feedback_dataset_path: str) -> dict:
+    def load_feedback_dataset(self, feedback_dataset_path_prefix: str) -> dict:
         """
         Load processed feedback dataset and integrate it into DynamicRLHF feedback buffers.
+        Uses LoadFeedbackDataset for each feedback type individually.
         
         Args:
-            feedback_dataset_path: Path to the processed feedback dataset
-            
+            feedback_dataset_path_prefix: Base path to the processed feedback dataset files (file prefix),
+            e.g., "path/to/feedback_dataset/dynamic_rlhf_feedback" + "_{feedback_type}.pkl"
+
         Returns:
             Dictionary with feedback loading statistics
         """
+        
         try:
-            # Load feedback dataset
-            with open(feedback_dataset_path, "rb") as f:
-                feedback_data = pickle.load(f)
-            
             # Statistics tracking
             stats = {"loaded_counts": defaultdict(int), "total_loaded": 0}
             
-            # Process feedback data by type
-            for feedback_type, feedback_items in feedback_data.items():
-                if feedback_type in self.feedback_types:
-                    # Add to feedback buffers
-                    for item in feedback_items:
-                        if len(self.feedback_buffers[feedback_type]) >= self.feedback_buffer_size:
-                            # Remove oldest feedback
-                            self.feedback_buffers[feedback_type].pop(0)
-                        self.feedback_buffers[feedback_type].append(item)
-                        stats["loaded_counts"][feedback_type] += 1
-                        stats["total_loaded"] += 1
+            # Mapping from internal feedback type names to LoadFeedbackDataset expected names
+            feedback_type_mapping = {
+                "evaluative": "evaluative",
+                "comparative": "comparative", 
+                "demonstrative": "demonstrative",
+                "corrective": "corrective",
+                "descriptive": "descriptive"
+            }
             
-            print(f"Loaded feedback dataset from {feedback_dataset_path}")
-            print(f"Feedback counts: {dict(stats['loaded_counts'])}")
+            # Process each feedback type that we support
+            for internal_type in self.feedback_types:
+                if internal_type in feedback_type_mapping:
+                    feedback_type = feedback_type_mapping[internal_type]
+                    
+                    # Construct the path for this feedback type
+                    type_file_path = f"{feedback_dataset_path_prefix}{feedback_type}.pkl"
+                    
+                    if os.path.exists(type_file_path):
+                        print(f"Loading {feedback_type} feedback from {type_file_path}")
+                        
+                        try:
+                            # Create environment for demonstrative feedback if needed
+                            env = None
+                            if feedback_type == "demonstrative":
+                                from multi_type_feedback.utils import TrainingUtils
+                                env = TrainingUtils.setup_environment(
+                                    self.env_name, self.seed, env_kwargs=self.env_kwargs
+                                )
+                            
+                            # Load dataset using LoadFeedbackDataset
+                            dataset = LoadFeedbackDataset(
+                                dataset_path=type_file_path,
+                                feedback_type=feedback_type,
+                                n_feedback=-1,  # Load all available feedback
+                                noise_level=0.0,  # No noise for real human feedback
+                                env=env,
+                                env_name=self.env_name,
+                                seed=self.seed,
+                            )
+                            
+                            # Extract data from the dataset and populate buffers
+                            for i in range(len(dataset)):
+                                feedback_item = dataset[i]
+                                
+                                # Add to feedback buffers with size management
+                                if len(self.feedback_buffers[internal_type]) >= self.feedback_buffer_size:
+                                    # Remove oldest feedback
+                                    self.feedback_buffers[internal_type].pop(0)
+                                
+                                self.feedback_buffers[internal_type].append(feedback_item)
+                                stats["loaded_counts"][internal_type] += 1
+                                stats["total_loaded"] += 1
+                            
+                            print(f"Loaded {len(dataset)} {feedback_type} feedback items")
+                            
+                            # Clean up environment if created
+                            if env is not None:
+                                env.close()
+                                
+                        except Exception as e:
+                            print(f"Error loading {feedback_type} feedback: {e}")
+                            continue
+                    else:
+                        print(f"Feedback file not found: {type_file_path}")
+            
+            print(f"Total feedback loaded: {stats['total_loaded']}")
+            print(f"Feedback counts by type: {dict(stats['loaded_counts'])}")
             
             return stats
             

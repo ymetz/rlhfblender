@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
+import torch
 from databases import Database
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
@@ -337,7 +338,7 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
         return False
 
 
-async def initialize_dynamic_rlhf_session(session_id: str, experiment_id: str, num_iterations: int = 5) -> dict[str, Any]:
+async def initialize_dynamic_rlhf_session(session_id: str, experiment_id: str, num_iterations: int = 5, resume_from_checkpoint: int = None) -> dict[str, Any]:
     """
     Initialize a DynamicRLHF session for the given experiment.
     Returns the session data or raises an exception if initialization fails.
@@ -381,6 +382,20 @@ async def initialize_dynamic_rlhf_session(session_id: str, experiment_id: str, n
         exp_manager=exp_manager,
     )
 
+    # Load existing models if resuming from a checkpoint
+    has_initial_data = False
+    if resume_from_checkpoint is not None and resume_from_checkpoint > 0:
+        print(f"Attempting to resume from checkpoint {resume_from_checkpoint}")
+        loaded_drlhf = await load_full_checkpoint(session_id, exp, resume_from_checkpoint)
+        if loaded_drlhf is not None:
+            drlhf = loaded_drlhf  # Replace the fresh instance with the loaded one
+            has_initial_data = True
+            print(f"Successfully loaded complete DynamicRLHF state from checkpoint {resume_from_checkpoint}")
+        else:
+            print(f"Warning: Could not load checkpoint {resume_from_checkpoint}, starting fresh")
+    else:
+        print("Starting with fresh untrained models")
+
     # Create session data
     session_data = {
         "drlhf": drlhf,
@@ -389,13 +404,66 @@ async def initialize_dynamic_rlhf_session(session_id: str, experiment_id: str, n
         "algorithm": exp.algorithm,
         "status": "initialized",
         "created_at": time.time(),
-        "phase": 0,
-        "training_step": 0,
+        "phase": resume_from_checkpoint if resume_from_checkpoint is not None else 0,
+        "training_step": resume_from_checkpoint if resume_from_checkpoint is not None else 0,
         "save_path": f"dynamic_rlhf_models/{session_id}",
         "session_id": session_id,
+        "has_initial_data": has_initial_data,
+        "resume_from_checkpoint": resume_from_checkpoint,
     }
 
     return session_data
+
+
+async def load_full_checkpoint(session_id: str, experiment: Experiment, checkpoint: int):
+    """
+    Load a complete DynamicRLHF checkpoint using the existing save/load functionality.
+    
+    Args:
+        session_id: Session ID for path construction
+        experiment: Experiment object
+        checkpoint: Checkpoint number to load from
+        
+    Returns:
+        Loaded DynamicRLHF instance or None if loading failed
+    """
+    try:
+        from multi_type_feedback.dynamic_rlhf_human import DynamicRLHF
+        from train_baselines.exp_manager import ExperimentManager
+        from types import SimpleNamespace
+        
+        # Construct the checkpoint path - this should match where save() puts the files
+        checkpoint_path = f"dynamic_rlhf_models/{session_id}_checkpoint_{checkpoint}"
+        
+        if not os.path.exists(checkpoint_path):
+            print(f"Checkpoint directory not found: {checkpoint_path}")
+            return None
+            
+        print(f"Loading DynamicRLHF checkpoint from: {checkpoint_path}")
+        
+        # Create ExperimentManager for the loaded instance (same as in initialization)
+        exp_manager = ExperimentManager(
+            args=SimpleNamespace(), 
+            algo=experiment.algorithm.lower(), 
+            env_id=experiment.env_id, 
+            log_folder=f"dynamic_rlhf_models/{session_id}"
+        )
+        
+        # Use the existing load method
+        drlhf = DynamicRLHF.load(
+            load_path=checkpoint_path,
+            oracle=None,  # No oracle for human feedback
+            exp_manager=exp_manager
+        )
+        
+        print(f"Successfully loaded DynamicRLHF checkpoint {checkpoint}")
+        return drlhf
+        
+    except Exception as e:
+        print(f"Error loading DynamicRLHF checkpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 @router.post("/start_dynamic_rlhf_training", response_model=dict[str, Any])
@@ -417,6 +485,7 @@ async def start_dynamic_rlhf_training(request: Request):
         experiment_name = request_data.get("experiment_name")
         environment_id = request_data.get("environment_id")
         clone_from_experiment = request_data.get("clone_from_experiment")
+        resume_from_checkpoint = request_data.get("resume_from_checkpoint", None)
 
         if not experiment_name:
             return JSONResponse(status_code=400, content={"status": "error", "message": "Missing experiment_name"})
@@ -497,7 +566,7 @@ async def start_dynamic_rlhf_training(request: Request):
             )
 
         # Initialize DynamicRLHF session using the helper function
-        session_data = await initialize_dynamic_rlhf_session(session_id, str(exp.id), num_iterations)
+        session_data = await initialize_dynamic_rlhf_session(session_id, str(exp.id), num_iterations, resume_from_checkpoint)
         session_data["experiment_name"] = experiment_name  # Add experiment name for tracking
 
         # Store the active session
@@ -609,6 +678,8 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
                     status_code=404,
                     content={"status": "error", "message": f"Failed to initialize DynamicRLHF session: {str(init_error)}"},
                 )
+        else:
+            print(f"Found existing session for {session_id}")
 
         # Update phase for existing session
         active_rlhf_sessions[session_id]["phase"] = phase
@@ -626,12 +697,26 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
         # Calculate checkpoint step based on current phase (0 for initial, then incremental)
         checkpoint_step = phase
 
-        # Collect trajectories for this iteration
-        try:
-            print(f"Collecting trajectories for iteration {phase}...")
+        # Check if we should do initial data collection or training iteration
+        # If this is the first call for this session and no feedback exists, do initial collection
+        # Otherwise, this is a training iteration
+        
+        # Check if this session has collected initial data already
+        has_initial_data = session.get("has_initial_data", False)
+        
+        # Check if we have any feedback to train with
+        has_feedback = any(len(drlhf.feedback_buffers[ft]) > 0 for ft in drlhf.feedback_types)
+        
+        print(f"Session state check: has_initial_data={has_initial_data}, has_feedback={has_feedback}, phase={phase}")
+        print(f"Session keys: {list(session.keys())}")
+        print(f"Feedback buffer sizes: {[(ft, len(drlhf.feedback_buffers[ft])) for ft in drlhf.feedback_types]}")
+        
+        if phase == 0:
+            # First call: Initial data collection with untrained models
+            print(f"Initial data collection: Collecting trajectories with untrained models...")
             trajectories, initial_states = drlhf.collect_trajectories(
-                n_trajectories=drlhf.initial_feedback_count if phase == 0 else drlhf.n_feedback_per_iteration,
-                render=True,  # Enable rendering for visualization
+                n_trajectories=drlhf.initial_feedback_count,
+                render=True,
             )
 
             # Save trajectories to data directory
@@ -643,72 +728,133 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
                 checkpoint_step=checkpoint_step,
             )
 
-            print(f"Saved trajectories to: {save_path}")
+            print(f"Saved initial trajectories to: {save_path}")
 
-            # Store trajectory info in session for later use
-            session["last_trajectories_path"] = save_path
-            session["last_checkpoint_step"] = checkpoint_step
+            # Save initial (untrained) models using projection-compatible paths
+            print("Saving initial (untrained) models for checkpoint 0")
+            checkpoint_save_path = f"dynamic_rlhf_models/{session_id}_checkpoint_{checkpoint_step}"
+            drlhf.save(checkpoint_save_path, checkpoint_step, str(exp_id))
+            print(f"Saved initial models to projection-compatible paths for checkpoint {checkpoint_step}")
+            
+            # Mark that initial data has been collected
+            session["has_initial_data"] = True
 
-            # Save reward models and RL agent for this checkpoint FIRST
+        else:
+            # Training iteration 
+            print(f"Phase {phase}: Starting training iteration...")
+            
+            # Step 1: Load and integrate human feedback from UI using existing infrastructure
+            print("Loading processed feedback using DynamicRLHF infrastructure...")
+            
+            # Check if at least one feedback type has been collected (with prefx dynamic_rlhf_feedback_*)
+            dynamic_rlhf_dir = f"sessions/{session_id}"
+            dynamic_rlhf_file_prefix = os.path.join(dynamic_rlhf_dir, "dynamic_rlhf_feedback_")
+            dynamic_rlhf_files = [
+                f for f in os.listdir(dynamic_rlhf_dir) if f.startswith("dynamic_rlhf_feedback_")
+            ]   
+            if not dynamic_rlhf_files:
+                print(f"No DynamicRLHF format feedback files found.")
+                return  # Stop processing if no feedback files are found
+
+            for dynamic_rlhf_file in dynamic_rlhf_files:
+                print(f"Found DynamicRLHF format feedback file: {dynamic_rlhf_file}")
+                
+                # Load feedback dataset into DynamicRLHF using existing method
+                try:
+                    stats = drlhf.load_feedback_dataset(dynamic_rlhf_file_prefix)
+                    print(f"Feedback integration stats: {stats}")
+                    
+                except Exception as e:
+                    print(f"Error loading DynamicRLHF feedback: {e}")
+
+            # Step 2: Train reward models with collected feedback
+            print("Training reward models with collected feedback...")
             try:
-                # For checkpoint 0, we might not have trained models yet, so save the initial models
-                if checkpoint_step == 0:
-                    print("Saving initial (untrained) reward models for checkpoint 0")
-
-                # Save reward models (whether trained or initial)
-                saved_model_paths = drlhf.save_reward_models_checkpoint(checkpoint_step, str(exp_id))
-                session["last_saved_models"] = saved_model_paths
-
-                # Save RL agent
-                os.makedirs(f"multi-type-feedback/train_baselines/dynamic_rlhf_agents", exist_ok=True)
-                agent_path = f"multi-type-feedback/train_baselines/dynamic_rlhf_agents/{drlhf.algorithm}_{env_name.lower().replace('-', '_')}_{exp_id}_{checkpoint_step}"
-                drlhf.rl_agent.save(agent_path)
-                session["last_saved_agent"] = agent_path + ".zip"
-                print(f"Saved RL agent to: {agent_path}.zip")
-
+                reward_metrics = drlhf.train_reward_models()
+                print(f"Reward model training completed. Metrics: {reward_metrics}")
             except Exception as e:
-                print(f"Warning: Failed to save models for checkpoint {checkpoint_step}: {e}")
+                print(f"Warning: Reward model training failed: {e}")
+                reward_metrics = {}
 
-            # Process trajectories to generate videos, rewards, uncertainty files, and thumbnails
-            processing_success = await process_dynamic_rlhf_trajectories(
+            # Step 3: Train RL agent with updated reward models
+            print("Training RL agent with updated reward models...")
+            try:
+                # Calculate RL training steps for this iteration
+                rl_steps = drlhf.rl_steps_per_iteration
+                
+                # Train the RL agent
+                if drlhf.exp_manager:
+                    drlhf.exp_manager.learn(drlhf.rl_agent)
+                else:
+                    drlhf.rl_agent.learn(
+                        total_timesteps=rl_steps,
+                        reset_num_timesteps=False,
+                    )
+                print("RL agent training completed")
+            except Exception as e:
+                print(f"Warning: RL agent training failed: {e}")
+
+            # Step 4: Collect new trajectories with trained agent for next iteration
+            print("Collecting new trajectories with trained agent...")
+            trajectories, initial_states = drlhf.collect_trajectories(
+                n_trajectories=drlhf.n_feedback_per_iteration,
+                render=True,
+            )
+
+            # Save new trajectories to data directory
+            save_path = save_trajectories_to_data_dir(
+                trajectories=trajectories,
+                initial_states=initial_states,
+                env_name=env_name,
+                exp_id=str(exp_id),
+                checkpoint_step=checkpoint_step,
+            )
+
+        print(f"Saved new trajectories to: {save_path}")
+
+        # Store common session info
+        session["last_trajectories_path"] = save_path
+        session["last_checkpoint_step"] = checkpoint_step
+        
+        # Save full DynamicRLHF checkpoint for resumption capability (includes projection-compatible paths)
+        checkpoint_save_path = f"dynamic_rlhf_models/{session_id}_checkpoint_{checkpoint_step}"
+        drlhf.save(checkpoint_save_path, checkpoint_step, str(exp_id))
+        print(f"Saved full DynamicRLHF checkpoint to: {checkpoint_save_path}")
+
+        # Process trajectories to generate videos, rewards, uncertainty files, and thumbnails
+        processing_success = await process_dynamic_rlhf_trajectories(
+            env_name=env_name, exp_id=str(exp_id), checkpoint_step=checkpoint_step
+        )
+
+        if processing_success:
+            print("Successfully processed trajectories for visualization")
+
+            # Generate projections and uncertainty maps for visualization
+            projection_success = await generate_dynamic_rlhf_projections(
                 env_name=env_name, exp_id=str(exp_id), checkpoint_step=checkpoint_step
             )
 
-            if processing_success:
-                print(f"Successfully processed trajectories for visualization")
-
-                # Generate projections and uncertainty maps for visualization
-                projection_success = await generate_dynamic_rlhf_projections(
-                    env_name=env_name, exp_id=str(exp_id), checkpoint_step=checkpoint_step
-                )
-
-                if projection_success:
-                    print(f"Successfully generated projections and uncertainty maps")
-                else:
-                    print(f"Warning: Failed to generate projections and uncertainty maps")
+            if projection_success:
+                print("Successfully generated projections and uncertainty maps")
             else:
-                print(f"Warning: Failed to process trajectories for visualization")
+                print("Warning: Failed to generate projections and uncertainty maps")
+        else:
+            print("Warning: Failed to process trajectories for visualization")
 
-            # Add the new checkpoint to the experiment's checkpoint list if it's not there
-            if checkpoint_step > 0:  # Don't re-add checkpoint 0
-                exp: Experiment = await db_handler.get_single_entry(database, Experiment, key=exp_id)
-                existing_checkpoints = exp.checkpoint_list if exp.checkpoint_list else []
-                if checkpoint_step not in existing_checkpoints:
-                    existing_checkpoints.append(checkpoint_step)
-                    existing_checkpoints.sort()
-                    await db_handler.update_entry(
-                        database,
-                        Experiment,
-                        key=exp_id,
-                        data={"checkpoint_list": existing_checkpoints},
-                    )
-                    print(f"Added checkpoint {checkpoint_step} to experiment {exp_id}")
-
-        except Exception as e:
-            print(f"Error collecting/saving trajectories: {e}")
-            return JSONResponse(
-                status_code=500, content={"status": "error", "message": f"Failed to collect trajectories: {str(e)}"}
-            )
+        # Add the new checkpoint to the experiment's checkpoint list if it's not there
+        if checkpoint_step > 0:  # Don't re-add checkpoint 0
+            exp: Experiment = await db_handler.get_single_entry(database, Experiment, key=exp_id)
+            existing_checkpoints = exp.checkpoint_list if exp.checkpoint_list else []
+            if checkpoint_step not in existing_checkpoints:
+                existing_checkpoints.append(checkpoint_step)
+                existing_checkpoints.sort()
+                await db_handler.update_entry(
+                    database,
+                    Experiment,
+                    key=exp_id,
+                    data={"checkpoint_list": existing_checkpoints},
+                )
+                print(f"Added checkpoint {checkpoint_step} to experiment {exp_id}")
 
         return JSONResponse(
             content={

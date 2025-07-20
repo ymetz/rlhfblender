@@ -46,6 +46,26 @@ except ImportError:
     print("Cannot import procgen")
 
 
+# for convenice sake, todo: make dynamic in the future
+discount_factors = {
+    "HalfCheetah-v5": 0.98,
+    "Hopper-v5": 0.99,
+    "Swimmer-v5": 0.9999,
+    "Ant-v5": 0.99,
+    "Walker2d-v5": 0.99,
+    "ALE/BeamRider-v5": 0.99,
+    "ALE/MsPacman-v5": 0.99,
+    "ALE/Enduro-v5": 0.99,
+    "ALE/Pong-v5": 0.99,
+    "Humanoid-v5": 0.99,
+    "highway-fast-v0": 0.8,
+    "merge-v0": 0.8,
+    "roundabout-v0": 0.8,
+    "metaworld-sweep-into-v2": 0.99,
+    "metaworld-button-press-v2": 0.99,
+    "metaworld-pick-place-v2": 0.99,
+}
+
 class TrainingUtils:
     @staticmethod
     def setup_environment(

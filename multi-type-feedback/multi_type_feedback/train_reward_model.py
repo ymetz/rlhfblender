@@ -20,27 +20,7 @@ from multi_type_feedback.networks import (
     calculate_pairwise_loss,
     calculate_single_reward_loss,
 )
-from multi_type_feedback.utils import TrainingUtils
-
-# for convenice sake, todo: make dynamic in the future
-discount_factors = {
-    "HalfCheetah-v5": 0.98,
-    "Hopper-v5": 0.99,
-    "Swimmer-v5": 0.9999,
-    "Ant-v5": 0.99,
-    "Walker2d-v5": 0.99,
-    "ALE/BeamRider-v5": 0.99,
-    "ALE/MsPacman-v5": 0.99,
-    "ALE/Enduro-v5": 0.99,
-    "ALE/Pong-v5": 0.99,
-    "Humanoid-v5": 0.99,
-    "highway-fast-v0": 0.8,
-    "merge-v0": 0.8,
-    "roundabout-v0": 0.8,
-    "metaworld-sweep-into-v2": 0.99,
-    "metaworld-button-press-v2": 0.99,
-    "metaworld-pick-place-v2": 0.99,
-}
+from multi_type_feedback.utils import TrainingUtils, discount_factors
 
 # Utilize Tensor Cores of NVIDIA GPUs
 torch.set_float32_matmul_precision("high")
@@ -203,9 +183,6 @@ def main():
         env=environment if args.feedback_type == "demonstrative" else None,
         env_name=args.environment,
         seed=args.seed,
-        discount_factor=discount_factors.get(
-            args.environment, 0.99
-        ),  # adapt for custom envs
     )
 
     train_reward_model(

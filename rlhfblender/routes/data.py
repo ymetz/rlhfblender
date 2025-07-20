@@ -1,16 +1,13 @@
 import base64
-import json
 import os
-import time
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
 from databases import Database
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from rlhfblender.data_collection import framework_selector
@@ -469,13 +466,37 @@ active_rlhf_sessions = {}
 async def submit_current_feedback(request: Request):
     """
     Submits the current feedback and call post-processing (duplication, common format, etc)
-    Now also integrates with DynamicRLHF human feedback collection.
+    Saves processed feedback for later integration with DynamicRLHF training.
     """
+    import pickle
+    import os
+    
     session_id = request.query_params.get("session_id", None)
+    save_dynamic_rlhf = request.query_params.get("saveDynamicRLHFFormat", "false").lower() == "true"
 
     if session_id is None:
         return "No session id given"
 
-    # Original behavior for non-DynamicRLHF sessions
-    request.app.state.feedback_translator.process(session_id)
+    # Process feedback through the feedback translator
+    processed_feedback = request.app.state.feedback_translator.process()
+    
+    print(f"Current session_id: {session_id}")
+    print(f"Processed feedback count: {len(processed_feedback) if processed_feedback else 0}")
+
+    if processed_feedback is not None and save_dynamic_rlhf:
+        # Save processed feedback as pickle file for training integration
+        feedback_dir = f"sessions/{session_id}"
+        os.makedirs(feedback_dir, exist_ok=True)
+        
+        # Also save in DynamicRLHF format for direct consumption by training
+        from rlhfblender.data_collection.feedback_dataset_adapter import FeedbackDatasetAdapter
+        dynamic_rlhf_file = os.path.join(feedback_dir, "dynamic_rlhf_feedback.pkl")
+        success = FeedbackDatasetAdapter.save_dynamic_rlhf_format(processed_feedback, dynamic_rlhf_file)
+        if success:
+            print(f"Successfully saved DynamicRLHF format feedback to {dynamic_rlhf_file}")
+        else:
+            print("Failed to save DynamicRLHF format feedback")
+    else:
+        print("No processed feedback to save")
+    
     return "Feedback submitted"
