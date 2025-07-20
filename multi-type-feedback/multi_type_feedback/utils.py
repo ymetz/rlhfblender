@@ -66,6 +66,7 @@ discount_factors = {
     "metaworld-pick-place-v2": 0.99,
 }
 
+
 class TrainingUtils:
     @staticmethod
     def setup_environment(
@@ -75,14 +76,10 @@ class TrainingUtils:
         if "procgen" in env_name:
             _, short_name, _ = env_name.split("-")
             environment = Gym3ToGymnasium(ProcgenGym3Env(num=1, env_name=short_name))
-            environment = TransformObservation(
-                environment, lambda obs: obs["rgb"], environment.observation_space
-            )
+            environment = TransformObservation(environment, lambda obs: obs["rgb"], environment.observation_space)
         elif "ALE/" in env_name:
             environment = FrameStackObservation(AtariWrapper(gym.make(env_name, **(env_kwargs or {}))), 4)
-            environment = TransformObservation(
-                environment, lambda obs: obs.squeeze(-1), environment.observation_space
-            )
+            environment = TransformObservation(environment, lambda obs: obs.squeeze(-1), environment.observation_space)
         elif "MiniGrid" in env_name:
             environment = FlatObsWrapper(gym.make(env_name, **(env_kwargs or {})))
         elif "metaworld" in env_name:
@@ -105,9 +102,7 @@ class TrainingUtils:
     def setup_base_parser() -> argparse.ArgumentParser:
         """Create a base argument parser with common arguments."""
         parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--environment", type=str, default="HalfCheetah-v5", help="Environment name"
-        )
+        parser.add_argument("--environment", type=str, default="HalfCheetah-v5", help="Environment name")
         parser.add_argument(
             "--environment-kwargs",
             type=str,
@@ -118,18 +113,14 @@ class TrainingUtils:
         )
         parser.add_argument("--algorithm", type=str, default="ppo", help="RL algorithm")
         parser.add_argument("--seed", type=int, default=12, help="Random seed")
-        parser.add_argument(
-            "--n-feedback", type=int, default=-1, help="Number of feedback instances"
-        )
+        parser.add_argument("--n-feedback", type=int, default=-1, help="Number of feedback instances")
         parser.add_argument(
             "--noise-level",
             type=float,
             default=0.0,
             help="Noise level to add to feedback/demonstrations",
         )
-        parser.add_argument(
-            "--wandb-project-name", default="dynamic_rlhf", help="W&B project name"
-        )
+        parser.add_argument("--wandb-project-name", default="dynamic_rlhf", help="W&B project name")
         return parser
 
     @staticmethod
@@ -149,15 +140,9 @@ class TrainingUtils:
     @staticmethod
     def get_model_ids(args: argparse.Namespace) -> Tuple[str, str]:
         """Generate feedback and model IDs based on arguments."""
-        env_name = (
-            args.environment
-            if "ALE" not in args.environment
-            else args.environment.replace("/", "-")
-        )
+        env_name = args.environment if "ALE" not in args.environment else args.environment.replace("/", "-")
         feedback_id = f"{args.algorithm}_{env_name}_{args.seed}"
-        model_id = (
-            f"{feedback_id}_{getattr(args, 'feedback_type', 'default')}_{args.seed}"
-        )
+        model_id = f"{feedback_id}_{getattr(args, 'feedback_type', 'default')}_{args.seed}"
 
         if args.noise_level > 0.0:
             model_id = f"{model_id}_noise_{str(args.noise_level)}"
@@ -183,20 +168,14 @@ class TrainingUtils:
 
         if top_n_models:
             try:
-                run_eval_scores = pd.read_csv(
-                    os.path.join(checkpoints_path, "collected_results.csv")
-                )
+                run_eval_scores = pd.read_csv(os.path.join(checkpoints_path, "collected_results.csv"))
                 run_eval_scores = (
                     run_eval_scores.loc[run_eval_scores["env"] == env_name]
                     .sort_values(by=["eval_score"], ascending=False)
                     .head(top_n_models)["run"]
                     .to_list()
                 )
-                expert_model_paths = [
-                    path
-                    for path in expert_model_paths
-                    if path.split(os.path.sep)[-1] in run_eval_scores
-                ]
+                expert_model_paths = [path for path in expert_model_paths if path.split(os.path.sep)[-1] in run_eval_scores]
             except:
                 print("[WARN] No eval benchmark results available.")
 
@@ -204,9 +183,7 @@ class TrainingUtils:
         model_class = PPO if algorithm == "ppo" else SAC
 
         for expert_model_path in expert_model_paths:
-            if os.path.isfile(
-                os.path.join(expert_model_path, env_name, "vecnormalize.pkl")
-            ):
+            if os.path.isfile(os.path.join(expert_model_path, env_name, "vecnormalize.pkl")):
                 norm_env = VecNormalize.load(
                     os.path.join(expert_model_path, env_name, "vecnormalize.pkl"),
                     DummyVecEnv([lambda: environment]),
@@ -222,8 +199,7 @@ class TrainingUtils:
 
         return expert_models
 
-
-    @staticmethod  
+    @staticmethod
     def parse_env_kwargs(env_kwargs: list[str]) -> Dict[str, Any]:
         """Parse environment keyword arguments from a list of strings."""
         env_kwargs_dict = {}

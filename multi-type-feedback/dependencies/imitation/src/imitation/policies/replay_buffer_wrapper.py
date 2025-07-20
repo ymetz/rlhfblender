@@ -98,6 +98,5 @@ class ReplayBufferRewardWrapper(ReplayBuffer):
 
     def _get_samples(self):
         raise NotImplementedError(
-            "_get_samples() is intentionally not implemented."
-            "This method should not be called.",
+            "_get_samples() is intentionally not implemented." "This method should not be called.",
         )

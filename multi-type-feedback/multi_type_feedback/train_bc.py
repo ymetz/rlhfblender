@@ -105,12 +105,18 @@ def main():
     feedback_id, model_id = TrainingUtils.get_model_ids(args)
 
     script_path = Path(__file__).parents[1].resolve()
-    environment = TrainingUtils.setup_environment(args.environment, args.seed, 
-                                                  env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs),
-                                                  save_reset_wrapper=False)
-    eval_env = TrainingUtils.setup_environment(args.environment, args.seed, 
-                                               env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs),
-                                               save_reset_wrapper=False)
+    environment = TrainingUtils.setup_environment(
+        args.environment,
+        args.seed,
+        env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs),
+        save_reset_wrapper=False,
+    )
+    eval_env = TrainingUtils.setup_environment(
+        args.environment,
+        args.seed,
+        env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs),
+        save_reset_wrapper=False,
+    )
 
     TrainingUtils.setup_wandb_logging(
         f"BC_{model_id}",

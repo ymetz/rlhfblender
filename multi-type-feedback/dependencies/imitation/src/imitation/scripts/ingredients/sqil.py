@@ -1,4 +1,5 @@
 """This ingredient provides a SQIL algorithm instance."""
+
 import sacred
 from stable_baselines3 import dqn as dqn_algorithm
 
@@ -40,10 +41,7 @@ def override_policy_cls(config, command_name, logger):  # noqa
     del logger
 
     res = {}
-    if (
-        command_name == "sqil"
-        and config["policy"]["policy_cls"] == base.FeedForward32Policy
-    ):
+    if command_name == "sqil" and config["policy"]["policy_cls"] == base.FeedForward32Policy:
         res["policy_cls"] = "MlpPolicy"
 
     return res

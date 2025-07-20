@@ -43,7 +43,7 @@ CartPole-v1:
   clip_range: lin_0.2
 
 MountainCar-v0:
-  normalize: false
+  normalize: true
   n_envs: 16
   n_timesteps: !!float 1e6
   policy: 'MlpPolicy'
@@ -55,7 +55,7 @@ MountainCar-v0:
 
 # Tuned
 MountainCarContinuous-v0:
-  normalize: false
+  normalize: true
   n_envs: 1
   n_timesteps: !!float 20000
   policy: 'MlpPolicy'
@@ -73,7 +73,7 @@ MountainCarContinuous-v0:
   policy_kwargs: "dict(log_std_init=-3.29, ortho_init=False)"
 
 Acrobot-v1:
-  normalize: false
+  normalize: true
   n_envs: 16
   n_timesteps: !!float 1e6
   policy: 'MlpPolicy'
@@ -84,7 +84,7 @@ Acrobot-v1:
   ent_coef: 0.0
 
 BipedalWalker-v3:
-  normalize: false
+  normalize: true
   n_envs: 32
   n_timesteps: !!float 5e6
   policy: 'MlpPolicy'
@@ -98,7 +98,7 @@ BipedalWalker-v3:
   clip_range: 0.18
 
 BipedalWalkerHardcore-v3:
-  normalize: false
+  normalize: true
   n_envs: 16
   n_timesteps: !!float 10e7
   policy: 'MlpPolicy'
@@ -135,7 +135,7 @@ LunarLanderContinuous-v2:
 
 # Tuned
 HalfCheetahBulletEnv-v0: &pybullet-defaults
-  normalize: false
+  normalize: true
   n_envs: 16
   n_timesteps: !!float 2e6
   policy: 'MlpPolicy'
@@ -191,7 +191,7 @@ HopperBulletEnv-v0:
 
 # Tuned
 ReacherBulletEnv-v0:
-  normalize: false
+  normalize: true
   n_envs: 8
   n_timesteps: !!float 1e6
   policy: 'MlpPolicy'
@@ -214,7 +214,7 @@ ReacherBulletEnv-v0:
                        )"
 
 MinitaurBulletEnv-v0:
-  normalize: false
+  normalize: true
   n_envs: 8
   n_timesteps: !!float 2e6
   policy: 'MlpPolicy'
@@ -228,7 +228,7 @@ MinitaurBulletEnv-v0:
   clip_range: 0.2
 
 MinitaurBulletDuckEnv-v0:
-  normalize: false
+  normalize: true
   n_envs: 8
   n_timesteps: !!float 2e6
   policy: 'MlpPolicy'
@@ -243,7 +243,7 @@ MinitaurBulletDuckEnv-v0:
 
 # To be tuned
 HumanoidBulletEnv-v0:
-  normalize: false
+  normalize: true
   n_envs: 8
   n_timesteps: !!float 1e7
   policy: 'MlpPolicy'
@@ -257,7 +257,7 @@ HumanoidBulletEnv-v0:
   clip_range: 0.2
 
 InvertedDoublePendulumBulletEnv-v0:
-  normalize: false
+  normalize: true
   n_envs: 8
   n_timesteps: !!float 2e6
   policy: 'MlpPolicy'
@@ -271,7 +271,7 @@ InvertedDoublePendulumBulletEnv-v0:
   clip_range: 0.2
 
 InvertedPendulumSwingupBulletEnv-v0:
-  normalize: false
+  normalize: true
   n_envs: 8
   n_timesteps: !!float 2e6
   policy: 'MlpPolicy'
@@ -288,7 +288,7 @@ InvertedPendulumSwingupBulletEnv-v0:
 # Following https://github.com/lcswillems/rl-starter-files
 MiniGrid-Empty-Random-5x5-v0: &minigrid-defaults
   env_wrapper: minigrid.wrappers.FlatObsWrapper # See GH/1320#issuecomment-1421108191
-  normalize: false
+  normalize: true
   n_envs: 8 # number of environment copies running in parallel
   n_timesteps: !!float 1e5
   policy: 'MlpPolicy'
@@ -381,12 +381,12 @@ CarRacing-v2:
 
 # === Mujoco Envs ===
 # HalfCheetah-v4: &mujoco-defaults
-#   normalize: false
+#   normalize: true
 #   n_timesteps: !!float 1e6
 #   policy: 'MlpPolicy'
 
 Ant-v4: &mujoco-defaults
-  normalize: false
+  normalize: true
   n_timesteps: !!float 1e6
   policy: 'MlpPolicy'
 
@@ -414,7 +414,7 @@ Swimmer-v5:
 # 10 mujoco envs
 
 HalfCheetah-v5:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 1e6
@@ -436,7 +436,7 @@ HalfCheetah-v5:
                   )"
 
 Ant-v5:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 5e6
@@ -452,7 +452,7 @@ Ant-v5:
   vf_coef: 0.677239
 
 Hopper-v5:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 5e6
@@ -474,7 +474,7 @@ Hopper-v5:
                   )"
 
 HumanoidStandup-v2:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 1e7
@@ -496,7 +496,7 @@ HumanoidStandup-v2:
                   )"
 
 Humanoid-v5:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 5e6
@@ -518,7 +518,7 @@ Humanoid-v5:
                   )"
 
 InvertedDoublePendulum-v2:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 1e6
@@ -534,7 +534,7 @@ InvertedDoublePendulum-v2:
   vf_coef: 0.695929
 
 InvertedPendulum-v2:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 1e6
@@ -550,7 +550,7 @@ InvertedPendulum-v2:
   vf_coef: 0.19816
 
 Reacher-v4:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 1e6
@@ -566,7 +566,7 @@ Reacher-v4:
   vf_coef: 0.950368
 
 Walker2d-v5:
-  normalize: false
+  normalize: true
   n_envs: 1
   policy: 'MlpPolicy'
   n_timesteps: !!float 1e6
@@ -594,7 +594,7 @@ procgen-coinrun-v0: &procgen-defaults
     batch_size: 2048
     clip_range: 0.2
     ent_coef: 0.01
-    normalize: false
+    normalize: true
     learning_rate: !!float 5e-4
     n_timesteps: !!float 25e6
 
@@ -627,7 +627,7 @@ merge-v0:
     <<: *highway-defaults
 
 metaworld-sweep-into-v3: &metaworld-defaults
-    normalize: false
+    normalize: True
     policy: 'MlpPolicy'
     policy_kwargs: "dict(
         net_arch=dict(pi=[256, 256, 256], vf=[256, 256, 256])
@@ -641,7 +641,7 @@ metaworld-sweep-into-v3: &metaworld-defaults
     n_epochs: 20
     clip_range: 0.4
     gae_lambda: 0.92
-    n_timesteps: !!float 2e6
+    n_timesteps: !!float 5e3
 
 metaworld-button-press-v3:
     <<: *metaworld-defaults

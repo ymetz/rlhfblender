@@ -102,11 +102,7 @@ class RewardVecEnvWrapper(vec_env.VecEnvWrapper):
                 single_obs = single_infos["terminal_observation"]
 
             obs_fixed.append(types.maybe_wrap_in_dictobs(single_obs))
-        obs_fixed = (
-            types.DictObs.stack(obs_fixed)
-            if isinstance(obs, types.DictObs)
-            else np.stack(obs_fixed)
-        )
+        obs_fixed = types.DictObs.stack(obs_fixed) if isinstance(obs, types.DictObs) else np.stack(obs_fixed)
         rews = self.reward_fn(
             self._old_obs,
             self._actions,

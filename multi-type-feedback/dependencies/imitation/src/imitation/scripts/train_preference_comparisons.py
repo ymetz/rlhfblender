@@ -157,9 +157,7 @@ def train_preference_comparisons(
     total_timesteps = int(total_timesteps)
     total_comparisons = int(total_comparisons)
     num_iterations = int(num_iterations)
-    comparison_queue_size = (
-        int(comparison_queue_size) if comparison_queue_size is not None else None
-    )
+    comparison_queue_size = int(comparison_queue_size) if comparison_queue_size is not None else None
     fragment_length = int(fragment_length)
     active_selection_oversampling = int(active_selection_oversampling)
     checkpoint_interval = int(checkpoint_interval)
@@ -196,9 +194,7 @@ def train_preference_comparisons(
             # Stable Baselines will automatically occupy GPU 0 if it is available.
             # Let's use the same device as the SB3 agent for the reward model.
             reward_net = reward_net.to(agent_trainer.algorithm.device)
-            trajectory_generator: preference_comparisons.TrajectoryGenerator = (
-                agent_trainer
-            )
+            trajectory_generator: preference_comparisons.TrajectoryGenerator = agent_trainer
         else:
             if exploration_frac > 0:
                 raise ValueError(
@@ -213,12 +209,10 @@ def train_preference_comparisons(
                 **trajectory_generator_kwargs,
             )
 
-        fragmenter: preference_comparisons.Fragmenter = (
-            preference_comparisons.RandomFragmenter(
-                **fragmenter_kwargs,
-                rng=_rnd,
-                custom_logger=custom_logger,
-            )
+        fragmenter: preference_comparisons.Fragmenter = preference_comparisons.RandomFragmenter(
+            **fragmenter_kwargs,
+            rng=_rnd,
+            custom_logger=custom_logger,
         )
         preference_model = preference_comparisons.PreferenceModel(
             **preference_model_kwargs,
@@ -297,9 +291,7 @@ def train_preference_comparisons(
 
 
 def main_console():
-    observer_path = (
-        pathlib.Path.cwd() / "output" / "sacred" / "train_preference_comparisons"
-    )
+    observer_path = pathlib.Path.cwd() / "output" / "sacred" / "train_preference_comparisons"
     observer = FileStorageObserver(observer_path)
     train_preference_comparisons_ex.observers.append(observer)
     train_preference_comparisons_ex.run_commandline()

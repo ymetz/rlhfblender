@@ -3,6 +3,7 @@
 Trains a reward model and optionally a policy based on preferences
 between trajectory fragments.
 """
+
 import abc
 import math
 import pickle
@@ -387,15 +388,11 @@ class PreferenceModel(nn.Module):
             # reward_model may include an AddSTDRewardWrapper for RL training; but we
             # must train directly on the base model for reward model training.
             is_base = model is base_model
-            is_std_wrapper = (
-                isinstance(model, reward_nets.AddSTDRewardWrapper)
-                and model.base is base_model
-            )
+            is_std_wrapper = isinstance(model, reward_nets.AddSTDRewardWrapper) and model.base is base_model
 
             if not (is_base or is_std_wrapper):
                 raise ValueError(
-                    "RewardEnsemble can only be wrapped"
-                    f" by AddSTDRewardWrapper but found {type(model).__name__}.",
+                    "RewardEnsemble can only be wrapped" f" by AddSTDRewardWrapper but found {type(model).__name__}.",
                 )
             self.ensemble_model = base_model
             self.member_pref_models = []
@@ -605,8 +602,7 @@ class RandomFragmenter(Fragmenter):
         trajectories = [traj for traj in trajectories if len(traj) >= fragment_length]
         if len(trajectories) == 0:
             raise ValueError(
-                "No trajectories are long enough for the desired fragment length "
-                f"of {fragment_length}.",
+                "No trajectories are long enough for the desired fragment length " f"of {fragment_length}.",
             )
         num_discarded = prev_num_trajectories - len(trajectories)
         if num_discarded:
@@ -625,10 +621,7 @@ class RandomFragmenter(Fragmenter):
                 "Fewer transitions available than needed for desired number "
                 "of fragment pairs. Some transitions will appear multiple times.",
             )
-        elif (
-            self.warning_threshold
-            and sum(weights) < self.warning_threshold * num_transitions
-        ):
+        elif self.warning_threshold and sum(weights) < self.warning_threshold * num_transitions:
             # If the number of available transitions is not much larger
             # than the number of requires ones, we already give a warning.
             # But only if self.warning_threshold is non-zero.
@@ -882,10 +875,7 @@ class SyntheticGatherer(PreferenceGatherer):
         # Compute the mean binary entropy. This metric helps estimate
         # how good we can expect the performance of the learned reward
         # model to be at predicting preferences.
-        entropy = -(
-            special.xlogy(model_probs, model_probs)
-            + special.xlogy(1 - model_probs, 1 - model_probs)
-        ).mean()
+        entropy = -(special.xlogy(model_probs, model_probs) + special.xlogy(1 - model_probs, 1 - model_probs)).mean()
         self.logger.record("entropy", entropy)
 
         if self.sample:
@@ -950,8 +940,7 @@ class PreferenceDataset(data_th.Dataset):
         fragments1, fragments2 = zip(*fragments)
         if preferences.shape != (len(fragments),):
             raise ValueError(
-                f"Unexpected preferences shape {preferences.shape}, "
-                f"expected {(len(fragments),)}",
+                f"Unexpected preferences shape {preferences.shape}, " f"expected {(len(fragments),)}",
             )
         if preferences.dtype != np.float32:
             raise ValueError("preferences should have dtype float32")
@@ -1192,9 +1181,7 @@ class BasicRewardTrainer(RewardTrainer):
         self.optim = th.optim.AdamW(self._preference_model.parameters(), lr=lr)
         self.rng = rng
         self.regularizer = (
-            regularizer_factory(optimizer=self.optim, logger=self.logger)
-            if regularizer_factory is not None
-            else None
+            regularizer_factory(optimizer=self.optim, logger=self.logger) if regularizer_factory is not None else None
         )
 
     def _make_data_loader(self, dataset: data_th.Dataset) -> data_th.DataLoader:

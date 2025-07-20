@@ -45,12 +45,8 @@ class BatchIteratorWithEpochEndCallback:
     on_epoch_end: Optional[Callable[[int], None]]
 
     def __post_init__(self) -> None:
-        epochs_and_batches_specified = (
-            self.n_epochs is not None and self.n_batches is not None
-        )
-        neither_epochs_nor_batches_specified = (
-            self.n_epochs is None and self.n_batches is None
-        )
+        epochs_and_batches_specified = self.n_epochs is not None and self.n_batches is not None
+        neither_epochs_nor_batches_specified = self.n_epochs is None and self.n_batches is None
         if epochs_and_batches_specified or neither_epochs_nor_batches_specified:
             raise ValueError(
                 "Must provide exactly one of `n_epochs` and `n_batches` arguments.",
@@ -67,8 +63,7 @@ class BatchIteratorWithEpochEndCallback:
 
                 if not some_batch_was_yielded:
                     raise AssertionError(
-                        f"Data loader returned no data during epoch "
-                        f"{epoch_num} -- did it reset correctly?",
+                        f"Data loader returned no data during epoch " f"{epoch_num} -- did it reset correctly?",
                     )
                 if self.on_epoch_end is not None:
                     self.on_epoch_end(epoch_num)

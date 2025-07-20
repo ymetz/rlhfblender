@@ -127,9 +127,7 @@ def train_rl(
                 )
 
         if policy_save_interval > 0:
-            save_policy_callback: callbacks.EventCallback = (
-                policies_serialize.SavePolicyCallback(policy_dir)
-            )
+            save_policy_callback: callbacks.EventCallback = policies_serialize.SavePolicyCallback(policy_dir)
             save_policy_callback = callbacks.EveryNTimesteps(
                 policy_save_interval,
                 save_policy_callback,

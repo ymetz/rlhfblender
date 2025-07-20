@@ -1,4 +1,5 @@
 """Core code for adversarial imitation learning, shared between GAIL and AIRL."""
+
 import abc
 import dataclasses
 import logging
@@ -461,12 +462,10 @@ class AdversarialTrainer(base.DemonstrationAlgorithm[types.Transitions]):
             self.logger.dump(self._global_step)
 
     @overload
-    def _torchify_array(self, ndarray: np.ndarray) -> th.Tensor:
-        ...
+    def _torchify_array(self, ndarray: np.ndarray) -> th.Tensor: ...
 
     @overload
-    def _torchify_array(self, ndarray: None) -> None:
-        ...
+    def _torchify_array(self, ndarray: None) -> None: ...
 
     def _torchify_array(self, ndarray: Optional[np.ndarray]) -> Optional[th.Tensor]:
         if ndarray is not None:

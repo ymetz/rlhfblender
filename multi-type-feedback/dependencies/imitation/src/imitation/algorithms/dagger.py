@@ -141,9 +141,7 @@ def _save_dagger_demo(
     random_uuid = uuid.UUID(int=randbits, version=4).hex
     filename = f"{actual_prefix}dagger-demo-{trajectory_index}-{random_uuid}.npz"
     npz_path = save_dir / filename
-    assert (
-        not npz_path.exists()
-    ), "The following DAgger demonstration path already exists: {0}".format(npz_path)
+    assert not npz_path.exists(), "The following DAgger demonstration path already exists: {0}".format(npz_path)
     serialize.save(npz_path, [trajectory])
     logging.info(f"Saved demo at '{npz_path}'")
 

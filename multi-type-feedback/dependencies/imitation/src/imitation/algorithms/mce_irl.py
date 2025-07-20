@@ -5,6 +5,7 @@ Follows the description in chapters 9 and 10 of Brian Ziebart's `PhD thesis`_.
 .. _PhD thesis:
     http://www.cs.cmu.edu/~bziebart/publications/thesis-bziebart.pdf
 """
+
 import collections
 import warnings
 from typing import (

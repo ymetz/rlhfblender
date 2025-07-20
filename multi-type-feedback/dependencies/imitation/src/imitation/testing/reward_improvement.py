@@ -1,4 +1,5 @@
 """Utility functions used to check if rewards improved wrt to previous rewards."""
+
 from typing import Iterable
 
 import numpy as np

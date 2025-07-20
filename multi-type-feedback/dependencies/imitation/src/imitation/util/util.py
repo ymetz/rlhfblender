@@ -156,9 +156,7 @@ def make_vec_env(
         return env
 
     env_seeds = make_seeds(rng, n_envs)
-    env_fns: List[Callable[[], gym.Env]] = [
-        functools.partial(make_env, i, s) for i, s in enumerate(env_seeds)
-    ]
+    env_fns: List[Callable[[], gym.Env]] = [functools.partial(make_env, i, s) for i, s in enumerate(env_seeds)]
     if parallel:
         # See GH hill-a/stable-baselines issue #217
         return SubprocVecEnv(env_fns, start_method="forkserver")
@@ -169,13 +167,11 @@ def make_vec_env(
 @overload
 def make_seeds(
     rng: np.random.Generator,
-) -> int:
-    ...
+) -> int: ...
 
 
 @overload
-def make_seeds(rng: np.random.Generator, n: int) -> List[int]:
-    ...
+def make_seeds(rng: np.random.Generator, n: int) -> List[int]: ...
 
 
 def make_seeds(
@@ -262,13 +258,11 @@ def safe_to_tensor(array: Union[np.ndarray, th.Tensor], **kwargs) -> th.Tensor:
 
 
 @overload
-def safe_to_numpy(obj: Union[np.ndarray, th.Tensor], warn: bool = False) -> np.ndarray:
-    ...
+def safe_to_numpy(obj: Union[np.ndarray, th.Tensor], warn: bool = False) -> np.ndarray: ...
 
 
 @overload
-def safe_to_numpy(obj: None, warn: bool = False) -> None:
-    ...
+def safe_to_numpy(obj: None, warn: bool = False) -> None: ...
 
 
 def safe_to_numpy(
@@ -297,8 +291,7 @@ def safe_to_numpy(
     else:
         if warn:
             warnings.warn(
-                "Converted tensor to numpy array, might affect performance. "
-                "Make sure this is the intended behavior.",
+                "Converted tensor to numpy array, might affect performance. " "Make sure this is the intended behavior.",
             )
         return obj.detach().cpu().numpy()
 

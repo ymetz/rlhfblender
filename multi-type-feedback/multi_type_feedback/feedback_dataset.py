@@ -1,9 +1,10 @@
+# just use a random segment as the opposite
+import os
 import pickle
 from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from numpy.typing import NDArray
 from scipy.stats import truncnorm
 from torch.utils.data import Dataset
 
@@ -62,7 +63,7 @@ def discounted_sum_numpy(rewards, gamma):
 
 
 class FeedbackDataset(Dataset):
-    """PyTorch Dataset for loading the feedback data."""
+    """PyTorch Dataset for loading the feedback data with masking support."""
 
     def __init__(
         self,
@@ -80,34 +81,33 @@ class FeedbackDataset(Dataset):
         print("Loading dataset...")
 
         self.targets: Union[
-            List[SegmentT],
-            List[NDArray],
-            Tuple[SegmentT, SegmentT],
-            Tuple[NDArray, NDArray],
+            List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],  # (obs, actions, mask)
+            List[Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]],  # pairs with masks
         ] = []
-        self.preds: List[int] = []
+        self.preds: List[float] = []
 
         if not feedback_data:
             self.targets = torch.empty((0, segment_len if segment_len else 1))
             self.preds = torch.empty(0)
-            return self.targets, self.preds
+            return
 
         if feedback_type == "evaluative":
             for seg in feedback_data["segments"]:
                 obs = torch.vstack([torch.as_tensor(p[0]).float() for p in seg])
                 actions = torch.vstack([torch.as_tensor(p[1]).float() for p in seg])
+                
+                # Create mask for valid timesteps
+                original_len = obs.size(0)
+                mask = torch.ones(original_len, 1)
 
                 # Pad both trajectories to the maximum length
-                len_obs = obs.size(0)
-
-                if len_obs < segment_len:
-                    pad_size = segment_len - len_obs
+                if original_len < segment_len:
+                    pad_size = segment_len - original_len
                     obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
+                    actions = torch.cat([actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0)
+                    mask = torch.cat([mask, torch.zeros(pad_size, 1)], dim=0)
 
-                self.targets.append((obs, actions))
+                self.targets.append((obs, actions, mask))
 
             self.preds = feedback_data["ratings"]
             # add noise to the ratings
@@ -119,8 +119,8 @@ class FeedbackDataset(Dataset):
                     low=0,
                     upp=9,
                 )
-        elif feedback_type == "comparative":
 
+        elif feedback_type == "comparative":
             rews_min, rews_max = np.min(
                 [e * -1 for e in feedback_data["opt_gaps"]]
             ), np.max([e * -1 for e in feedback_data["opt_gaps"]])
@@ -129,51 +129,31 @@ class FeedbackDataset(Dataset):
             flipped = 0
             for comp in feedback_data["preferences"]:
                 # seg 1
-                obs = torch.vstack(
-                    [
-                        torch.as_tensor(p[0]).float()
-                        for p in feedback_data["segments"][comp[0]]
-                    ]
-                )
-                actions = torch.vstack(
-                    [
-                        torch.as_tensor(p[1]).float()
-                        for p in feedback_data["segments"][comp[0]]
-                    ]
-                )
-
+                obs = torch.vstack([torch.as_tensor(p[0]).float() for p in feedback_data["segments"][comp[0]]])
+                actions = torch.vstack([torch.as_tensor(p[1]).float() for p in feedback_data["segments"][comp[0]]])
+                
                 # seg 2
-                obs2 = torch.vstack(
-                    [
-                        torch.as_tensor(p[0]).float()
-                        for p in feedback_data["segments"][comp[1]]
-                    ]
-                )
-                actions2 = torch.vstack(
-                    [
-                        torch.as_tensor(p[1]).float()
-                        for p in feedback_data["segments"][comp[1]]
-                    ]
-                )
+                obs2 = torch.vstack([torch.as_tensor(p[0]).float() for p in feedback_data["segments"][comp[1]]])
+                actions2 = torch.vstack([torch.as_tensor(p[1]).float() for p in feedback_data["segments"][comp[1]]])
 
-                # Pad both trajectories to the maximum length, necessary for batching with data loader
+                # Create masks for valid timesteps
                 len_obs = obs.size(0)
                 len_obs2 = obs2.size(0)
+                mask = torch.ones(len_obs, 1)
+                mask2 = torch.ones(len_obs2, 1)
 
+                # Pad both trajectories to the maximum length, necessary for batching with data loader
                 if len_obs < segment_len:
                     pad_size = segment_len - len_obs
                     obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
+                    actions = torch.cat([actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0)
+                    mask = torch.cat([mask, torch.zeros(pad_size, 1)], dim=0)
+                    
                 if len_obs2 < segment_len:
                     pad_size = segment_len - len_obs2
-                    obs2 = torch.cat(
-                        [obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0
-                    )
-                    actions2 = torch.cat(
-                        [actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0
-                    )
+                    obs2 = torch.cat([obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0)
+                    actions2 = torch.cat([actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0)
+                    mask2 = torch.cat([mask2, torch.zeros(pad_size, 1)], dim=0)
 
                 # add noise and recompute preferences
                 if noise_level > 0:
@@ -194,20 +174,17 @@ class FeedbackDataset(Dataset):
                     )
 
                     if rew2 > rew1:
-                        self.targets.append(((obs, actions), (obs2, actions2)))
+                        self.targets.append(((obs, actions, mask), (obs2, actions2, mask2)))
                     else:
-                        self.targets.append(((obs2, actions2), (obs, actions)))
+                        self.targets.append(((obs2, actions2, mask2), (obs, actions, mask)))
                         flipped += 1
                     self.preds.append(comp[2])
                 else:
-                    self.targets.append(((obs, actions), (obs2, actions2)))
+                    self.targets.append(((obs, actions, mask), (obs2, actions2, mask2)))
                     self.preds.append(comp[2])
 
         elif feedback_type == "demonstrative":
-
-            with open(
-                os.path.join("samples", f"random_{env_name}.pkl"), "rb"
-            ) as random_file:
+            with open(os.path.join("samples", f"random_{env_name}.pkl"), "rb") as random_file:
                 random_data = pickle.load(random_file)
 
             for demo in feedback_data["demos"]:
@@ -215,7 +192,6 @@ class FeedbackDataset(Dataset):
                 actions = np.vstack([p[1] for p in demo])
 
                 if noise_level > 0.0:
-
                     # Calculate statistics across all data points, keeping the feature dimensions
                     obs_min, obs_max, obs_std = (
                         np.min(obs, axis=0),
@@ -235,17 +211,13 @@ class FeedbackDataset(Dataset):
                     noisy_obs = []
                     noisy_actions = []
 
-                    # TODO: Check if this for loop is actually necessary...shouldn't it just work as a batch
                     for i in range(obs.shape[0]):
-                        # Add noise to each batch independently
-
                         obs_for_noise = obs[i]
                         if np.any(non_zero_obs_std):
                             obs_for_noise[:, non_zero_obs_std] = (
                                 truncated_gaussian_vectorized(
                                     mean=obs_for_noise[:, non_zero_obs_std],
-                                    width=np.array(noise_level)
-                                    * obs_std[non_zero_obs_std],
+                                    width=np.array(noise_level) * obs_std[non_zero_obs_std],
                                     low=obs_min[non_zero_obs_std],
                                     upp=obs_max[non_zero_obs_std],
                                 )
@@ -257,8 +229,7 @@ class FeedbackDataset(Dataset):
                             acts_for_noise[:, non_zero_acts_std] = (
                                 truncated_gaussian_vectorized(
                                     mean=acts_for_noise[:, non_zero_acts_std],
-                                    width=np.array(noise_level)
-                                    * acts_std[non_zero_acts_std],
+                                    width=np.array(noise_level) * acts_std[non_zero_acts_std],
                                     low=acts_min[non_zero_acts_std],
                                     upp=acts_max[non_zero_acts_std],
                                 )
@@ -270,48 +241,38 @@ class FeedbackDataset(Dataset):
 
                 obs = torch.as_tensor(obs).float()
                 actions = torch.as_tensor(actions).float()
+                
+                # Create mask for demo
+                original_len_demo = obs.size(0)
+                mask_demo = torch.ones(original_len_demo, 1)
 
                 # just use a random segment as the opposite
+                import random
                 rand_index = random.randrange(0, len(random_data["segments"]))
-                obs_rand = torch.vstack(
-                    [
-                        torch.as_tensor(p[0]).float()
-                        for p in random_data["segments"][rand_index]
-                    ]
-                )
-                actions_rand = torch.vstack(
-                    [
-                        torch.as_tensor(p[1]).float()
-                        for p in random_data["segments"][rand_index]
-                    ]
-                )
+                obs_rand = torch.vstack([torch.as_tensor(p[0]).float() for p in random_data["segments"][rand_index]])
+                actions_rand = torch.vstack([torch.as_tensor(p[1]).float() for p in random_data["segments"][rand_index]])
+                
+                # Create mask for random segment
+                original_len_rand = obs_rand.size(0)
+                mask_rand = torch.ones(original_len_rand, 1)
 
                 # Pad both trajectories to the maximum length
-                len_obs = obs.size(0)
-                len_obs_rand = obs_rand.size(0)
-
-                if len_obs < segment_len:
-                    pad_size = segment_len - len_obs
+                if original_len_demo < segment_len:
+                    pad_size = segment_len - original_len_demo
                     obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
-                if len_obs_rand < segment_len:
-                    pad_size = segment_len - len_obs_rand
-                    obs_rand = torch.cat(
-                        [obs_rand, torch.zeros(pad_size, *obs_rand.shape[1:])], dim=0
-                    )
-                    actions_rand = torch.cat(
-                        [actions_rand, torch.zeros(pad_size, *actions_rand.shape[1:])],
-                        dim=0,
-                    )
+                    actions = torch.cat([actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0)
+                    mask_demo = torch.cat([mask_demo, torch.zeros(pad_size, 1)], dim=0)
+                    
+                if original_len_rand < segment_len:
+                    pad_size = segment_len - original_len_rand
+                    obs_rand = torch.cat([obs_rand, torch.zeros(pad_size, *obs_rand.shape[1:])], dim=0)
+                    actions_rand = torch.cat([actions_rand, torch.zeros(pad_size, *actions_rand.shape[1:])], dim=0)
+                    mask_rand = torch.cat([mask_rand, torch.zeros(pad_size, 1)], dim=0)
 
-                self.targets.append(((obs_rand, actions_rand), (obs, actions)))
-                self.preds.append(
-                    1
-                )  # assume that the demonstration is optimal, maybe add confidence value (based on regret)
+                self.targets.append(((obs_rand, actions_rand, mask_rand), (obs, actions, mask_demo)))
+                self.preds.append(1)  # assume that the demonstration is optimal
+
         elif feedback_type == "corrective":
-
             rews_min, rews_max = np.min(
                 [e * -1 for e in feedback_data["opt_gaps"]]
             ), np.max([e * -1 for e in feedback_data["opt_gaps"]])
@@ -320,41 +281,35 @@ class FeedbackDataset(Dataset):
 
             flipped = 0
             for comp in feedback_data["corrections"]:
-                obs = torch.vstack([torch.as_tensor(p[0]).float() for p in comp[0]])
-                actions = torch.vstack([torch.as_tensor(p[1]).float() for p in comp[0]])
+                obs1 = torch.vstack([torch.as_tensor(p[0]).float() for p in comp[0]])
+                actions1 = torch.vstack([torch.as_tensor(p[1]).float() for p in comp[0]])
 
                 obs2 = torch.vstack([torch.as_tensor(p[0]).float() for p in comp[1]])
-                actions2 = torch.vstack(
-                    [torch.as_tensor(p[1]).float() for p in comp[1]]
-                )
+                actions2 = torch.vstack([torch.as_tensor(p[1]).float() for p in comp[1]])
+
+                # Create masks for valid timesteps
+                original_len1 = obs1.size(0)
+                original_len2 = obs2.size(0)
+                mask1 = torch.ones(original_len1, 1)
+                mask2 = torch.ones(original_len2, 1)
 
                 # Pad both trajectories to the maximum length
-                len_obs = obs.size(0)
-                len_obs2 = obs2.size(0)
-
-                if len_obs < segment_len:
-                    pad_size = segment_len - len_obs
-                    obs = torch.cat([obs, torch.zeros(pad_size, *obs.shape[1:])], dim=0)
-                    actions = torch.cat(
-                        [actions, torch.zeros(pad_size, *actions.shape[1:])], dim=0
-                    )
-                if len_obs2 < segment_len:
-                    pad_size = segment_len - len_obs2
-                    obs2 = torch.cat(
-                        [obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0
-                    )
-                    actions2 = torch.cat(
-                        [actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0
-                    )
+                if original_len1 < segment_len:
+                    pad_size = segment_len - original_len1
+                    obs1 = torch.cat([obs1, torch.zeros(pad_size, *obs1.shape[1:])], dim=0)
+                    actions1 = torch.cat([actions1, torch.zeros(pad_size, *actions1.shape[1:])], dim=0)
+                    mask1 = torch.cat([mask1, torch.zeros(pad_size, 1)], dim=0)
+                    
+                if original_len2 < segment_len:
+                    pad_size = segment_len - original_len2
+                    obs2 = torch.cat([obs2, torch.zeros(pad_size, *obs2.shape[1:])], dim=0)
+                    actions2 = torch.cat([actions2, torch.zeros(pad_size, *actions2.shape[1:])], dim=0)
+                    mask2 = torch.cat([mask2, torch.zeros(pad_size, 1)], dim=0)
 
                 # add noise and recompute preferences
                 if noise_level > 0.0:
-                    rews1 = discounted_sum_numpy(
-                        np.array([p[2] for p in comp[0]]), gamma
-                    )
-                    rews2 = discounted_sum_numpy(
-                        np.array([p[2] for p in comp[1]]), gamma
-                    )
+                    rews1 = discounted_sum_numpy(np.array([p[2] for p in comp[0]]), gamma)
+                    rews2 = discounted_sum_numpy(np.array([p[2] for p in comp[1]]), gamma)
 
                     rew1 = truncated_gaussian_vectorized(
                         mean=rews1,
@@ -370,26 +325,26 @@ class FeedbackDataset(Dataset):
                     ).item()
 
                     if rew2 > rew1:
-                        self.targets.append(((obs, actions), (obs2, actions2)))
+                        self.targets.append(((obs1, actions1, mask1), (obs2, actions2, mask2)))
                     else:
-                        self.targets.append(((obs2, actions2), (obs, actions)))
+                        self.targets.append(((obs2, actions2, mask2), (obs1, actions1, mask1)))
                         flipped += 1
                     self.preds.append(1)
                 else:
-                    self.targets.append(((obs, actions), (obs2, actions2)))
+                    self.targets.append(((obs1, actions1, mask1), (obs2, actions2, mask2)))
                     self.preds.append(1)
+
         elif feedback_type == "descriptive":
             cluster_rews = np.array([cr[2] for cr in feedback_data["description"]])
             cluster_rew_min, cluster_rew_max = cluster_rews.min(), cluster_rews.max()
             cluster_rew_diff = np.abs(cluster_rew_max - cluster_rew_min)
 
             for cluster_representative in feedback_data["description"]:
-                self.targets.append(
-                    (
-                        torch.as_tensor(cluster_representative[0]).unsqueeze(0).float(),
-                        torch.as_tensor(cluster_representative[1]).unsqueeze(0).float(),
-                    )
-                )
+                obs = torch.as_tensor(cluster_representative[0]).unsqueeze(0).float()
+                actions = torch.as_tensor(cluster_representative[1]).unsqueeze(0).float()
+                mask = torch.ones(1, 1)  # Single timestep mask
+                
+                self.targets.append((obs, actions, mask))
 
                 if noise_level > 0.0:
                     rew = truncated_gaussian_vectorized(
@@ -401,6 +356,7 @@ class FeedbackDataset(Dataset):
                     self.preds.append(rew.item())
                 else:
                     self.preds.append(cluster_representative[2])
+
         elif feedback_type == "descriptive_preference":
             cluster_rews = np.array([cr[2] for cr in feedback_data["description"]])
             cluster_rew_min, cluster_rew_max = cluster_rews.min(), cluster_rews.max()
@@ -409,32 +365,17 @@ class FeedbackDataset(Dataset):
             flipped = 0
             for cpref in feedback_data["description_preference"]:
                 idx_1 = cpref[0]
-
-                # cluster 1
-                obs = (
-                    torch.as_tensor(feedback_data["description"][idx_1][0])
-                    .unsqueeze(0)
-                    .float()
-                )
-                actions = (
-                    torch.as_tensor(feedback_data["description"][idx_1][1])
-                    .unsqueeze(0)
-                    .float()
-                )
-
                 idx_2 = cpref[1]
 
+                # cluster 1
+                obs1 = torch.as_tensor(feedback_data["description"][idx_1][0]).unsqueeze(0).float()
+                actions1 = torch.as_tensor(feedback_data["description"][idx_1][1]).unsqueeze(0).float()
+                mask1 = torch.ones(1, 1)
+
                 # cluster 2
-                obs2 = (
-                    torch.as_tensor(feedback_data["description"][idx_2][0])
-                    .unsqueeze(0)
-                    .float()
-                )
-                actions2 = (
-                    torch.as_tensor(feedback_data["description"][idx_2][1])
-                    .unsqueeze(0)
-                    .float()
-                )
+                obs2 = torch.as_tensor(feedback_data["description"][idx_2][0]).unsqueeze(0).float()
+                actions2 = torch.as_tensor(feedback_data["description"][idx_2][1]).unsqueeze(0).float()
+                mask2 = torch.ones(1, 1)
 
                 # add noise and recompute preferences
                 if noise_level > 0:
@@ -455,13 +396,13 @@ class FeedbackDataset(Dataset):
                     ).item()
 
                     if rew2 > rew1:
-                        self.targets.append(((obs, actions), (obs2, actions2)))
+                        self.targets.append(((obs1, actions1, mask1), (obs2, actions2, mask2)))
                     else:
-                        self.targets.append(((obs2, actions2), (obs, actions)))
+                        self.targets.append(((obs2, actions2, mask2), (obs1, actions1, mask1)))
                         flipped += 1
                     self.preds.append(cpref[2])
                 else:
-                    self.targets.append(((obs, actions), (obs2, actions2)))
+                    self.targets.append(((obs1, actions1, mask1), (obs2, actions2, mask2)))
                     self.preds.append(cpref[2])
         else:
             raise NotImplementedError("Dataset not implemented for this feedback type.")
@@ -500,7 +441,6 @@ class LoadFeedbackDataset(FeedbackDataset):
         env=None,
         seed: int = 1234,
     ):
-
         with open(dataset_path, "rb") as feedback_file:
             feedback_data: FeedbackData = pickle.load(feedback_file)
 
@@ -517,7 +457,6 @@ class LoadFeedbackDataset(FeedbackDataset):
 
 
 class BufferDataset(Dataset):
-
     def __init__(self, buffer):
         self.buffer = buffer
 

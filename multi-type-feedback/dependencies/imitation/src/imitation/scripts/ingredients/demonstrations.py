@@ -108,13 +108,11 @@ def _constrain_number_of_demos(
     else:
         if len(demos) < n_expert_demos:
             raise ValueError(
-                f"Want to use n_expert_demos={n_expert_demos} trajectories, but only "
-                f"{len(demos)} are available.",
+                f"Want to use n_expert_demos={n_expert_demos} trajectories, but only " f"{len(demos)} are available.",
             )
         if len(demos) > n_expert_demos:
             logger.warning(
-                f"Using only the first {n_expert_demos} trajectories out of "
-                f"{len(demos)} available.",
+                f"Using only the first {n_expert_demos} trajectories out of " f"{len(demos)} available.",
             )
             return demos[:n_expert_demos]
         else:

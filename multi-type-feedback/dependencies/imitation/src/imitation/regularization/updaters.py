@@ -21,8 +21,7 @@ class LambdaUpdater(Protocol):
     to store constant hyperparameters. (Alternatively, closures can be used for that).
     """
 
-    def __call__(self, lambda_, train_loss: LossType, val_loss: LossType) -> float:
-        ...
+    def __call__(self, lambda_, train_loss: LossType, val_loss: LossType) -> float: ...
 
 
 class IntervalParamScaler(LambdaUpdater):
@@ -92,16 +91,10 @@ class IntervalParamScaler(LambdaUpdater):
             ValueError: if lambda_ is not a float.
         """
         # check that the tensors val_loss and train_loss are both scalars
-        if not (
-            isinstance(val_loss, float)
-            or (isinstance(val_loss, th.Tensor) and val_loss.dim() == 0)
-        ):
+        if not (isinstance(val_loss, float) or (isinstance(val_loss, th.Tensor) and val_loss.dim() == 0)):
             raise ValueError("val_loss must be a scalar")
 
-        if not (
-            isinstance(train_loss, float)
-            or (isinstance(train_loss, th.Tensor) and train_loss.dim() == 0)
-        ):
+        if not (isinstance(train_loss, float) or (isinstance(train_loss, th.Tensor) and train_loss.dim() == 0)):
             raise ValueError("train_loss must be a scalar")
 
         if np.finfo(float).eps > abs(lambda_):

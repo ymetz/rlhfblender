@@ -116,9 +116,7 @@ def eval_policy(
                 rng=_rnd,
                 **explore_kwargs,
             )
-            log_str = (
-                f"Wrapped policy in ExplorationWrapper with kwargs {explore_kwargs}"
-            )
+            log_str = f"Wrapped policy in ExplorationWrapper with kwargs {explore_kwargs}"
             logging.info(log_str)
         trajs = rollout.generate_trajectories(policy, venv, sample_until, rng=_rnd)
 

@@ -158,8 +158,7 @@ class DynamicRLHF:
         self.feedback_embedding_dim = feedback_embedding_dim
 
         # Create a temporary environment to get action space info using proper setup
-        temp_env = TrainingUtils.setup_environment(env_name, seed, 
-                                                   env_kwargs=env_kwargs)
+        temp_env = TrainingUtils.setup_environment(env_name, seed, env_kwargs=env_kwargs)
         self.action_one_hot = isinstance(temp_env.action_space, gym.spaces.Discrete)
         if self.action_one_hot:
             self.one_hot_dim = temp_env.action_space.n
@@ -359,31 +358,23 @@ class DynamicRLHF:
 
     def _initialize_reward_models_with_random_feedback(self):
         """Collect initial random feedback and train reward models before RL training begins."""
-        print(
-            f"\nInitializing reward models with {self.initial_feedback_count} random feedback samples..."
-        )
+        print(f"\nInitializing reward models with {self.initial_feedback_count} random feedback samples...")
 
         # Create a temporary environment for trajectory collection using proper setup
         temp_env = TrainingUtils.setup_environment(self.env_name, self.seed, env_kwargs=self.env_kwargs)
 
         # Calculate how many batches of trajectories to collect
-        batches_needed = (
-            self.initial_feedback_count + self.n_feedback_per_iteration - 1
-        ) // self.n_feedback_per_iteration
+        batches_needed = (self.initial_feedback_count + self.n_feedback_per_iteration - 1) // self.n_feedback_per_iteration
         total_feedback_collected = 0
         feedback_counts = defaultdict(int)
 
         for batch in range(batches_needed):
 
             # Collect random trajectories
-            trajectories, initial_states = self.collect_trajectories(
-                self.n_feedback_per_iteration, temp_env
-            )
+            trajectories, initial_states = self.collect_trajectories(self.n_feedback_per_iteration, temp_env)
 
             # Always use random sampling for initial feedback
-            feedback, batch_counts = self.sample_feedback_random(
-                trajectories, initial_states
-            )
+            feedback, batch_counts = self.sample_feedback_random(trajectories, initial_states)
 
             # Update feedback counts
             for feedback_type, count in batch_counts.items():
@@ -394,17 +385,11 @@ class DynamicRLHF:
             self.update_feedback_buffers(feedback)
 
             # Log progress if wandb is available
-            if (
-                self.wandb_logger is not None
-                and hasattr(self.wandb, "run")
-                and self.wandb.run is not None
-            ):
+            if self.wandb_logger is not None and hasattr(self.wandb, "run") and self.wandb.run is not None:
                 metrics_to_log = {}
                 for feedback_type, count in feedback_counts.items():
                     metrics_to_log[f"initial_feedback/{feedback_type}_count"] = count
-                metrics_to_log["initial_feedback/total_collected"] = (
-                    total_feedback_collected
-                )
+                metrics_to_log["initial_feedback/total_collected"] = total_feedback_collected
                 metrics_to_log["initial_feedback/percent_complete"] = (
                     total_feedback_collected / self.initial_feedback_count
                 ) * 100
@@ -416,9 +401,7 @@ class DynamicRLHF:
         temp_env.close()
 
         # Train the reward models with more epochs for initial training
-        initial_training_epochs = (
-            self.reward_training_epochs * 2
-        )  # Train longer initially
+        initial_training_epochs = self.reward_training_epochs * 2  # Train longer initially
         reward_metrics = self._train_reward_models_with_epochs(initial_training_epochs)
 
         print("\nInitial feedback counts:")
@@ -430,11 +413,7 @@ class DynamicRLHF:
             print(f"{feedback_type}: {loss:.4f}")
 
         # Log initial training metrics
-        if (
-            self.wandb_logger is not None
-            and hasattr(self.wandb, "run")
-            and self.wandb.run is not None
-        ):
+        if self.wandb_logger is not None and hasattr(self.wandb, "run") and self.wandb.run is not None:
             metrics_to_log = {}
             for feedback_type, loss in reward_metrics.items():
                 metrics_to_log[f"initial_reward_model/{feedback_type}_loss"] = loss
@@ -511,14 +490,10 @@ class DynamicRLHF:
                 train_size = len(full_dataset) - val_size
 
                 if train_size <= 0 or val_size <= 0:
-                    print(
-                        f"Skipping {feedback_type} training: insufficient data ({len(full_dataset)} samples)"
-                    )
+                    print(f"Skipping {feedback_type} training: insufficient data ({len(full_dataset)} samples)")
                     continue
 
-                train_dataset, val_dataset = torch.utils.data.random_split(
-                    full_dataset, [train_size, val_size]
-                )
+                train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
 
                 # Setup data loaders
                 train_loader = DataLoader(
@@ -540,9 +515,7 @@ class DynamicRLHF:
                 # Configure callbacks and trainer
                 callbacks = [
                     L2RegulationCallback(initial_l2=0.01),
-                    pytorch_lightning.callbacks.EarlyStopping(
-                        monitor="val_loss", patience=3, mode="min"
-                    ),
+                    pytorch_lightning.callbacks.EarlyStopping(monitor="val_loss", patience=3, mode="min"),
                 ]
 
                 trainer = Trainer(
@@ -572,9 +545,7 @@ class DynamicRLHF:
 
                 reward_metrics[feedback_type] = val_loss
 
-                print(
-                    f"{feedback_type} training complete: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}"
-                )
+                print(f"{feedback_type} training complete: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}")
 
         elif self.reward_model_type == "multi-head":
             # Multi-head implementation
@@ -605,9 +576,7 @@ class DynamicRLHF:
             # Configure callbacks
             callbacks = [
                 L2RegulationCallback(initial_l2=0.01),
-                pytorch_lightning.callbacks.EarlyStopping(
-                    monitor="val_loss", patience=3, mode="min"
-                ),
+                pytorch_lightning.callbacks.EarlyStopping(monitor="val_loss", patience=3, mode="min"),
             ]
 
             # Train for each feedback type separately (but using the shared model)
@@ -667,9 +636,7 @@ class DynamicRLHF:
             # Configure callbacks
             callbacks = [
                 L2RegulationCallback(initial_l2=0.01),
-                pytorch_lightning.callbacks.EarlyStopping(
-                    monitor="val_loss", patience=3, mode="min"
-                ),
+                pytorch_lightning.callbacks.EarlyStopping(monitor="val_loss", patience=3, mode="min"),
             ]
 
             trainer = Trainer(
@@ -729,10 +696,7 @@ class DynamicRLHF:
                 # Create a new loss function that accounts for random responses
                 def modified_loss_function(network, batch, orig_loss=original_loss):
                     # For pairwise comparisons
-                    if (
-                        hasattr(orig_loss, "__name__")
-                        and orig_loss.__name__ == "calculate_pairwise_loss"
-                    ):
+                    if hasattr(orig_loss, "__name__") and orig_loss.__name__ == "calculate_pairwise_loss":
                         (pair_obs, pair_actions, pair_masks), preferred_indices = batch
 
                         # Get observations/actions for both trajectories
@@ -755,9 +719,7 @@ class DynamicRLHF:
                         probs = 0.9 * torch.sigmoid(reward_diff) + 0.05
 
                         # Get probability of the chosen trajectory
-                        chosen_probs = torch.where(
-                            preferred_indices == 0, probs, 1 - probs
-                        )
+                        chosen_probs = torch.where(preferred_indices == 0, probs, 1 - probs)
 
                         # Negative log likelihood loss
                         loss = -torch.mean(torch.log(chosen_probs + 1e-8))
@@ -780,54 +742,39 @@ class DynamicRLHF:
         reward_model = self.reward_models[feedback_type]
 
         # Stack observations and actions from trajectory
-        states = torch.vstack(
-            [torch.as_tensor(step[0]).float() for step in trajectory]
-        ).to(self.device)
-        actions = torch.vstack(
-            [torch.as_tensor(step[1]).float() for step in trajectory]
-        ).to(self.device)
+        states = torch.vstack([torch.as_tensor(step[0]).float() for step in trajectory]).to(self.device)
+        actions = torch.vstack([torch.as_tensor(step[1]).float() for step in trajectory]).to(self.device)
 
         # Get predictions from all ensemble members
         with torch.no_grad():
             if reward_model.ensemble_count > 1:
-                states_expanded = states.unsqueeze(0).expand(
-                    reward_model.ensemble_count, *states.shape
-                )
-                actions_expanded = actions.unsqueeze(0).expand(
-                    reward_model.ensemble_count, *actions.shape
-                )
-                predictions = reward_model(
-                    states_expanded, actions_expanded
-                )  # Shape: [ensemble_size, traj_len, 1]
+                states_expanded = states.unsqueeze(0).expand(reward_model.ensemble_count, *states.shape)
+                actions_expanded = actions.unsqueeze(0).expand(reward_model.ensemble_count, *actions.shape)
+                predictions = reward_model(states_expanded, actions_expanded)  # Shape: [ensemble_size, traj_len, 1]
 
                 # Compute trajectory-level uncertainty as mean of step-wise uncertainties
-                step_uncertainties = predictions.std(
-                    dim=0
-                )  # Standard deviation across ensemble members
-                trajectory_uncertainty = (
-                    step_uncertainties.mean().item()
-                )  # Mean uncertainty across trajectory
+                step_uncertainties = predictions.std(dim=0)  # Standard deviation across ensemble members
+                trajectory_uncertainty = step_uncertainties.mean().item()  # Mean uncertainty across trajectory
             else:
                 trajectory_uncertainty = 0.0
 
         return trajectory_uncertainty
 
     def compute_trajectory_overall_uncertainty(
-        self, trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]], 
-        strategy: str = "average"
+        self, trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]], strategy: str = "average"
     ) -> float:
         """
         Compute overall uncertainty for a trajectory across all feedback types.
-        
+
         Args:
             trajectory: Single trajectory to compute uncertainty for
             strategy: How to combine uncertainties across feedback types ("average", "min", "max")
-            
+
         Returns:
             Overall uncertainty score for the trajectory
         """
         uncertainties = []
-        
+
         for feedback_type in self.feedback_types:
             if len(self.feedback_buffers[feedback_type]) > 0:  # Only if model has been trained
                 uncertainty = self.compute_model_uncertainty(trajectory, feedback_type)
@@ -836,14 +783,14 @@ class DynamicRLHF:
             else:
                 # If no feedback yet, set high uncertainty to encourage exploration
                 uncertainties.append(float("inf"))
-        
+
         if not uncertainties:
             return 0.0
-        
+
         # Handle infinite uncertainties (untrained models)
         if any(u == float("inf") for u in uncertainties):
             return float("inf")
-        
+
         # Combine uncertainties based on strategy
         if strategy == "average":
             return np.mean(uncertainties)
@@ -853,48 +800,45 @@ class DynamicRLHF:
             return np.max(uncertainties)
         else:
             raise ValueError(f"Unknown uncertainty combination strategy: {strategy}")
-    
+
     def select_queries_by_uncertainty(
-        self, 
-        trajectories: List[List], 
-        initial_states: List[np.ndarray],
-        n_queries: int,
-        strategy: str = "average"
+        self, trajectories: List[List], initial_states: List[np.ndarray], n_queries: int, strategy: str = "average"
     ) -> tuple[List[List], List[np.ndarray]]:
         """
         Select top N queries based on model uncertainty.
-        
+
         Args:
             trajectories: List of trajectories to select from
             initial_states: Corresponding initial states
             n_queries: Number of queries to select
             strategy: How to combine uncertainties across feedback types
-            
+
         Returns:
             Selected trajectories and their initial states
         """
         if len(trajectories) <= n_queries:
             return trajectories, initial_states
-        
+
         # Compute overall uncertainty for each trajectory
         trajectory_uncertainties = []
         for trajectory in trajectories:
             uncertainty = self.compute_trajectory_overall_uncertainty(trajectory, strategy)
             trajectory_uncertainties.append(uncertainty)
-        
+
         # Handle case where some trajectories have infinite uncertainty
         finite_uncertainties = [u for u in trajectory_uncertainties if u != float("inf")]
         if len(finite_uncertainties) < len(trajectory_uncertainties):
             # Prioritize trajectories with infinite uncertainty (untrained models)
             inf_indices = [i for i, u in enumerate(trajectory_uncertainties) if u == float("inf")]
             finite_indices = [i for i, u in enumerate(trajectory_uncertainties) if u != float("inf")]
-            
+
             # Take all infinite uncertainty trajectories first, then top finite ones
             selected_indices = inf_indices[:n_queries]
             if len(selected_indices) < n_queries:
                 remaining_needed = n_queries - len(selected_indices)
-                finite_uncertainties_with_idx = [(finite_indices[i], trajectory_uncertainties[finite_indices[i]]) 
-                                                for i in range(len(finite_indices))]
+                finite_uncertainties_with_idx = [
+                    (finite_indices[i], trajectory_uncertainties[finite_indices[i]]) for i in range(len(finite_indices))
+                ]
                 finite_uncertainties_with_idx.sort(key=lambda x: x[1], reverse=True)
                 selected_indices.extend([idx for idx, _ in finite_uncertainties_with_idx[:remaining_needed]])
         else:
@@ -902,11 +846,11 @@ class DynamicRLHF:
             uncertainty_with_idx = [(i, u) for i, u in enumerate(trajectory_uncertainties)]
             uncertainty_with_idx.sort(key=lambda x: x[1], reverse=True)
             selected_indices = [idx for idx, _ in uncertainty_with_idx[:n_queries]]
-        
+
         # Return selected trajectories and initial states
         selected_trajectories = [trajectories[i] for i in selected_indices]
         selected_initial_states = [initial_states[i] for i in selected_indices]
-        
+
         return selected_trajectories, selected_initial_states
 
     def sample_feedback_uncertainty(
@@ -919,12 +863,8 @@ class DynamicRLHF:
         for trajectory in trajectories:
             uncertainties = {}
             for feedback_type in self.feedback_types:
-                if (
-                    len(self.feedback_buffers[feedback_type]) > 0
-                ):  # Only if model has been trained
-                    uncertainty = self.compute_model_uncertainty(
-                        trajectory, feedback_type
-                    )
+                if len(self.feedback_buffers[feedback_type]) > 0:  # Only if model has been trained
+                    uncertainty = self.compute_model_uncertainty(trajectory, feedback_type)
                 else:
                     # If no feedback yet, set high uncertainty to encourage exploration
                     uncertainty = float("inf")
@@ -936,23 +876,15 @@ class DynamicRLHF:
         all_feedback = []
 
         # For each trajectory, sample feedback type with probability proportional to uncertainty
-        for trajectory, initial_state, uncertainties in zip(
-            trajectories, initial_states, trajectory_uncertainties
-        ):
+        for trajectory, initial_state, uncertainties in zip(trajectories, initial_states, trajectory_uncertainties):
             # Normalize uncertainties to probabilities
             total_uncertainty = sum(uncertainties.values())
             if total_uncertainty == float("inf"):
                 # If no feedback yet for some types, sample uniformly from those
-                untrained_types = [
-                    ft
-                    for ft in self.feedback_types
-                    if len(self.feedback_buffers[ft]) == 0
-                ]
+                untrained_types = [ft for ft in self.feedback_types if len(self.feedback_buffers[ft]) == 0]
                 feedback_type = np.random.choice(untrained_types)
             else:
-                probs = [
-                    uncertainties[ft] / total_uncertainty for ft in self.feedback_types
-                ]
+                probs = [uncertainties[ft] / total_uncertainty for ft in self.feedback_types]
                 feedback_type = np.random.choice(self.feedback_types, p=probs)
 
             # Handle different feedback types
@@ -960,13 +892,9 @@ class DynamicRLHF:
             if feedback_type in ["comparative", "descriptive_preference"]:
                 # Need a second trajectory for comparison
                 trajectory2, _ = self.collect_trajectories(1)
-                feedback = self.oracle.get_feedback(
-                    (trajectory, trajectory2[0]), initial_state, feedback_type
-                )
+                feedback = self.oracle.get_feedback((trajectory, trajectory2[0]), initial_state, feedback_type)
             else:
-                feedback = self.oracle.get_feedback(
-                    trajectory, initial_state, feedback_type
-                )
+                feedback = self.oracle.get_feedback(trajectory, initial_state, feedback_type)
 
             feedback_dict[feedback_type] = feedback
             feedback_counts[feedback_type] += 1
@@ -978,9 +906,7 @@ class DynamicRLHF:
         self, trajectories: List[List], initial_states: List[np.ndarray]
     ) -> tuple[List[Dict], Dict[str, int]]:
         """Randomly sample feedback types."""
-        feedback_distribution = np.ones(len(self.feedback_types)) / len(
-            self.feedback_types
-        )
+        feedback_distribution = np.ones(len(self.feedback_types)) / len(self.feedback_types)
         selected_types = np.random.choice(
             self.feedback_types,
             size=len(trajectories),
@@ -990,22 +916,16 @@ class DynamicRLHF:
         feedback_counts = defaultdict(int)
         all_feedback = []
 
-        for trajectory, initial_state, feedback_type in zip(
-            trajectories, initial_states, selected_types
-        ):
+        for trajectory, initial_state, feedback_type in zip(trajectories, initial_states, selected_types):
             feedback_dict = {}
 
             # Handle different feedback types
             if feedback_type in ["comparative", "descriptive_preference"]:
                 # Need a second trajectory for comparison
                 trajectory2, _ = self.collect_trajectories(1)
-                feedback = self.oracle.get_feedback(
-                    (trajectory, trajectory2[0]), initial_state, feedback_type
-                )
+                feedback = self.oracle.get_feedback((trajectory, trajectory2[0]), initial_state, feedback_type)
             else:
-                feedback = self.oracle.get_feedback(
-                    trajectory, initial_state, feedback_type
-                )
+                feedback = self.oracle.get_feedback(trajectory, initial_state, feedback_type)
 
             feedback_dict[feedback_type] = feedback
             feedback_counts[feedback_type] += 1
@@ -1021,20 +941,12 @@ class DynamicRLHF:
                     if feedback_type == "supervised":
                         # for supervised feedback, we get a list of states and associated rewards
                         # so extend instead of append
-                        if (
-                            len(self.feedback_buffers[feedback_type])
-                            >= self.feedback_buffer_size
-                        ):
+                        if len(self.feedback_buffers[feedback_type]) >= self.feedback_buffer_size:
                             # Remove oldest feedback
-                            self.feedback_buffers[feedback_type] = (
-                                self.feedback_buffers[feedback_type][len(feedback) :]
-                            )
+                            self.feedback_buffers[feedback_type] = self.feedback_buffers[feedback_type][len(feedback) :]
                         self.feedback_buffers[feedback_type].extend(feedback)
                     else:
-                        if (
-                            len(self.feedback_buffers[feedback_type])
-                            >= self.feedback_buffer_size
-                        ):
+                        if len(self.feedback_buffers[feedback_type]) >= self.feedback_buffer_size:
                             # Remove oldest feedback
                             self.feedback_buffers[feedback_type].pop(0)
                         self.feedback_buffers[feedback_type].append(feedback)
@@ -1066,7 +978,7 @@ class DynamicRLHF:
         for batch_idx in range(rewards.shape[0]):
             for reward_index in range(model_count):
                 reward = rewards[batch_idx, reward_index]
-                
+
                 # Welford's algorithm for calculating running mean and variance
                 self.reward_counters[reward_index] += 1
 
@@ -1083,9 +995,7 @@ class DynamicRLHF:
 
         return rewards
 
-    def compute_ensemble_reward(
-        self, state: np.ndarray, action: np.ndarray
-    ) -> np.ndarray:
+    def compute_ensemble_reward(self, state: np.ndarray, action: np.ndarray) -> np.ndarray:
         """
         Compute ensemble reward prediction based on model architecture.
         Modified to handle different reward model architectures.
@@ -1101,12 +1011,8 @@ class DynamicRLHF:
             action = np.expand_dims(action, axis=0)
 
         # Convert to torch tensors of shape [batch_size, ...]
-        state_tensor = torch.as_tensor(
-            state, device=device, dtype=torch.float32
-        ).unsqueeze(1)
-        action_tensor = torch.as_tensor(
-            action, device=device, dtype=torch.float32
-        ).unsqueeze(1)
+        state_tensor = torch.as_tensor(state, device=device, dtype=torch.float32).unsqueeze(1)
+        action_tensor = torch.as_tensor(action, device=device, dtype=torch.float32).unsqueeze(1)
 
         # Lists to accumulate each model's reward and uncertainty
         model_rewards = []
@@ -1138,9 +1044,7 @@ class DynamicRLHF:
                         if predictions.dim() == 3 and predictions.shape[-1] == 1:
                             predictions = predictions.squeeze(-1)
 
-                        mean_reward, uncertainty = compute_grouped(
-                            predictions, reward_model.ensemble_count
-                        )
+                        mean_reward, uncertainty = compute_grouped(predictions, reward_model.ensemble_count)
                     else:
                         # Single model in the ensemble
                         predictions = reward_model(state_tensor, action_tensor)
@@ -1155,9 +1059,7 @@ class DynamicRLHF:
 
             elif self.reward_model_type == "multi-head":
                 # Multi-head model: get predictions from each head
-                multi_head_model = list(self.reward_models.values())[
-                    0
-                ]  # Only one model
+                multi_head_model = list(self.reward_models.values())[0]  # Only one model
 
                 # Get predictions for all heads at once
                 st_expanded = state_tensor.repeat(
@@ -1182,9 +1084,7 @@ class DynamicRLHF:
                     if outputs.dim() == 3 and outputs.shape[-1] == 1:
                         outputs = outputs.squeeze(-1)
 
-                    mean_reward, uncertainty = compute_grouped(
-                        outputs, multi_head_model.ensemble_count
-                    )
+                    mean_reward, uncertainty = compute_grouped(outputs, multi_head_model.ensemble_count)
 
                     # Collect
                     model_rewards.append(mean_reward)  # shape [batch_size,]
@@ -1211,13 +1111,9 @@ class DynamicRLHF:
                     )
 
                     # Forward pass with specific feedback type
-                    predictions = unified_model(
-                        st_expanded, act_expanded, feedback_type
-                    )
+                    predictions = unified_model(st_expanded, act_expanded, feedback_type)
 
-                    mean_reward, uncertainty = compute_grouped(
-                        predictions, unified_model.ensemble_count
-                    )
+                    mean_reward, uncertainty = compute_grouped(predictions, unified_model.ensemble_count)
 
                     # Collect
                     model_rewards.append(mean_reward)  # shape [batch_size,]
@@ -1259,7 +1155,13 @@ class DynamicRLHF:
 
         return final_rewards.cpu().numpy()  # shape: [batch_size,]
 
-    def train(self, total_timesteps: int, sampling_strategy: str = "random", query_sampling_strategy: str = "none", query_sampling_multiplier: float = 2.0):
+    def train(
+        self,
+        total_timesteps: int,
+        sampling_strategy: str = "random",
+        query_sampling_strategy: str = "none",
+        query_sampling_multiplier: float = 2.0,
+    ):
         """
         Run full training loop with a single call to learn() and using callbacks
         for reward model updates.
@@ -1282,9 +1184,7 @@ class DynamicRLHF:
                 callback = CallbackList(all_callbacks)
             else:
                 # If it's a single callback, create a list
-                callback = CallbackList(
-                    [reward_model_callback, self.external_callbacks]
-                )
+                callback = CallbackList([reward_model_callback, self.external_callbacks])
         else:
             callback = reward_model_callback
 
@@ -1398,9 +1298,7 @@ def main():
         default=5000,
         help="Maximum size of the feedback buffer",
     )
-    parser.add_argument(
-        "--top-n-models", type=int, default=3, help="Top N models to use"
-    )
+    parser.add_argument("--top-n-models", type=int, default=3, help="Top N models to use")
     parser.add_argument(
         "--random-response-handling",
         action="store_true",
@@ -1438,8 +1336,9 @@ def main():
     device = TrainingUtils.get_device()
     feedback_path = Path(args.reference_data_folder) / f"{feedback_id}.pkl"
 
-    gen_environment = TrainingUtils.setup_environment(args.environment, args.seed, 
-                                                      env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs))
+    gen_environment = TrainingUtils.setup_environment(
+        args.environment, args.seed, env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs)
+    )
     expert_models = TrainingUtils.load_expert_models(
         env_name=args.environment,
         algorithm=args.algorithm,
@@ -1454,7 +1353,7 @@ def main():
         reference_data_path=feedback_path,
         noise_level=args.noise_level,
     )
-    #unique_id = str(uuid.uuid4())[:8]
+    # unique_id = str(uuid.uuid4())[:8]
 
     reward_model_type = args.reward_model_type if len(args.feedback_types) > 1 else f"single_{''.join(args.feedback_types)}"
 
@@ -1527,10 +1426,10 @@ def main():
 
     n_timesteps = args.n_timesteps if args.n_timesteps > 0 else exp_manager.n_timesteps
     drlhf.train(
-        total_timesteps=n_timesteps, 
+        total_timesteps=n_timesteps,
         sampling_strategy=args.sampling_strategy,
         query_sampling_strategy=args.query_sampling_strategy,
-        query_sampling_multiplier=args.query_sampling_multiplier
+        query_sampling_multiplier=args.query_sampling_multiplier,
     )
 
 

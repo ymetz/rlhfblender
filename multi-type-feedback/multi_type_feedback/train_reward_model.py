@@ -48,9 +48,7 @@ def train_reward_model(
 ):
     """Train a reward model given trajectories data."""
     training_set_size = math.floor(split_ratio * len(dataset))
-    train_set, val_set = random_split(
-        dataset, lengths=[training_set_size, len(dataset) - training_set_size]
-    )
+    train_set, val_set = random_split(dataset, lengths=[training_set_size, len(dataset) - training_set_size])
 
     train_loader = DataLoader(
         train_set,
@@ -114,15 +112,9 @@ def train_reward_model(
 
 def main():
     parser = TrainingUtils.setup_base_parser()
-    parser.add_argument(
-        "--feedback-type", type=str, default="evaluative", help="Type of feedback"
-    )
-    parser.add_argument(
-        "--n-ensemble", type=int, default=4, help="Number of ensemble models"
-    )
-    parser.add_argument(
-        "--no-loading-bar", action="store_true", help="Disable loading bar"
-    )
+    parser.add_argument("--feedback-type", type=str, default="evaluative", help="Type of feedback")
+    parser.add_argument("--n-ensemble", type=int, default=4, help="Number of ensemble models")
+    parser.add_argument("--no-loading-bar", action="store_true", help="Disable loading bar")
     parser.add_argument(
         "--feedback-folder",
         type=str,
@@ -139,37 +131,24 @@ def main():
 
     TrainingUtils.set_seeds(args.seed)
     environment = TrainingUtils.setup_environment(
-        args.environment, args.seed,
+        args.environment,
+        args.seed,
         env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs),
-        save_reset_wrapper=False
+        save_reset_wrapper=False,
     )
 
     feedback_id, model_id = TrainingUtils.get_model_ids(args)
 
     # Setup reward model
-    reward_model = (
-        SingleCnnNetwork
-        if "procgen" in args.environment or "ALE" in args.environment
-        else SingleNetwork
-    )(
+    reward_model = (SingleCnnNetwork if "procgen" in args.environment or "ALE" in args.environment else SingleNetwork)(
         input_spaces=(environment.observation_space, environment.action_space),
         hidden_dim=256,
-        action_hidden_dim=(
-            16 if "procgen" in args.environment or "ALE" in args.environment else 32
-        ),
-        layer_num=(
-            3 if "procgen" in args.environment or "ALE" in args.environment else 6
-        ),
-        cnn_channels=(
-            (16, 32, 32)
-            if "procgen" in args.environment or "ALE" in args.environment
-            else None
-        ),
+        action_hidden_dim=(16 if "procgen" in args.environment or "ALE" in args.environment else 32),
+        layer_num=(3 if "procgen" in args.environment or "ALE" in args.environment else 6),
+        cnn_channels=((16, 32, 32) if "procgen" in args.environment or "ALE" in args.environment else None),
         output_dim=1,
         loss_function=(
-            calculate_single_reward_loss
-            if args.feedback_type in ["evaluative", "descriptive"]
-            else calculate_pairwise_loss
+            calculate_single_reward_loss if args.feedback_type in ["evaluative", "descriptive"] else calculate_pairwise_loss
         ),
         learning_rate=1e-5,
         ensemble_count=args.n_ensemble,

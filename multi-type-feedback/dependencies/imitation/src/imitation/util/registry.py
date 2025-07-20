@@ -66,8 +66,7 @@ class Registry(Generic[T]):
         provided_args = sum([value is not None, indirect is not None])
         if provided_args != 1:
             raise ValueError(
-                "Must provide exactly one of 'value' and 'indirect',"
-                f"{provided_args} have been provided.",
+                "Must provide exactly one of 'value' and 'indirect'," f"{provided_args} have been provided.",
             )
 
         if value is not None:

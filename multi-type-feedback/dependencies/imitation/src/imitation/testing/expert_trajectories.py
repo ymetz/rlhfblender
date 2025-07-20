@@ -1,4 +1,5 @@
 """Test utilities to conveniently generate expert trajectories."""
+
 import math
 import pathlib
 import pickle
@@ -82,13 +83,10 @@ def lazy_generate_expert_trajectories(
             trajectories = data_serialize.load_with_rewards(trajectories_path)
         except (FileNotFoundError, pickle.PickleError) as e:  # pragma: no cover
             generation_reason = (
-                "the cache is cold"
-                if isinstance(e, FileNotFoundError)
-                else "trajectory file format in the cache is outdated"
+                "the cache is cold" if isinstance(e, FileNotFoundError) else "trajectory file format in the cache is outdated"
             )
             warnings.warn(
-                f"Generating expert trajectories for {env_id} because "
-                f"{generation_reason}.",
+                f"Generating expert trajectories for {env_id} because " f"{generation_reason}.",
             )
             trajectories = generate_expert_trajectories(env_id, num_trajectories, rng)
             data_serialize.save(trajectories_path, trajectories)

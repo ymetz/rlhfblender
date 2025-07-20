@@ -14,6 +14,7 @@ The supported policy types are:
 - :code:`random`: A policy that takes random actions.
 - :code:`zero`: A policy that takes zero actions.
 """
+
 import sacred
 
 from imitation.policies import serialize
@@ -50,10 +51,7 @@ def config_hook(config, command_name, logger):
 
     # Note: this only serves the purpose to indicated that you need to specify the
     #   path for local policies. It makes the config more explicit.
-    if (
-        e_config["policy_type"] in ("ppo", "sac")
-        and "path" not in e_config["loader_kwargs"]
-    ):  # pragma: no cover
+    if e_config["policy_type"] in ("ppo", "sac") and "path" not in e_config["loader_kwargs"]:  # pragma: no cover
         e_config["loader_kwargs"]["path"] = None
     return e_config
 

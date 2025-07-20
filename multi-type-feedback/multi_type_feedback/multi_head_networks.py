@@ -45,21 +45,17 @@ class MultiHeadNetwork(LightningModule):
         self.learning_rate = learning_rate
         self.ensemble_count = ensemble_count
         self.masksemble_scale = masksemble_scale
-        
+
         # Create learned normalization parameters for each feedback type (for training)
         self.loss_scale = nn.Parameter(torch.ones(len(feedback_types)))
         self.loss_bias = nn.Parameter(torch.zeros(len(feedback_types)))
-        self.feedback_type_map = {
-            fb_type: i for i, fb_type in enumerate(feedback_types)
-        }
+        self.feedback_type_map = {fb_type: i for i, fb_type in enumerate(feedback_types)}
 
         obs_space, action_space = input_spaces
         action_is_discrete = isinstance(action_space, gym.spaces.Discrete)
 
         # Determine input dimension
-        input_dim = np.prod(obs_space.shape) + (
-            np.prod(action_space.shape) if not action_is_discrete else action_space.n
-        )
+        input_dim = np.prod(obs_space.shape) + (np.prod(action_space.shape) if not action_is_discrete else action_space.n)
 
         # Create shared backbone
         backbone_layers = []
@@ -176,7 +172,7 @@ class MultiHeadNetwork(LightningModule):
         # Use the appropriate loss function for this feedback type
         if feedback_type in self.feedback_types:
             feedback_idx = self.feedback_type_map[feedback_type]
-            
+
             # For single-reward feedback types
             if feedback_type in ["evaluative", "descriptive", "supervised"]:
                 data, targets = in_data
@@ -184,9 +180,7 @@ class MultiHeadNetwork(LightningModule):
                 observations, actions, masks = data[0], data[1], data[2]
 
                 # Forward pass
-                outputs = self.forward(
-                    observations, actions, feedback_type=feedback_type
-                )
+                outputs = self.forward(observations, actions, feedback_type=feedback_type)
 
                 # Sum over the sequence dimension to get total rewards per segment
                 total_rewards = (outputs * masks).sum(dim=1).squeeze(-1)
@@ -229,9 +223,7 @@ class MultiHeadNetwork(LightningModule):
                 normalized_rewards2 = rewards2 * scale + bias
 
                 # Stack rewards and compute log softmax
-                rewards = torch.stack(
-                    [normalized_rewards1, normalized_rewards2], dim=1
-                )  # Shape: (batch_size, 2)
+                rewards = torch.stack([normalized_rewards1, normalized_rewards2], dim=1)  # Shape: (batch_size, 2)
                 log_probs = F.log_softmax(rewards, dim=1)
 
                 # Compute NLL loss

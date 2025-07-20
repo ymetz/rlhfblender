@@ -96,10 +96,7 @@ def dagger():
                 "dagger": dict(
                     beta_schedule=tune.choice(
                         [dagger_alg.LinearBetaSchedule(i) for i in [1, 5, 15]]
-                        + [
-                            dagger_alg.ExponentialBetaSchedule(i)
-                            for i in [0.3, 0.5, 0.7]
-                        ],
+                        + [dagger_alg.ExponentialBetaSchedule(i) for i in [0.3, 0.5, 0.7]],
                     ),
                     rollout_round_min_episodes=tune.choice([3, 5, 10]),
                 ),

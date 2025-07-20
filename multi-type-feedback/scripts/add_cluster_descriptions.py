@@ -21,9 +21,7 @@ def process_pickle_file(file_path):
 
     n_clusters = 10000
     batch_size = 1000
-    kmeans = MiniBatchKMeans(
-        n_clusters=n_clusters, batch_size=batch_size, random_state=42
-    )
+    kmeans = MiniBatchKMeans(n_clusters=n_clusters, batch_size=batch_size, random_state=42)
     kmeans.fit(states)
     cluster_assignments = kmeans.predict(states)
 
@@ -42,8 +40,7 @@ def process_pickle_file(file_path):
     # Separate obs and actions
     obs_dim = data["segments"][0][0][0].squeeze(0).shape[0]
     cluster_description = [
-        (rep[:obs_dim], rep[obs_dim:], reward)
-        for rep, reward in zip(cluster_representatives, cluster_rewards)
+        (rep[:obs_dim], rep[obs_dim:], reward) for rep, reward in zip(cluster_representatives, cluster_rewards)
     ]
 
     # Update the data dictionary with the new cluster description

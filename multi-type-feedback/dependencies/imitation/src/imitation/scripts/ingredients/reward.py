@@ -149,10 +149,7 @@ def make_reward_net(
         if ensemble_size is None:
             raise ValueError("Must specify ensemble_size.")
 
-        members = [
-            _make_reward_net(venv, **ensemble_member_config)
-            for _ in range(ensemble_size)
-        ]
+        members = [_make_reward_net(venv, **ensemble_member_config) for _ in range(ensemble_size)]
 
         reward_net: reward_nets.RewardNet = net_cls(
             venv.observation_space,

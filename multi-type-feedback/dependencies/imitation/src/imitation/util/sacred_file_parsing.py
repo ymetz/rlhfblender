@@ -1,4 +1,5 @@
 """Utilities to parse sacred run directories."""
+
 import json
 import pathlib
 import warnings

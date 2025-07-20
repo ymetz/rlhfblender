@@ -45,16 +45,10 @@ class DiscreteInteractivePolicy(base_policies.NonTrainablePolicy, abc.ABC):
         )
 
         assert isinstance(action_space, gym.spaces.Discrete)
-        assert (
-            len(action_keys_names)
-            == len(set(action_keys_names.values()))
-            == action_space.n
-        )
+        assert len(action_keys_names) == len(set(action_keys_names.values())) == action_space.n
 
         self.action_keys_names = action_keys_names
-        self.action_key_to_index = {
-            k: i for i, k in enumerate(action_keys_names.keys())
-        }
+        self.action_key_to_index = {k: i for i, k in enumerate(action_keys_names.keys())}
         self.clear_screen_on_query = clear_screen_on_query
 
     def _choose_action(

@@ -140,16 +140,13 @@ class DensityAlgorithm(base.DemonstrationAlgorithm):
     ) -> Dict[Optional[int], List[np.ndarray]]:
         if next_obs_b is None and self.density_type == DensityType.STATE_STATE_DENSITY:
             raise ValueError(
-                "STATE_STATE_DENSITY requires next_obs_b "
-                "to be provided, but it was None",
+                "STATE_STATE_DENSITY requires next_obs_b " "to be provided, but it was None",
             )
 
         assert act_b.shape[1:] == self.venv.action_space.shape
         ob_space = self.venv.observation_space
         if isinstance(obs_b, types.DictObs):
-            exp_shape = {
-                k: v.shape for k, v in ob_space.items()  # type: ignore[attr-defined]
-            }
+            exp_shape = {k: v.shape for k, v in ob_space.items()}  # type: ignore[attr-defined]
             obs_shape = {k: v.shape[1:] for k, v in obs_b.items()}
             assert exp_shape == obs_shape, f"Expected {exp_shape}, got {obs_shape}"
         else:
@@ -248,10 +245,7 @@ class DensityAlgorithm(base.DemonstrationAlgorithm):
         self._scaler.fit(flattened_dataset)
 
         # now fit density model
-        self._density_models = {
-            k: self._fit_density(self._scaler.transform(v))
-            for k, v in self.transitions.items()
-        }
+        self._density_models = {k: self._fit_density(self._scaler.transform(v)) for k, v in self.transitions.items()}
 
     def _fit_density(self, transitions: np.ndarray) -> neighbors.KernelDensity:
         density_model = neighbors.KernelDensity(

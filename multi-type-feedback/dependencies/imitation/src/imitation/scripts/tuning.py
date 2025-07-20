@@ -110,9 +110,7 @@ def find_best_trial(
     row = best_config_df.iloc[0]
     best_config_tag = row["experiment_tag"]
     assert experiment_analysis.trials is not None  # for mypy
-    best_trial = [
-        t for t in experiment_analysis.trials if best_config_tag in t.experiment_tag
-    ][0]
+    best_trial = [t for t in experiment_analysis.trials if best_config_tag in t.experiment_tag][0]
 
     if print_return:
         all_returns = df[df["mean_return"] == row["mean_return"]][return_key]

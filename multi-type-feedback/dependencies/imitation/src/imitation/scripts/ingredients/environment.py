@@ -1,4 +1,5 @@
 """This ingredient provides a vectorized gym environment."""
+
 import contextlib
 from typing import Any, Generator, Mapping
 

@@ -103,10 +103,7 @@ def build_sacred_symlink(log_dir: types.AnyPath, run: sacred.run.Run) -> None:
         symlink_path.symlink_to(target_path, target_is_directory=True)
     except OSError as e:
         if os.name == "nt":  # Windows
-            msg = (
-                "Exception occurred while creating symlink. "
-                "Please ensure that Developer mode is enabled."
-            )
+            msg = "Exception occurred while creating symlink. " "Please ensure that Developer mode is enabled."
             raise OSError(msg) from e
         else:
             raise e

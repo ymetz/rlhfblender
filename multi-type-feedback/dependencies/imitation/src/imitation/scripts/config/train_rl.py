@@ -1,6 +1,5 @@
 """Configuration settings for train_rl, training a policy with RL."""
 
-
 import sacred
 from torch import nn
 

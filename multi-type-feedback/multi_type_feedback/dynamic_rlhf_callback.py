@@ -47,62 +47,49 @@ class RewardModelUpdateCallback(EventCallback):
             self.update_count += 1
 
             if self.verbose > 0:
-                print(
-                    f"\nReward model update #{self.update_count} at timestep {self.num_timesteps}"
-                )
+                print(f"\nReward model update #{self.update_count} at timestep {self.num_timesteps}")
 
             # Determine number of trajectories to collect
             n_feedback_needed = self.drlhf_agent.n_feedback_per_iteration
-            
+
             if self.query_sampling_strategy != "none":
                 # Collect more trajectories for query selection
                 n_trajectories_to_collect = int(n_feedback_needed * self.query_sampling_multiplier)
                 if self.verbose > 0:
-                    print(f"Collecting {n_trajectories_to_collect} trajectories for query selection (need {n_feedback_needed})")
+                    print(
+                        f"Collecting {n_trajectories_to_collect} trajectories for query selection (need {n_feedback_needed})"
+                    )
             else:
                 n_trajectories_to_collect = n_feedback_needed
 
             # Collect trajectories
-            trajectories, initial_states = self.drlhf_agent.collect_trajectories(
-                n_trajectories_to_collect
-            )
+            trajectories, initial_states = self.drlhf_agent.collect_trajectories(n_trajectories_to_collect)
 
             # Apply query selection if enabled
             if self.query_sampling_strategy != "none" and len(trajectories) > n_feedback_needed:
                 if self.verbose > 0:
                     print(f"Selecting top {n_feedback_needed} queries using {self.query_sampling_strategy} strategy")
-                
+
                 # Select queries based on uncertainty
-                selected_trajectories, selected_initial_states = (
-                    self.drlhf_agent.select_queries_by_uncertainty(
-                        trajectories, initial_states, n_feedback_needed, self.query_sampling_strategy
-                    )
+                selected_trajectories, selected_initial_states = self.drlhf_agent.select_queries_by_uncertainty(
+                    trajectories, initial_states, n_feedback_needed, self.query_sampling_strategy
                 )
-                
+
                 # Log basic query selection metrics
-                if (
-                    hasattr(self.drlhf_agent, "wandb")
-                    and self.drlhf_agent.wandb.run is not None
-                ):
+                if hasattr(self.drlhf_agent, "wandb") and self.drlhf_agent.wandb.run is not None:
                     query_metrics = {
                         "query_selection/total_collected": len(trajectories),
                         "query_selection/selected": len(selected_trajectories),
                     }
                     self.drlhf_agent.wandb.log(query_metrics, step=self.num_timesteps)
-                
+
                 trajectories, initial_states = selected_trajectories, selected_initial_states
 
             # Get feedback based on sampling strategy
             if self.sampling_strategy == "random":
-                feedback, feedback_counts = self.drlhf_agent.sample_feedback_random(
-                    trajectories, initial_states
-                )
+                feedback, feedback_counts = self.drlhf_agent.sample_feedback_random(trajectories, initial_states)
             else:  # uncertainty
-                feedback, feedback_counts = (
-                    self.drlhf_agent.sample_feedback_uncertainty(
-                        trajectories, initial_states
-                    )
-                )
+                feedback, feedback_counts = self.drlhf_agent.sample_feedback_uncertainty(trajectories, initial_states)
 
             # Update feedback buffers
             self.drlhf_agent.update_feedback_buffers(feedback)
@@ -121,10 +108,7 @@ class RewardModelUpdateCallback(EventCallback):
                         feedback_counts=feedback_counts,
                         step=global_step,
                     )
-                elif (
-                    hasattr(self.drlhf_agent, "wandb")
-                    and self.drlhf_agent.wandb.run is not None
-                ):
+                elif hasattr(self.drlhf_agent, "wandb") and self.drlhf_agent.wandb.run is not None:
                     # Fallback logging directly to wandb
                     metrics_to_log = {}
                     for feedback_type, loss in reward_metrics.items():

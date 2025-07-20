@@ -65,13 +65,11 @@ class SQIL(algo_base.DemonstrationAlgorithm[types.Transitions]):
         # the added complexity until we have a concrete use case, however.
         if "replay_buffer_class" in rl_kwargs:
             raise ValueError(
-                "SQIL uses a custom replay buffer: "
-                "'replay_buffer_class' not allowed.",
+                "SQIL uses a custom replay buffer: " "'replay_buffer_class' not allowed.",
             )
         if "replay_buffer_kwargs" in rl_kwargs:
             raise ValueError(
-                "SQIL uses a custom replay buffer: "
-                "'replay_buffer_kwargs' not allowed.",
+                "SQIL uses a custom replay buffer: " "'replay_buffer_kwargs' not allowed.",
             )
 
         self.rl_algo = rl_algo_class(
@@ -244,8 +242,5 @@ class SQILReplayBuffer(buffers.ReplayBuffer):
         expert_sample = self.expert_buffer.sample(expert_sample_size, env)
 
         return type_aliases.ReplayBufferSamples(
-            *(
-                th.cat((getattr(new_sample, name), getattr(expert_sample, name)))
-                for name in new_sample._fields
-            ),
+            *(th.cat((getattr(new_sample, name), getattr(expert_sample, name))) for name in new_sample._fields),
         )

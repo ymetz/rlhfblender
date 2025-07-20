@@ -212,13 +212,11 @@ class _WrappedDataLoader:
         for batch in self.data_loader:
             if len(batch["obs"]) != self.expected_batch_size:
                 raise ValueError(
-                    f"Expected batch size {self.expected_batch_size} "
-                    f"!= {len(batch['obs'])} = len(batch['obs'])",
+                    f"Expected batch size {self.expected_batch_size} " f"!= {len(batch['obs'])} = len(batch['obs'])",
                 )
             if len(batch["acts"]) != self.expected_batch_size:
                 raise ValueError(
-                    f"Expected batch size {self.expected_batch_size} "
-                    f"!= {len(batch['acts'])} = len(batch['acts'])",
+                    f"Expected batch size {self.expected_batch_size} " f"!= {len(batch['acts'])} = len(batch['acts'])",
                 )
             yield batch
 
@@ -265,8 +263,7 @@ def make_data_loader(
     if isinstance(transitions, types.TransitionsMinimal):
         if len(transitions) < batch_size:
             raise ValueError(
-                f"Number of transitions in `demonstrations` {len(transitions)} "
-                f"is smaller than batch size {batch_size}.",
+                f"Number of transitions in `demonstrations` {len(transitions)} " f"is smaller than batch size {batch_size}.",
             )
 
         kwargs: Mapping[str, Any] = {

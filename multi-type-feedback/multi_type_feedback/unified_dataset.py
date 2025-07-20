@@ -32,9 +32,7 @@ class UnifiedBufferDataset(Dataset):
         return self.data[idx]
 
 
-def create_dataloaders_by_type(
-    feedback_buffers: Dict[str, List[Any]], batch_size: int, val_split: float = 0.2
-):
+def create_dataloaders_by_type(feedback_buffers: Dict[str, List[Any]], batch_size: int, val_split: float = 0.2):
     """
     Create separate dataloaders for each feedback type.
 
@@ -50,11 +48,13 @@ def create_dataloaders_by_type(
 
     def create_collate_fn(feedback_type_str):
         """Create a collate function that includes feedback type"""
+
         def collate_fn(batch):
             # Default collate the batch data
             batch_data = torch.utils.data.dataloader.default_collate(batch)
             # Add feedback type as the first element
             return (feedback_type_str, batch_data)
+
         return collate_fn
 
     for feedback_type, feedback_data in feedback_buffers.items():
@@ -69,14 +69,10 @@ def create_dataloaders_by_type(
         train_size = len(dataset) - val_size
 
         if train_size <= 0 or val_size <= 0:
-            print(
-                f"Skipping {feedback_type} - insufficient data ({len(dataset)} samples)"
-            )
+            print(f"Skipping {feedback_type} - insufficient data ({len(dataset)} samples)")
             continue
 
-        train_dataset, val_dataset = torch.utils.data.random_split(
-            dataset, [train_size, val_size]
-        )
+        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
         # Create collate function for this feedback type
         collate_fn = create_collate_fn(feedback_type)
@@ -105,9 +101,7 @@ def create_dataloaders_by_type(
     return dataloaders
 
 
-def create_unified_dataloaders(
-    feedback_buffers: Dict[str, List[Any]], batch_size: int, val_split: float = 0.2
-):
+def create_unified_dataloaders(feedback_buffers: Dict[str, List[Any]], batch_size: int, val_split: float = 0.2):
     """
     Create unified dataloaders that include feedback type with the data.
 
@@ -130,9 +124,7 @@ def create_unified_dataloaders(
     if train_size <= 0 or val_size <= 0:
         raise ValueError(f"Insufficient data ({len(dataset)} samples)")
 
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        dataset, [train_size, val_size]
-    )
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
     # Create data loaders
     train_loader = DataLoader(

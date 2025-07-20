@@ -120,8 +120,7 @@ def parallel(
             updated_tune_run_kwargs["search_alg"] = search.Repeater(algo, repeat)
         except AttributeError as e:
             raise ValueError(
-                "repeat > 1 but search_alg is not an instance of "
-                "ray.tune.search.SearchAlgorithm",
+                "repeat > 1 but search_alg is not an instance of " "ray.tune.search.SearchAlgorithm",
             ) from e
 
     if sacred_ex_name == "train_rl":

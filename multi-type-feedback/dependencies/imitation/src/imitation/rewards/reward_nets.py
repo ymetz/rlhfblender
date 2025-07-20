@@ -727,11 +727,7 @@ class ShapedRewardNet(ForwardWrapper):
         # that does not preserve the optimal policy if the episodes have variable
         # length!
         new_shaping = (1 - done.float()) * new_shaping_output
-        final_rew = (
-            base_reward_net_output
-            + self.discount_factor * new_shaping
-            - old_shaping_output
-        )
+        final_rew = base_reward_net_output + self.discount_factor * new_shaping - old_shaping_output
         assert final_rew.shape == state.shape[:1]
         return final_rew
 
@@ -945,10 +941,7 @@ class RewardEnsemble(RewardNetWithVariance):
                 shape `(batch_size, num_members)`.
         """
         batch_size = state.shape[0]
-        rewards_list = [
-            member.predict_processed(state, action, next_state, done, **kwargs)
-            for member in self.members
-        ]
+        rewards_list = [member.predict_processed(state, action, next_state, done, **kwargs) for member in self.members]
         rewards: np.ndarray = np.stack(rewards_list, axis=-1)
         assert rewards.shape == (batch_size, self.num_members)
         return rewards
@@ -1036,8 +1029,7 @@ class AddSTDRewardWrapper(PredictProcessedWrapper):
         super().__init__(base)
         if not isinstance(base, RewardNetWithVariance):
             raise TypeError(
-                "Cannot add standard deviation to reward net that "
-                "is not an instance of RewardNetWithVariance!",
+                "Cannot add standard deviation to reward net that " "is not an instance of RewardNetWithVariance!",
             )
 
         self.default_alpha = default_alpha

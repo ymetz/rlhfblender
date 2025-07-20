@@ -155,18 +155,12 @@ def _validate_wrapper_structure(
         return reward_net
 
     # Otherwise provide a useful error
-    formatted_prefixes = [
-        "[" + ",".join(t.__name__ for t in prefix) + "]" for prefix in prefixes
-    ]
+    formatted_prefixes = ["[" + ",".join(t.__name__ for t in prefix) + "]" for prefix in prefixes]
 
     formatted_wrapper_structure = "[" + ",".join(t.__name__ for t in wrappers) + "]"
 
     raise TypeError(
-        "Wrapper structure should"
-        + " match "
-        + " or ".join(formatted_prefixes)
-        + " but found "
-        + formatted_wrapper_structure,
+        "Wrapper structure should" + " match " + " or ".join(formatted_prefixes) + " but found " + formatted_wrapper_structure,
     )
 
 

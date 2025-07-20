@@ -36,8 +36,7 @@ def _try_computing_expert_stats(
         )
     else:
         logger.warning(
-            "Expert trajectories do not have reward information, so expert "
-            "statistics cannot be computed.",
+            "Expert trajectories do not have reward information, so expert " "statistics cannot be computed.",
         )
         return None
 

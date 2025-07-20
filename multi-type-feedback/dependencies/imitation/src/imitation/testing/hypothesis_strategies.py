@@ -1,4 +1,5 @@
 """Hypothesis strategies for generating sequences of trajectories for testing."""
+
 from typing import Dict, List, Union
 
 import gymnasium as gym

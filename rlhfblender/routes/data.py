@@ -468,9 +468,6 @@ async def submit_current_feedback(request: Request):
     Submits the current feedback and call post-processing (duplication, common format, etc)
     Saves processed feedback for later integration with DynamicRLHF training.
     """
-    import pickle
-    import os
-    
     session_id = request.query_params.get("session_id", None)
     save_dynamic_rlhf = request.query_params.get("saveDynamicRLHFFormat", "false").lower() == "true"
 
@@ -479,7 +476,7 @@ async def submit_current_feedback(request: Request):
 
     # Process feedback through the feedback translator
     processed_feedback = request.app.state.feedback_translator.process()
-    
+
     print(f"Current session_id: {session_id}")
     print(f"Processed feedback count: {len(processed_feedback) if processed_feedback else 0}")
 
@@ -487,9 +484,10 @@ async def submit_current_feedback(request: Request):
         # Save processed feedback as pickle file for training integration
         feedback_dir = f"sessions/{session_id}"
         os.makedirs(feedback_dir, exist_ok=True)
-        
+
         # Also save in DynamicRLHF format for direct consumption by training
         from rlhfblender.data_collection.feedback_dataset_adapter import FeedbackDatasetAdapter
+
         dynamic_rlhf_file = os.path.join(feedback_dir, "dynamic_rlhf_feedback.pkl")
         success = FeedbackDatasetAdapter.save_dynamic_rlhf_format(processed_feedback, dynamic_rlhf_file)
         if success:
@@ -498,5 +496,5 @@ async def submit_current_feedback(request: Request):
             print("Failed to save DynamicRLHF format feedback")
     else:
         print("No processed feedback to save")
-    
+
     return "Feedback submitted"

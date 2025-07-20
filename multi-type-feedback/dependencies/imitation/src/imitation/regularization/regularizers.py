@@ -102,10 +102,7 @@ class Regularizer(abc.ABC, Generic[R]):
             )
 
         if val_split is not None and (
-            not isinstance(val_split, float)
-            or np.allclose(val_split, 0.0)
-            or val_split <= 0
-            or val_split >= 1
+            not isinstance(val_split, float) or np.allclose(val_split, 0.0) or val_split <= 0 or val_split >= 1
         ):
             raise ValueError(
                 f"val_split = {val_split} must be a float strictly between 0 and 1.",

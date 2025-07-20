@@ -45,9 +45,7 @@ class UnifiedNetwork(LightningModule):
             ]
 
         self.feedback_types = feedback_types
-        self.feedback_type_map = {
-            fb_type: i for i, fb_type in enumerate(feedback_types)
-        }
+        self.feedback_type_map = {fb_type: i for i, fb_type in enumerate(feedback_types)}
         self.learning_rate = learning_rate
         self.ensemble_count = ensemble_count
         self.masksemble_scale = masksemble_scale
@@ -56,14 +54,10 @@ class UnifiedNetwork(LightningModule):
         action_is_discrete = isinstance(action_space, gym.spaces.Discrete)
 
         # Determine input dimension
-        input_dim = np.prod(obs_space.shape) + (
-            np.prod(action_space.shape) if not action_is_discrete else action_space.n
-        )
+        input_dim = np.prod(obs_space.shape) + (np.prod(action_space.shape) if not action_is_discrete else action_space.n)
 
         # Create feedback type embedding
-        self.feedback_embedding = nn.Embedding(
-            len(feedback_types), feedback_embedding_dim
-        )
+        self.feedback_embedding = nn.Embedding(len(feedback_types), feedback_embedding_dim)
 
         # Adjust input dimension to include feedback embedding
         augmented_input_dim = input_dim + feedback_embedding_dim
@@ -135,9 +129,7 @@ class UnifiedNetwork(LightningModule):
 
         # Get feedback type index and embedding
         feedback_idx = self.feedback_type_map[feedback_type]
-        feedback_embedding = self.feedback_embedding(
-            torch.tensor(feedback_idx, device=observations.device)
-        )
+        feedback_embedding = self.feedback_embedding(torch.tensor(feedback_idx, device=observations.device))
 
         # Expand embedding to match batch and sequence dimensions
         # Shape: (batch_size, segment_length, embedding_dim)
@@ -195,9 +187,7 @@ class UnifiedNetwork(LightningModule):
                 obs2 = obs2.repeat(*repeat_pattern)
                 actions2 = actions2.repeat(*repeat_pattern)
                 mask2 = mask2.repeat(*repeat_pattern)
-                preferred_indices = preferred_indices.repeat(
-                    self.ensemble_count, 1
-                ).squeeze()
+                preferred_indices = preferred_indices.repeat(self.ensemble_count, 1).squeeze()
 
             # Compute network outputs for both trajectories
             outputs1 = self.forward(obs1, actions1, feedback_type)
@@ -327,9 +317,7 @@ class UnifiedCnnNetwork(LightningModule):
             ]
 
         self.feedback_types = feedback_types
-        self.feedback_type_map = {
-            fb_type: i for i, fb_type in enumerate(feedback_types)
-        }
+        self.feedback_type_map = {fb_type: i for i, fb_type in enumerate(feedback_types)}
         self.learning_rate = learning_rate
         self.ensemble_count = ensemble_count
         self.masksemble_scale = masksemble_scale
@@ -340,19 +328,13 @@ class UnifiedCnnNetwork(LightningModule):
         # Create CNN layers
         cnn_layers = []
         for i in range(min(layer_num, len(cnn_channels))):
-            cnn_layers.append(
-                self.conv_sequence(
-                    input_channels if i == 0 else cnn_channels[i - 1], cnn_channels[i]
-                )
-            )
+            cnn_layers.append(self.conv_sequence(input_channels if i == 0 else cnn_channels[i - 1], cnn_channels[i]))
 
         self.conv_layers = nn.Sequential(*cnn_layers)
         self.flatten = nn.Flatten()
 
         # Create feedback type embedding
-        self.feedback_embedding = nn.Embedding(
-            len(feedback_types), feedback_embedding_dim
-        )
+        self.feedback_embedding = nn.Embedding(len(feedback_types), feedback_embedding_dim)
 
         # Action input layer
         action_shape = action_space.shape if action_space.shape else 1
@@ -364,9 +346,7 @@ class UnifiedCnnNetwork(LightningModule):
         ).float()
 
         # Calculate CNN output size and combine with action and feedback embedding
-        self.cnn_out_size = self.compute_flattened_size(
-            obs_space.shape, cnn_channels[:layer_num]
-        )
+        self.cnn_out_size = self.compute_flattened_size(obs_space.shape, cnn_channels[:layer_num])
         combined_size = self.cnn_out_size + action_hidden_dim + feedback_embedding_dim
 
         # Final fully connected layer
@@ -384,14 +364,10 @@ class UnifiedCnnNetwork(LightningModule):
     def residual_block(self, in_channels):
         return nn.Sequential(
             nn.ReLU(),
-            Masksembles2D(
-                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
-            ).float(),
+            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
             self.conv_layer(in_channels, in_channels),
             nn.ReLU(),
-            Masksembles2D(
-                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
-            ).float(),
+            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
             self.conv_layer(in_channels, in_channels),
         )
 
@@ -405,9 +381,7 @@ class UnifiedCnnNetwork(LightningModule):
 
     def compute_flattened_size(self, observation_space, cnn_channels):
         with torch.no_grad():
-            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(
-                -1
-            )
+            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(-1)
             sample_output = self.conv_layers(sample_input).flatten(start_dim=1)
             return sample_output.shape[-1]
 
@@ -422,14 +396,10 @@ class UnifiedCnnNetwork(LightningModule):
 
         # Get feedback type index and embedding
         feedback_idx = self.feedback_type_map[feedback_type]
-        feedback_embedding = self.feedback_embedding(
-            torch.tensor(feedback_idx, device=observations.device)
-        )
+        feedback_embedding = self.feedback_embedding(torch.tensor(feedback_idx, device=observations.device))
 
         # Process observations through CNN
-        obs_flat = observations.reshape(
-            batch_size * segment_length, channels, height, width
-        )
+        obs_flat = observations.reshape(batch_size * segment_length, channels, height, width)
         x = self.conv_layers(obs_flat)
         x = self.flatten(x)
         x = F.relu(x)

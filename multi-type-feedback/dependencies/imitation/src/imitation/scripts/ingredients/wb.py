@@ -59,8 +59,7 @@ def wandb_init(
         import wandb
     except ModuleNotFoundError as e:
         raise ModuleNotFoundError(
-            "Trying to call `wandb.init()` but `wandb` not installed: "
-            "try `pip install wandb`.",
+            "Trying to call `wandb.init()` but `wandb` not installed: " "try `pip install wandb`.",
         ) from e
     wandb_config_dict = dict(**_run.config)
     wandb_config_dict.update(wandb_additional_info)

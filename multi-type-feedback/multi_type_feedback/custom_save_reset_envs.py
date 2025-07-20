@@ -5,6 +5,7 @@ import numpy as np
     For a list of supported environments, see the CUSTOM_ENVS dict at the bottom of the file
 """
 
+
 class LunarLanderSaveLoadWrapper(gym.Wrapper):
     """
     A wrapper that adds save_state and load_state methods to a LunarLander environment.
@@ -61,9 +62,7 @@ class LunarLanderSaveLoadWrapper(gym.Wrapper):
             ],
             # Save wind indices if wind is enabled.
             "wind_idx": self.unwrapped.wind_idx if self.unwrapped.enable_wind else None,
-            "torque_idx": (
-                self.unwrapped.torque_idx if self.unwrapped.enable_wind else None
-            ),
+            "torque_idx": (self.unwrapped.torque_idx if self.unwrapped.enable_wind else None),
             "prev_shaping": self.unwrapped.prev_shaping,
         }
         return state
@@ -95,9 +94,7 @@ class LunarLanderSaveLoadWrapper(gym.Wrapper):
 
         if self.unwrapped.enable_wind:
             self.unwrapped.wind_idx = state.get("wind_idx", self.unwrapped.wind_idx)
-            self.unwrapped.torque_idx = state.get(
-                "torque_idx", self.unwrapped.torque_idx
-            )
+            self.unwrapped.torque_idx = state.get("torque_idx", self.unwrapped.torque_idx)
         self.unwrapped.prev_shaping = state.get("prev_shaping", None)
 
         return self.get_obs()
@@ -111,10 +108,8 @@ class LunarLanderSaveLoadWrapper(gym.Wrapper):
         vel = self.unwrapped.lander.linearVelocity
         obs = np.array(
             [
-                (pos.x - self.VIEWPORT_W / self.SCALE / 2)
-                / (self.VIEWPORT_W / self.SCALE / 2),
-                (pos.y - (self.unwrapped.helipad_y + self.LEG_DOWN / self.SCALE))
-                / (self.VIEWPORT_H / self.SCALE / 2),
+                (pos.x - self.VIEWPORT_W / self.SCALE / 2) / (self.VIEWPORT_W / self.SCALE / 2),
+                (pos.y - (self.unwrapped.helipad_y + self.LEG_DOWN / self.SCALE)) / (self.VIEWPORT_H / self.SCALE / 2),
                 vel.x * (self.VIEWPORT_W / self.SCALE / 2) / self.FPS,
                 vel.y * (self.VIEWPORT_H / self.SCALE / 2) / self.FPS,
                 self.unwrapped.lander.angle,

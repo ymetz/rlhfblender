@@ -87,11 +87,7 @@ def generate_samples(
 ) -> dict:
     """Generate agent's observations and samples in the training environment."""
 
-    env_name = (
-        environment_name
-        if "ALE" not in environment_name
-        else environment_name.replace("/", "-")
-    )
+    env_name = environment_name if "ALE" not in environment_name else environment_name.replace("/", "-")
 
     if not random_sample:
         # Get available checkpoint indices
@@ -106,11 +102,9 @@ def generate_samples(
         print(f"Generating samples for: {algorithm}_{env_name}")
 
         # Get checkpoint files
-        checkpoint_files = [
-            file
-            for file in os.listdir(checkpoints_dir)
-            if re.search(r"rl_model_.*\.zip", file)
-        ] or [f"{env_name}.zip"]
+        checkpoint_files = [file for file in os.listdir(checkpoints_dir) if re.search(r"rl_model_.*\.zip", file)] or [
+            f"{env_name}.zip"
+        ]
 
         total_steps = n_samples * total_steps_factor
         num_checkpoints = len(checkpoint_files) + 1
@@ -118,9 +112,7 @@ def generate_samples(
         samples_per_checkpoint = n_samples // num_checkpoints
         gamma = expert_models[0][0].gamma
 
-        checkpoint_files = ["random"] + sorted(
-            checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group())
-        )
+        checkpoint_files = ["random"] + sorted(checkpoint_files, key=lambda x: int(re.search(r"\d+", x).group()))
 
     else:
         print(f"Generating random samples for: {environment_name}")
@@ -163,18 +155,14 @@ def generate_samples(
         if model_file != "random":
             # Use specified checkpoint index
             checkpoint_
-            model_path = checkpoints_dir.replace(
-                "_1", f"_{random.choice(possible_checkpoint_indices)}"
-            )
+            model_path = checkpoints_dir.replace("_1", f"_{random.choice(possible_checkpoint_indices)}")
             model = model_class.load(
                 os.path.join(model_path, model_file),
                 custom_objects={"learning_rate": 0.0, "lr_schedule": lambda _: 0.0},
             )
             norm_env_path = os.path.join(model_path, env_name, "vecnormalize.pkl")
             norm_env = (
-                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment]))
-                if os.path.isfile(norm_env_path)
-                else None
+                VecNormalize.load(norm_env_path, DummyVecEnv([lambda: environment])) if os.path.isfile(norm_env_path) else None
             )
         else:
             model = None
@@ -194,17 +182,13 @@ def generate_samples(
             else:
                 actions = environment.action_space.sample()
 
-            next_observation, reward, terminated, truncated, _ = environment.step(
-                actions
-            )
+            next_observation, reward, terminated, truncated, _ = environment.step(actions)
             done = terminated or truncated
 
             if action_one_hot:
                 actions = one_hot_vector(actions, one_hot_dim)
 
-            trajectory.append(
-                (np.expand_dims(observation, axis=0), actions, reward, done)
-            )
+            trajectory.append((np.expand_dims(observation, axis=0), actions, reward, done))
 
             observation = next_observation if not done else environment.reset()[0]
 
@@ -239,12 +223,8 @@ def main():
         default=50,
         help="Segment length for sample generation",
     )
-    parser.add_argument(
-        "--save-folder", type=str, default="samples", help="Save folder for samples"
-    )
-    parser.add_argument(
-        "--top-n-models", type=int, default=3, help="Top N models to use"
-    )
+    parser.add_argument("--save-folder", type=str, default="samples", help="Save folder for samples")
+    parser.add_argument("--top-n-models", type=int, default=3, help="Top N models to use")
     parser.add_argument(
         "--expert-model-base-path",
         type=str,
@@ -257,9 +237,7 @@ def main():
         default=5,
         help="Specific checkpoint index to use",
     )
-    parser.add_argument(
-        "--random", action="store_true", help="Generate random samples only"
-    )
+    parser.add_argument("--random", action="store_true", help="Generate random samples only")
     parser.add_argument(
         "--n-samples",
         type=int,
@@ -279,8 +257,9 @@ def main():
     else:
         sample_path = Path(args.save_folder) / f"random_{args.environment}.pkl"
 
-    environment = TrainingUtils.setup_environment(args.environment, args.seed, 
-                                                env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs))
+    environment = TrainingUtils.setup_environment(
+        args.environment, args.seed, env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs)
+    )
 
     # Load expert models for gamma value
     expert_models = TrainingUtils.load_expert_models(

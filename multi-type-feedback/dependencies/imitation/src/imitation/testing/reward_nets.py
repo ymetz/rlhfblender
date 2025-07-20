@@ -16,10 +16,7 @@ def make_ensemble(
     return reward_nets.RewardEnsemble(
         obs_space,
         action_space,
-        members=[
-            reward_nets.BasicRewardNet(obs_space, action_space, **kwargs)
-            for _ in range(num_members)
-        ],
+        members=[reward_nets.BasicRewardNet(obs_space, action_space, **kwargs) for _ in range(num_members)],
     )
 
 

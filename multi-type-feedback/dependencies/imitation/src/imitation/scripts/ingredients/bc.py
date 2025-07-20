@@ -2,6 +2,7 @@
 
 It is either loaded from disk or constructed from scratch.
 """
+
 import warnings
 from typing import Optional, Sequence
 
@@ -76,8 +77,7 @@ def make_or_load_policy(venv: vec_env.VecEnv, agent_path: Optional[str]):
         policy.make_policy(venv)
     else:
         warnings.warn(
-            "When agent_path is specified, policy.policy_cls and policy.policy_kwargs "
-            "are ignored.",
+            "When agent_path is specified, policy.policy_cls and policy.policy_kwargs " "are ignored.",
             RuntimeWarning,
         )
         return bc.reconstruct_policy(agent_path)

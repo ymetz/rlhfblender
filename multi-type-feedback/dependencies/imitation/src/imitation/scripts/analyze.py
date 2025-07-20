@@ -46,8 +46,7 @@ def _gather_sacred_dicts(
     # e.g. chain.from_iterable([["pathone", "pathtwo"], [], ["paththree"]]) =>
     # ("pathone", "pathtwo", "paththree")
     sacred_dirs = itertools.chain.from_iterable(
-        sacred_util.filter_subdirs(util.parse_path(source_dir))
-        for source_dir in source_dirs
+        sacred_util.filter_subdirs(util.parse_path(source_dir)) for source_dir in source_dirs
     )
     sacred_dicts_list = []
 
@@ -131,10 +130,7 @@ def gather_tb_directories() -> dict:
                     tb_symlink.symlink_to(tb_src_dir)
                 except OSError as e:
                     if os.name == "nt":  # Windows
-                        msg = (
-                            "Exception occurred while creating symlink. "
-                            "Please ensure that Developer mode is enabled."
-                        )
+                        msg = "Exception occurred while creating symlink. " "Please ensure that Developer mode is enabled."
                         raise OSError(msg) from e
                     else:
                         raise e
@@ -179,9 +175,7 @@ def _return_summaries(sd: sacred_util.SacredDicts) -> dict:
     if imit_stats is not None and expert_stats is not None:
         # Assuming here that `result.imit_stats` and `result.expert_stats` are
         # formatted correctly.
-        imit_expert_ratio = (
-            imit_stats["monitor_return_mean"] / expert_stats["return_mean"]
-        )
+        imit_expert_ratio = imit_stats["monitor_return_mean"] / expert_stats["return_mean"]
     else:
         imit_expert_ratio = None
 
@@ -231,8 +225,7 @@ table_verbosity_mapping.append(table_verbosity_mapping[-1] | {"n_expert_demos"})
 
 # verbosity 2
 table_verbosity_mapping.append(
-    table_verbosity_mapping[-1]
-    | {"status", "imit_expert_ratio", "exp_command", "run_name"},
+    table_verbosity_mapping[-1] | {"status", "imit_expert_ratio", "exp_command", "run_name"},
 )
 
 

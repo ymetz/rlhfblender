@@ -1,4 +1,5 @@
 """Adversarial Inverse Reinforcement Learning (AIRL)."""
+
 from typing import Optional
 
 import torch as th
