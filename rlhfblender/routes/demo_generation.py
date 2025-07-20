@@ -32,7 +32,6 @@ async def initialize_demo_session(request: Request):
     request = await request.json()
     env_id = request.get("env_id", None)
     exp_id = request.get("exp_id", None)
-    print("EXP ID", exp_id, env_id)
     seed = request["seed"]
     session_id = request["session_id"]
 
@@ -127,6 +126,8 @@ async def gym_offer(request: Request):
         session_id = params["session_id"]
         experiment_id = params["experiment_id"]
         environment_id = params["environment_id"]
+        print("Received WebRTC offer for session:", session_id,
+              "experiment:", experiment_id, " environment:", environment_id)
     except KeyError as e:
         raise HTTPException(400, detail=f"Missing required parameter: {e}")
 
@@ -134,48 +135,104 @@ async def gym_offer(request: Request):
     if exp is None:
         raise HTTPException(404, detail="Experiment not found")
 
-    db_env = await db_handler.get_single_entry(database, Environment, key=environment_id)
+    db_env = await db_handler.get_single_entry(database, Environment, key=environment_id, key_column="registration_id")
     if db_env is None:
         raise HTTPException(404, detail="Environment not found")
 
-    ice_servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
+    ice_servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])]
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
 
-    # Try to create gymnasium environment track, fallback to test track
-    try:
+    webrtc_demo_session.pcs.add(pc)
 
+    # Try to create gymnasium environment track
+    try:
+        print(f"Creating track for {db_env.registration_id}")
         gym_track = GymEnvironmentTrack(session_id=session_id, exp=exp, db_env=db_env, seed=42)
+        
+        # Small delay to ensure track is properly initialized
+        await asyncio.sleep(0.1)
+        
         pc.addTrack(gym_track)
-        print(f"Created gymnasium track for {db_env.registration_id}")
+        print(f"Track created successfully")
 
         # Store for control message handling
         webrtc_demo_session.gym_sessions[session_id] = gym_track
+        print(f"Session {session_id} stored")
 
     except Exception as e:
         print(f"Failed to create gymnasium track: {e}")
-        print("Falling back to SimpleTestTrack...")
+        import traceback
+        traceback.print_exc()
+        # Continue without raising - let WebRTC try to work without the track
+        print("Continuing without gymnasium track - WebRTC will work with limited functionality")
 
     @pc.on("datachannel")
     def on_datachannel(channel):
+        print(f"Data channel received: {channel.label}")
+        
+        # Store reference to the data channel for this session
+        webrtc_demo_session.data_channels[session_id] = channel
+        
+        @channel.on("open")
+        def on_open():
+            print(f"Data channel {channel.label} opened")
+            try:
+                channel.send("server_ready")
+            except Exception as e:
+                print(f"Error sending server_ready: {e}")
+        
+        @channel.on("close")
+        def on_close():
+            print(f"Data channel {channel.label} closed")
+            if session_id in webrtc_demo_session.data_channels:
+                del webrtc_demo_session.data_channels[session_id]
+        
         @channel.on("message")
         def on_message(message):
-            if isinstance(message, str):
-                if message.startswith("ping"):
-                    channel.send("pong" + message[4:])
+            # Handle both string and bytes messages
+            try:
+                if isinstance(message, bytes):
+                    message_str = message.decode('utf-8')
+                elif isinstance(message, str):
+                    message_str = message
                 else:
-                    # Handle control messages - forward to gymnasium track
-                    print(f"Control message: {message}")
-                    if session_id in webrtc_demo_session.gym_sessions:
-                        webrtc_demo_session.gym_sessions[session_id].handle_control_message(message)
+                    print(f"Unexpected message type: {type(message)}")
+                    return
+                
+                # Handle ping/pong for connection testing
+                if message_str.startswith("ping"):
+                    response = "pong" + message_str[4:]
+                    channel.send(response)
+                    return
+                
+                # Forward control messages to gymnasium track
+                if session_id in webrtc_demo_session.gym_sessions:
+                    webrtc_demo_session.gym_sessions[session_id].handle_control_message(message_str)
+                else:
+                    print(f"Session {session_id} not found")
+                    
+            except Exception as e:
+                print(f"Error processing message: {e}")
 
     @pc.on("connectionstatechange")
     async def on_conn_state():
+        print(f"Connection state changed to: {pc.connectionState}")
         if pc.connectionState == "failed":
+            print(f"Connection failed for session {session_id}, cleaning up...")
             await pc.close()
             webrtc_demo_session.pcs.discard(pc)
             if session_id in webrtc_demo_session.gym_sessions:
+                # Clean up the track properly
+                try:
+                    track = webrtc_demo_session.gym_sessions[session_id]
+                    track.stop()
+                except Exception as e:
+                    print(f"Error stopping track: {e}")
                 del webrtc_demo_session.gym_sessions[session_id]
+                print(f"Cleaned up session {session_id}")
+        elif pc.connectionState == "connected":
+            print(f"Successfully connected session {session_id}")
 
     await pc.setRemoteDescription(client_offer)
 
