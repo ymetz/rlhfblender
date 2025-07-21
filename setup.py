@@ -52,9 +52,8 @@ setup(
         "gspread",
         "umap-learn",
         f"multi-type-feedback @ {get_abs_path('multi-type-feedback')}",
-        "aiortc",
+        "aiortc==1.12.0",
         "av",
-        "",
     ],
     extras_require={
         "tests": [
