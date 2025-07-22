@@ -28,7 +28,6 @@ setup(
         "wandb",
         "sb3_contrib>=2.5.0,<3.0",
         "highway-env",
-        # "metaworld @ git+https://github.com/Farama-Foundation/Metaworld.git@master#egg=metaworld",
         # "gym3",
         # "procgen @ git+https://github.com/juancroldan/procgen",
         "opencv-python",
