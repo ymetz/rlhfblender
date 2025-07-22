@@ -30,7 +30,6 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER ./remote_data/rlhfblender.db ${CODE_DIR}/rl
 
 RUN cd ${CODE_DIR}/rlhfblender && \
     pip install -e .[tests,docs] && \
-    pip install -e ./multi-type-feedback/dependencies/imitation \
     # Use headless version for docker
     #pip uninstall -y opencv-python && \
     pip install opencv-python-headless && \
