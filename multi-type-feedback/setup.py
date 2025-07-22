@@ -20,7 +20,6 @@ setup(
     packages=find_packages(),
     install_requires=[
         "torch",
-        "torchvision",
         "gymnasium>=1.0.0",
         "lightning",
         "minigrid",
