@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multi-type-feedback"
+version = "0.1.0"
+description = "Reward Learning from Multiple Feedback Types"
+authors = [
+    {name = "YANNICK Metz", email = "yannick.metz@uni-konstanz.de"},
+    {name = "Andras Geiszl"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = [
+    "torch",
+    "swig",
+    "gymnasium",
+    "lightning",
+    "minigrid",
+    "mujoco",
+    "ale-py",
+    "wandb",
+    "sb3-contrib",
+    "highway-env",
+    "metaworld @ git+https://github.com/Farama-Foundation/Metaworld.git@master#egg=metaworld",
+    "gym3",
+    "procgen @ git+https://github.com/juancroldan/procgen",
+    "opencv-python",
+    "stable-baselines3",
+    "imitation @ file://dependencies/imitation",
+    "masksembles @ file://dependencies/masksembles",
+    "train_baselines @ file://train_baselines",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "black",
+    "ruff",
+    "pytest-cov",
+    "mypy"
+]
+
+[tool.setuptools]
+packages = {find = {}}
+
+[tool.setuptools.package-dir]
+"" = "."

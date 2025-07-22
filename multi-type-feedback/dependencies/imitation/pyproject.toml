@@ -1,24 +1,29 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-# TODO(juan): we've commented this out because currently
-# there's no way (that we could find in the docs) to point
-# the local_scheme and version_scheme to a function from the
-# pyproject.toml file, so setup.py has to be used.
-# [tool.setuptools_scm]
-# # Disable local scheme to allow uploads to Test PyPI.
-# # See https://github.com/pypa/setuptools_scm/issues/342
-# local_scheme = "imitation.version:get_version"
-
-
-
-[tool.black]
-target-version = ["py38"]
-
-[tool.pytype]
-inputs = [
-  "src/",
-  "setup.py"
+[project]
+name = "imitation"
+version = "1.0.1"
+description = "Implementation of modern reward and imitation learning algorithms."
+authors = [
+    {name = "Center for Human-Compatible AI and Google"}
 ]
-python_version = "3.8"
+license = {text = "MIT"}
+requires-python = ">=3.8.0"
+dependencies = [
+    # Install with empty requirements, as we do not want to train models
+    # but only use imitation as a library, all necessary requirements are already installed by other packages
+]
+
+[project.urls]
+Homepage = "https://github.com/HumanCompatibleAI/imitation"
+
+[tool.setuptools]
+packages = {find = {where = ["src"]}}
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.package-data]
+imitation = ["py.typed", "scripts/config/tuned_hps/*.json"]

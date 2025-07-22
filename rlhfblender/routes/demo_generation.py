@@ -117,7 +117,7 @@ async def stop_webrtc_demo_session(session_id: str) -> bool:
 async def gym_offer(request: Request):
     """
     WebRTC offer for gymnasium environment streaming.
-    Body JSON: {sdp, type, session_id, experiment_id, environment_id}
+    Body JSON: {sdp, type, session_id, experiment_id, environment_id, coordinate?, state_model_path?}
     """
     params = await request.json()
 
@@ -126,8 +126,15 @@ async def gym_offer(request: Request):
         session_id = params["session_id"]
         experiment_id = params["experiment_id"]
         environment_id = params["environment_id"]
+        
+        # Optional parameters for state loading
+        coordinate = params.get("coordinate")  # [x, y] coordinate pair
+        state_model_path = params.get("state_model_path")  # Path to inverse state projection model
+        
         print("Received WebRTC offer for session:", session_id,
               "experiment:", experiment_id, " environment:", environment_id)
+        if coordinate:
+            print(f"  Will load state from coordinate: {coordinate}")
     except KeyError as e:
         raise HTTPException(400, detail=f"Missing required parameter: {e}")
 
@@ -148,7 +155,34 @@ async def gym_offer(request: Request):
     # Try to create gymnasium environment track
     try:
         print(f"Creating track for {db_env.registration_id}")
-        gym_track = GymEnvironmentTrack(session_id=session_id, exp=exp, db_env=db_env, seed=42)
+        
+        # Load initial state if coordinate and model are provided
+        initial_state = None
+        if coordinate and state_model_path:
+            try:
+                from rlhfblender.projections.inverse_state_projection_handler import InverseStateProjectionHandler
+                import numpy as np
+                
+                print(f"Loading state from coordinate {coordinate} using model {state_model_path}")
+                handler = InverseStateProjectionHandler()
+                handler.load_model(state_model_path)
+                
+                # Predict state from coordinate
+                predicted_states = handler.predict(np.array([coordinate]))
+                initial_state = predicted_states[0]
+                print("Successfully predicted initial state from coordinate")
+                
+            except Exception as e:
+                print(f"Failed to load initial state: {e}")
+                initial_state = None
+        
+        gym_track = GymEnvironmentTrack(
+            session_id=session_id, 
+            exp=exp, 
+            db_env=db_env, 
+            seed=42,
+            initial_state=initial_state
+        )
         
         # Small delay to ensure track is properly initialized
         await asyncio.sleep(0.1)

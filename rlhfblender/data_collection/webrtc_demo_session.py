@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import cv2
 import numpy as np
@@ -12,6 +12,7 @@ from av import VideoFrame
 
 from rlhfblender.data_collection.environment_handler import get_environment
 from rlhfblender.data_models.global_models import Environment, Experiment
+from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 
 ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("pc")
@@ -31,12 +32,13 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
     kind = "video"
 
-    def __init__(self, session_id: str, exp: Experiment, db_env: Environment, seed: int = 42):
+    def __init__(self, session_id: str, exp: Experiment, db_env: Environment, seed: int = 42, initial_state: Optional[dict] = None):
         super().__init__()
         self.session_id = session_id
         self.exp = exp
         self.db_env = db_env
         self.seed = seed
+        self.initial_state = initial_state  # Optional state to load from
         self.counter = 0
         self.env = None
         self.obs = None
@@ -111,7 +113,10 @@ class GymEnvironmentTrack(VideoStreamTrack):
                 gym_entry_point=self.db_env.gym_entry_point,
             )
 
-            self.env = env_wrapper.envs[0] if hasattr(env_wrapper, "envs") else env_wrapper
+            base_env = env_wrapper.envs[0] if hasattr(env_wrapper, "envs") else env_wrapper
+            
+            # Wrap with SaveResetWrapper to enable state loading
+            self.env = SaveResetEnvWrapper(base_env)
 
             # Handle environment reset with proper seed handling
             try:
@@ -121,6 +126,16 @@ class GymEnvironmentTrack(VideoStreamTrack):
                 reset_result = self.env.reset()
             
             self.obs = reset_result[0] if isinstance(reset_result, tuple) else reset_result
+            
+            # Load initial state if provided
+            if self.initial_state is not None:
+                try:
+                    logger.info(f"Loading initial state for session {self.session_id}")
+                    self.obs = self.env.load_state({'state': self.initial_state, 'observation': None})
+                    logger.info("Successfully loaded initial state")
+                except Exception as e:
+                    logger.warning(f"Failed to load initial state: {e}")
+            
             self.initialization_done = True
 
             print(f"Environment {self.db_env.registration_id} initialized for session {self.session_id}")
