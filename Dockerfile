@@ -21,6 +21,7 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER ./setup.py ${CODE_DIR}/rlhfblender/setup.py
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender/version.txt ${CODE_DIR}/rlhfblender/rlhfblender/version.txt
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender/ ${CODE_DIR}/rlhfblender/rlhfblender/
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./multi-type-feedback/ ${CODE_DIR}/rlhfblender/multi-type-feedback/
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./imitation/ ${CODE_DIR}/rlhfblender/imitation/
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./configs/ ${CODE_DIR}/rlhfblender/configs/
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./rlhfblender_model/ ${CODE_DIR}/rlhfblender/rlhfblender_model/
 # Just for the study deployment, copy local data and database, so that we not need to re-generate them on the slow server
@@ -29,6 +30,7 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER ./remote_data/rlhfblender.db ${CODE_DIR}/rl
 
 RUN cd ${CODE_DIR}/rlhfblender && \
     pip install -e .[tests,docs] && \
+    pip install -e ./multi-type-feedback/dependencies/imitation \
     # Use headless version for docker
     #pip uninstall -y opencv-python && \
     pip install opencv-python-headless && \
