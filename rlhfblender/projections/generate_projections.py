@@ -98,6 +98,8 @@ def get_available_episodes(experiment: Experiment, checkpoint_step: int) -> List
         f"{process_env_name(experiment.env_id)}_{experiment.id}_{checkpoint_step}",
     )
 
+    print("Checking for available episodes in:", base_dir)
+
     # Check if directory exists
     if not os.path.exists(base_dir):
         return []

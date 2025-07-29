@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 from rlhfblender.data_collection.environment_handler import get_environment
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 import os
@@ -348,21 +348,25 @@ def collect_trajectory_states_from_episode(episode_data: Dict[str, np.ndarray],
 
 
 def collect_states_from_multiple_checkpoints(
-    experiment_id: str,
+    db_experiment: str,
     checkpoints: List[int],
     environment_name: str,
+    environment_config: Dict[str, Any] = None,
     max_trajectories_per_checkpoint: int = 50,
-    max_steps_per_trajectory: int = 200
+    max_steps_per_trajectory: int = 200,
+    additional_gym_packages: List[str] = []
 ) -> Tuple[List[Dict[str, np.ndarray]], np.ndarray, List[int]]:
     """
     Collect environment states from multiple checkpoints for joint training.
     
     Args:
-        experiment_id: Database experiment ID
+        db_experiment: Database experiment identifier
         checkpoints: List of checkpoint steps
         environment_name: Environment name
+        environment_config: Environment configuration dict (including env_kwargs)
         max_trajectories_per_checkpoint: Max trajectories per checkpoint
         max_steps_per_trajectory: Max steps per trajectory
+        additional_gym_packages: Additional gym packages to import
         
     Returns:
         Tuple of (all_states, all_coordinates, checkpoint_indices)
@@ -373,8 +377,19 @@ def collect_states_from_multiple_checkpoints(
     all_coordinates = []
     checkpoint_indices = []  # Track which checkpoint each state belongs to
     
-    # Create environment
-    base_env = get_environment(environment_name, environment_config={"render_mode": "rgb_array"}, n_envs=1)
+    # Create environment with proper configuration
+    if environment_config is None:
+        environment_config = {}
+    
+    # Ensure render_mode is set for state collection
+    env_config = environment_config.copy()
+    if "render_mode" not in env_config:
+        env_config["render_mode"] = "rgb_array"
+    
+    base_env = get_environment(environment_name, 
+                               environment_config=env_config, 
+                               n_envs=1, 
+                               additional_packages=additional_gym_packages)
     env = base_env.envs[0] if hasattr(base_env, 'envs') else base_env
     env_wrapper = SaveResetEnvWrapper(env)
     

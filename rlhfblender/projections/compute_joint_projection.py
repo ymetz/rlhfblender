@@ -54,6 +54,7 @@ class JointProjectionComputer:
         append_time: bool = False,
         transition_embedding: bool = True,
         feature_embedding: bool = True,
+        additional_gym_packages: List[str] = None,
     ):
         self.experiment_name = experiment_name
         self.checkpoints = checkpoints
@@ -65,6 +66,7 @@ class JointProjectionComputer:
         self.append_time = append_time
         self.transition_embedding = transition_embedding
         self.feature_embedding = feature_embedding
+        self.additional_gym_packages = additional_gym_packages or []
 
         # Will be filled during execution
         self.db_experiment = None
@@ -80,6 +82,7 @@ class JointProjectionComputer:
             key_column="exp_name",
         )
         self.env_name = process_env_name(self.db_experiment.env_id)
+        self.env_config = self.db_experiment.env_config or {}
         print(f"Loaded experiment: {self.experiment_name} (ID: {self.db_experiment.id})")
         print(f"Environment: {self.env_name}")
 
@@ -189,7 +192,7 @@ class JointProjectionComputer:
             Fitted ProjectionHandler
         """
         print(f"\nFitting joint {self.projection_method} projection...")
-        print(f"Data shape: {combined_data.shape}")
+        print(f"Data shape: {len(combined_data)}")
 
         # Initialize projection handler
         handler = ProjectionHandler(projection_method=self.projection_method, projection_props=self.projection_props)
@@ -205,8 +208,6 @@ class JointProjectionComputer:
             actions=None,  # Not using action info for joint projection
             suffix=projection_suffix,
         )
-
-        print(f"Joint projection completed. Output shape: {projected_data.shape}")
 
         return handler
 

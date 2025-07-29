@@ -30,7 +30,6 @@ from rlhfblender.projections.compute_joint_projection import JointProjectionComp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 class JointObservationStateProjection:
     """Joint training of observation projection and state inverse projection."""
     
@@ -64,7 +63,7 @@ class JointObservationStateProjection:
     def fit_joint_projection(self,
                            experiment: str,
                            checkpoints: List[int],
-                           environment_name: str,
+                           additional_gym_packages: List[str] = [],
                            max_trajectories_per_checkpoint: int = 50,
                            max_steps_per_trajectory: int = 200) -> Dict[str, Any]:
         """
@@ -73,46 +72,78 @@ class JointObservationStateProjection:
         Args:
             experiment: Database experiment Name
             checkpoints: List of checkpoint steps to include
-            environment_name: Environment name
             max_trajectories_per_checkpoint: Max trajectories per checkpoint
             max_steps_per_trajectory: Max steps per trajectory
             
         Returns:
             Training history and results
         """
-        logger.info("Starting joint observation-state projection training...")
-        logger.info(f"Checkpoints: {checkpoints}")
-        logger.info(f"Environment: {environment_name}")
+        import asyncio
         
-        # Step 1: Train forward observation projection using existing joint projection approach
-        logger.info("Step 1: Training forward observation projection...")
-        joint_computer = JointProjectionComputer()
+        async def _fit_joint_projection_async():
+            logger.info("Starting joint observation-state projection training...")
+            logger.info(f"Checkpoints: {checkpoints}")
+            
+            # Step 1: Train forward observation projection using existing joint projection approach
+            logger.info("Step 1: Training forward observation projection...")
+            joint_computer = JointProjectionComputer(
+                experiment_name=experiment,
+                checkpoints=checkpoints,
+                projection_method=self.projection_method,
+                sequence_length=1,
+                step_range="[]",
+                append_time=False,
+                projection_props={},
+                additional_gym_packages=additional_gym_packages,
+            )
+            
+            # Load experiment info
+            await joint_computer.load_experiment_info()
+            logger.info(f"Environment: {joint_computer.env_name}")
+            
+            # Load episode data from all checkpoints
+            episode_data_list, checkpoint_episode_counts = await joint_computer.load_all_episode_data()
+            
+            # Preprocess and combine data into numpy array
+            combined_data, split_indices = joint_computer.preprocess_all_data(episode_data_list)
+            
+            # Fit joint projection on combined data
+            projection_handler = joint_computer.fit_joint_projection(combined_data)
+            
+            # Transform data to get coordinates
+            coordinates = projection_handler.transform(combined_data)
+            
+            return {
+                'handler': projection_handler,
+                'coordinates': coordinates,
+                'split_indices': split_indices,
+                'environment_name': joint_computer.env_name,
+                "env_config": joint_computer.env_config
+            }
         
-        # Load experiment and compute joint observation projection
-        await joint_computer.load_experiment_info(experiment)
-        forward_projection = await joint_computer.fit_joint_projection(
-            checkpoints=checkpoints,
-            projection_method=self.projection_method,
-            sequence_length=1,
-            step_range="[]",
-            use_one_d_projection=False,
-            append_time=False,
-            projection_props={}
-        )
+        # Run the async part
+        forward_projection = asyncio.run(_fit_joint_projection_async())
+
+        # load db_EXPERIMENT FROM database
+
         
         self.observation_projector = forward_projection['handler']
         observation_coords = forward_projection['coordinates']  # Combined coordinates from all checkpoints
+        environment_name = forward_projection['environment_name']
+        env_config = forward_projection['env_config']
         
         logger.info(f"Forward projection completed. Shape: {observation_coords.shape}")
         
         # Step 2: Collect environment states from the same data
         logger.info("Step 2: Collecting environment states...")
         all_states, dummy_coords, checkpoint_indices = collect_states_from_multiple_checkpoints(
-            experiment_id=experiment_id,
+            db_experiment=experiment,
             checkpoints=checkpoints,
             environment_name=environment_name,
+            environment_config=env_config,
             max_trajectories_per_checkpoint=max_trajectories_per_checkpoint,
-            max_steps_per_trajectory=max_steps_per_trajectory
+            max_steps_per_trajectory=max_steps_per_trajectory,
+            additional_gym_packages=additional_gym_packages
         )
         
         # Step 3: Match states to observation coordinates
@@ -276,7 +307,7 @@ class JointObservationStateProjection:
         return predicted_states[0]
 
 
-async def main():
+def main():
     parser = argparse.ArgumentParser(description="Train joint observation-state projection")
     parser.add_argument("--experiment", "-e", required=True,
                        help="Database experiment Name")
@@ -284,7 +315,7 @@ async def main():
                        help="List of checkpoint steps (e.g., --checkpoints 100000 200000 300000)")
     parser.add_argument("--output-dir", "-o", required=True,
                        help="Output directory for trained models")
-    parser.add_argument("--projection-method", default="UMAP",
+    parser.add_argument("--projection-method", default="PCA",
                        choices=["UMAP", "PCA", "TSNE"],
                        help="Forward projection method")
     parser.add_argument("--max-trajectories", type=int, default=50,
@@ -297,6 +328,13 @@ async def main():
                        help="Batch size for inverse state projection")
     parser.add_argument("--joint-loss-weight", type=float, default=0.1,
                        help="Weight for joint consistency loss")
+    parser.add_argument(
+        "--additional-gym-packages",
+        type=str,
+        nargs="+",
+        help="(Optional) Additional gym packages to import.",
+        default=[],
+    )
     
     args = parser.parse_args()
     
@@ -313,12 +351,12 @@ async def main():
     )
     
     # Train joint projection
-    results = await trainer.fit_joint_projection(
-        experiment_id=args.experiment,
+    results = trainer.fit_joint_projection(
+        experiment=args.experiment,
         checkpoints=args.checkpoints,
-        environment_name=args.environment,
         max_trajectories_per_checkpoint=args.max_trajectories,
-        max_steps_per_trajectory=args.max_steps
+        max_steps_per_trajectory=args.max_steps,
+        additional_gym_packages=args.additional_gym_packages
     )
     
     # Save models
@@ -343,5 +381,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()

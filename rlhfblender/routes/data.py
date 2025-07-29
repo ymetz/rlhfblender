@@ -205,7 +205,10 @@ async def get_single_step_details(request: SingleStepDetailRequest):
         allow_pickle=True,
     )
 
-    action_distribution = episode_benchmark_data["probs"][request.step]
+    try:
+        action_distribution = episode_benchmark_data["probs"][request.step]
+    except IndexError:
+        action_distribution = [0.0]
     action = episode_benchmark_data["actions"][request.step]
     reward = episode_benchmark_data["rewards"][request.step]
     info = episode_benchmark_data["infos"][request.step]
