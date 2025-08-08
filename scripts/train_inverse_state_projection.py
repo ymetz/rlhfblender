@@ -11,8 +11,7 @@ import argparse
 import logging
 import numpy as np
 import os
-from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict
 import pickle
 import glob
 
@@ -21,7 +20,6 @@ from rlhfblender.projections.inverse_state_projection_handler import (
     InverseStateProjectionHandler, 
     collect_trajectory_states
 )
-from rlhfblender.projections.projection_handler import ProjectionHandler
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 
 logging.basicConfig(level=logging.INFO)

@@ -25,7 +25,7 @@ from rlhfblender.projections.inverse_state_projection_handler import (
     InverseStateProjectionHandler, 
     collect_states_from_multiple_checkpoints
 )
-from rlhfblender.projections.compute_joint_projection import JointProjectionComputer
+from compute_joint_projection import JointProjectionComputer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ class JointObservationStateProjection:
                 'coordinates': coordinates,
                 'split_indices': split_indices,
                 'environment_name': joint_computer.env_name,
-                "env_config": joint_computer.env_config
+                "env_config": joint_computer.environment_config
             }
         
         # Run the async part
@@ -218,6 +218,14 @@ class JointObservationStateProjection:
         n_components = 0
         
         for i, (true_state, pred_state) in enumerate(zip(eval_states, predicted_states)):
+            # Handle the case where true_state might be an array from VecEnv (size 1)
+            if isinstance(true_state, np.ndarray) and len(true_state) == 1:
+                true_state = true_state[0]
+            
+            # Skip if true_state is None or not a dict
+            if true_state is None or not isinstance(true_state, dict):
+                continue
+                
             for key in true_state.keys():
                 if key in pred_state:
                     true_val = np.array(true_state[key]).flatten()

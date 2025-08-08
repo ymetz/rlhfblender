@@ -336,7 +336,7 @@ async def _process_benchmark_data(requests: list[dict], benchmarked_experiments:
             dir_name = f"data/episodes/{os.path.splitext(save_file_name)[0]}"
             save_episode = {}
             for name, _ in episode_data.items():
-                if name == "additional_metrics" or name == "renders":
+                if name == "additional_metrics" or name == "renders" or name == "env_states":
                     continue
                 save_episode[name] = episode_data[name][episode_idx]
             os.makedirs(dir_name, exist_ok=True)
@@ -349,6 +349,17 @@ async def _process_benchmark_data(requests: list[dict], benchmarked_experiments:
                 f"data/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{episode_idx}.npy",
                 np.array([rew for rew in episode_data["rewards"][episode_idx]]),
             )
+
+            # Save env_states if they exist
+            if "env_states" in episode_data and episode_data["env_states"] is not None:
+                os.makedirs(
+                    f"data/env_states/{os.path.splitext(save_file_name)[0]}",
+                    exist_ok=True,
+                )
+                np.save(
+                    f"data/env_states/{os.path.splitext(save_file_name)[0]}/env_states_{episode_idx}.npy",
+                    episode_data["env_states"][episode_idx],
+                )
 
             if "uncertainty" in episode_data:
                 os.makedirs(

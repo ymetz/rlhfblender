@@ -9,10 +9,10 @@ import numpy as np
 from aiortc import RTCPeerConnection, VideoStreamTrack
 from aiortc.contrib.media import MediaRelay
 from av import VideoFrame
+from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 
 from rlhfblender.data_collection.environment_handler import get_environment
 from rlhfblender.data_models.global_models import Environment, Experiment
-from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 
 ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("pc")
@@ -32,7 +32,9 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
     kind = "video"
 
-    def __init__(self, session_id: str, exp: Experiment, db_env: Environment, seed: int = 42, initial_state: Optional[dict] = None):
+    def __init__(
+        self, session_id: str, exp: Experiment, db_env: Environment, seed: int = 42, initial_state: Optional[dict] = None
+    ):
         super().__init__()
         self.session_id = session_id
         self.exp = exp
@@ -56,7 +58,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
         # This helps prevent the _queue=None issue
         try:
             # Force initialization of internal track state
-            if hasattr(self, '_track'):
+            if hasattr(self, "_track"):
                 self._track = None
         except Exception:
             pass
@@ -65,28 +67,28 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self._init_task = asyncio.create_task(self._initialize_environment())
         # Store task reference to avoid warning
         self._init_task.add_done_callback(lambda t: None)
-        
+
         print(f"GymEnvironmentTrack initialized for session {session_id}")
 
     def _get_key_mappings(self):
         """Get keyboard mappings for different environment types."""
         # Debug: print(f"[GYM_TRACK] Environment: {self.db_env.registration_id}")
-        
+
         if "mujoco" in self.db_env.registration_id.lower() or "metaworld" in self.db_env.registration_id.lower():
             # Metaworld/MuJoCo action space: [dx, dy, dz, gripper]
             # dx: end-effector displacement in x direction (forward/backward)
-            # dy: end-effector displacement in y direction (left/right)  
+            # dy: end-effector displacement in y direction (left/right)
             # dz: end-effector displacement in z direction (up/down)
             # gripper: gripper control (open/close)
             return {
-                "w": [1.0, 0.0, 0.0, 0.0],     # Forward (positive dx)
-                "s": [-1.0, 0.0, 0.0, 0.0],    # Backward (negative dx)
-                "a": [0.0, 1.0, 0.0, 0.0],     # Left (positive dy)
-                "d": [0.0, -1.0, 0.0, 0.0],    # Right (negative dy)
-                "q": [0.0, 0.0, 0.0, -1.0],    # Gripper open (negative gripper)
-                "e": [0.0, 0.0, 0.0, 1.0],     # Gripper close (positive gripper)
-                "shift": [0.0, 0.0, 1.0, 0.0],    # Up (positive dz)
-                "control": [0.0, 0.0, -1.0, 0.0], # Down (negative dz)
+                "w": [1.0, 0.0, 0.0, 0.0],  # Forward (positive dx)
+                "s": [-1.0, 0.0, 0.0, 0.0],  # Backward (negative dx)
+                "a": [0.0, 1.0, 0.0, 0.0],  # Left (positive dy)
+                "d": [0.0, -1.0, 0.0, 0.0],  # Right (negative dy)
+                "q": [0.0, 0.0, 0.0, -1.0],  # Gripper open (negative gripper)
+                "e": [0.0, 0.0, 0.0, 1.0],  # Gripper close (positive gripper)
+                "shift": [0.0, 0.0, 1.0, 0.0],  # Up (positive dz)
+                "control": [0.0, 0.0, -1.0, 0.0],  # Down (negative dz)
             }
         else:
             return {
@@ -114,7 +116,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
             )
 
             base_env = env_wrapper.envs[0] if hasattr(env_wrapper, "envs") else env_wrapper
-            
+
             # Wrap with SaveResetWrapper to enable state loading
             self.env = SaveResetEnvWrapper(base_env)
 
@@ -124,18 +126,18 @@ class GymEnvironmentTrack(VideoStreamTrack):
             except TypeError:
                 # If seed parameter is not supported, try without seed
                 reset_result = self.env.reset()
-            
+
             self.obs = reset_result[0] if isinstance(reset_result, tuple) else reset_result
-            
+
             # Load initial state if provided
             if self.initial_state is not None:
                 try:
                     logger.info(f"Loading initial state for session {self.session_id}")
-                    self.obs = self.env.load_state({'state': self.initial_state, 'observation': None})
+                    self.obs = self.env.load_state({"state": self.initial_state, "observation": None})
                     logger.info("Successfully loaded initial state")
                 except Exception as e:
                     logger.warning(f"Failed to load initial state: {e}")
-            
+
             self.initialization_done = True
 
             print(f"Environment {self.db_env.registration_id} initialized for session {self.session_id}")
@@ -175,7 +177,11 @@ class GymEnvironmentTrack(VideoStreamTrack):
     def _get_current_action(self):
         """Convert pressed keys to environment action."""
         if not self.pressed_keys:
-            return [0.0] * 4 if ("mujoco" in self.db_env.registration_id.lower() or "metaworld" in self.db_env.registration_id.lower()) else None
+            return (
+                [0.0] * 4
+                if ("mujoco" in self.db_env.registration_id.lower() or "metaworld" in self.db_env.registration_id.lower())
+                else None
+            )
 
         if "mujoco" in self.db_env.registration_id.lower() or "metaworld" in self.db_env.registration_id.lower():
             action = [0.0, 0.0, 0.0, 0.0]
@@ -218,7 +224,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
                 # Get action from keyboard or manual input
                 action = manual_action if manual_action is not None else self._get_current_action()
-                
+
                 # Only print and step if there's an actual action
                 action_taken = False
                 if action is not None:
@@ -230,7 +236,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
                     else:
                         # For discrete action spaces, any non-None action is considered active
                         is_active_action = True
-                    
+
                     if is_active_action:
                         logger.debug(f"Taking action: {action}")
                         step_result = self.env.step(action)
@@ -269,13 +275,13 @@ class GymEnvironmentTrack(VideoStreamTrack):
                         # Check for metaworld camera rotation fix
                         env_to_check = self.env
                         # Handle different environment wrapper structures
-                        if hasattr(env_to_check, 'unwrapped'):
+                        if hasattr(env_to_check, "unwrapped"):
                             env_to_check = env_to_check.unwrapped
-                        elif hasattr(env_to_check, 'env'):
+                        elif hasattr(env_to_check, "env"):
                             env_to_check = env_to_check.env
-                            if hasattr(env_to_check, 'unwrapped'):
+                            if hasattr(env_to_check, "unwrapped"):
                                 env_to_check = env_to_check.unwrapped
-                        
+
                         if hasattr(env_to_check, "camera_name") and env_to_check.camera_name.startswith("corner"):
                             # Rotate 180 degrees (2 times 90 degrees clockwise)
                             frame = np.rot90(frame, k=2)
@@ -317,12 +323,12 @@ class GymEnvironmentTrack(VideoStreamTrack):
                 key = data.get("key", "")
                 self.pressed_keys.add(key)
                 logger.debug(f"Key down: {key}")
-                    
+
             elif data.get("type") == "keyup":
                 key = data.get("key", "")
                 self.pressed_keys.discard(key)
                 logger.debug(f"Key up: {key}")
-                
+
             elif data.get("type") == "action":
                 action = data.get("action")
                 task = asyncio.create_task(self.action_queue.put(action))
@@ -338,18 +344,77 @@ class GymEnvironmentTrack(VideoStreamTrack):
     def stop(self):
         """Clean up resources when track is stopped."""
         try:
-            if hasattr(self, '_init_task') and not self._init_task.done():
+            if hasattr(self, "_init_task") and not self._init_task.done():
                 self._init_task.cancel()
-            
+
             if self.env is not None:
                 # Try to close the environment gracefully
                 try:
-                    if hasattr(self.env, 'close'):
+                    if hasattr(self.env, "close"):
                         self.env.close()
                 except Exception as e:
                     logger.warning(f"Error closing environment: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Error during track cleanup: {e}")
-        
+
         super().stop()
+
+
+def create_render_from_state(exp: Experiment, db_env: Environment, state: dict, seed: int = 42) -> np.ndarray:
+    """
+    Create a single render frame from a given state without setting up WebRTC.
+
+    Args:
+        exp: Experiment object with environment configuration
+        db_env: Database environment object
+        state: Environment state to load
+        seed: Random seed for environment
+
+    Returns:
+        numpy array of rendered frame
+    """
+    # Create environment
+    env_wrapper = get_environment(
+        env_name=exp.env_id,
+        environment_config=exp.environment_config,
+        n_envs=1,
+        additional_packages=db_env.additional_gym_packages,
+        gym_entry_point=db_env.gym_entry_point,
+    )
+
+    # Get the base environment and wrap with SaveResetEnvWrapper
+    base_env = env_wrapper.envs[0] if hasattr(env_wrapper, "envs") else env_wrapper
+    env = SaveResetEnvWrapper(base_env)
+
+    try:
+        # Reset environment first
+        env.reset(seed=seed)
+
+        # Load the state
+        env.load_state({"state": state, "observation": None})
+
+        # Render the environment
+        render_frame = env.render()
+
+        env_to_check = env
+        # Handle different environment wrapper structures
+        if hasattr(env_to_check, "unwrapped"):
+            env_to_check = env_to_check.unwrapped
+        elif hasattr(env_to_check, "env"):
+            env_to_check = env_to_check.env
+            if hasattr(env_to_check, "unwrapped"):
+                env_to_check = env_to_check.unwrapped
+
+        if hasattr(env_to_check, "camera_name") and env_to_check.camera_name.startswith("corner"):
+            # Rotate 180 degrees (2 times 90 degrees clockwise)
+            render_frame = np.rot90(render_frame, k=2)
+
+        return render_frame
+
+    finally:
+        # Clean up
+        try:
+            env.close()
+        except:
+            pass

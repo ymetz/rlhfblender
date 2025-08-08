@@ -58,6 +58,7 @@ class EpisodeRecorder:
             "features": [],
             "probs": [],
             "renders": [],
+            "env_states": [],
         }
         self.episode_rewards = []
         self.episode_lengths = []
@@ -157,6 +158,23 @@ class EpisodeRecorder:
         if "log_probs" in additional_outputs:
             self.buffers["probs"].append(additional_outputs["log_probs"])
         self.buffers["infos"].append(self.process_infos(additional_outputs))
+
+        # Save environment state if the environment supports it
+        if isinstance(self.env, VecEnv):
+            # For VecEnv, check individual environments for save_state support
+            env_states = []
+            for i in range(self.n_envs):
+                if hasattr(self.env.envs[i], "save_state"):
+                    env_states.append(self.env.envs[i].save_state())
+                else:
+                    env_states.append(None)
+            self.buffers["env_states"].append(env_states)
+        else:
+            # For single environment
+            if hasattr(self.env, "save_state"):
+                self.buffers["env_states"].append(self.env.save_state())
+            else:
+                self.buffers["env_states"].append(None)
 
     def process_infos(self, additional_outputs):
         infos = []
@@ -262,11 +280,19 @@ class EpisodeRecorder:
         self.buffers["infos"] = np.array(self.buffers["infos"])
         self.buffers["probs"] = np.array(self.buffers["probs"])
 
+        # Handle env_states - keep as object array to handle None values and varying structures
+        if len(self.buffers["env_states"]) > 0:
+            self.buffers["env_states"] = np.array(self.buffers["env_states"], dtype=object)
+        else:
+            self.buffers["env_states"] = np.array([], dtype=object)
+
     def save_episodes(self):
         if not self.overwrite and os.path.isfile(self.save_path + ".npz"):
             previous_data = np.load(self.save_path + ".npz", allow_pickle=True)
             for key in self.buffers.keys():
-                self.buffers[key] = np.concatenate((previous_data[key], self.buffers[key]), axis=0)
+                if key in previous_data:
+                    self.buffers[key] = np.concatenate((previous_data[key], self.buffers[key]), axis=0)
+                # If env_states wasn't in previous data, just keep the new data
             self.episode_rewards = np.concatenate((previous_data["episode_rewards"], self.episode_rewards), axis=0)
             self.episode_lengths = np.concatenate((previous_data["episode_lengths"], self.episode_lengths), axis=0)
 
@@ -283,6 +309,7 @@ class EpisodeRecorder:
                 infos=self.buffers["infos"],
                 probs=self.buffers["probs"],
                 renders=self.buffers["renders"],
+                env_states=self.buffers["env_states"],
                 additional_metrics={},
             )
         )
@@ -299,6 +326,7 @@ class EpisodeRecorder:
                 infos=self.buffers["infos"],
                 features=self.buffers["features"],
                 probs=self.buffers["probs"],
+                env_states=self.buffers["env_states"],
                 episode_rewards=self.episode_rewards,
                 episode_lengths=self.episode_lengths,
                 additional_metrics=additional_metrics,
@@ -320,6 +348,7 @@ class EpisodeRecorder:
             renders=data["renders"],
             features=data["features"],
             probs=data["probs"],
+            env_states=data.get("env_states", np.array([], dtype=object)),  # Handle backward compatibility
             episode_rewards=data["episode_rewards"],
             episode_lengths=data["episode_lengths"],
             additional_metrics=data["additional_metrics"].item(),

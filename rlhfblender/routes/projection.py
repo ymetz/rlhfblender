@@ -670,8 +670,10 @@ def generate_cache_key(
 
 # New State Projection Endpoints
 
+
 class StateProjectionParams(BaseModel):
     """Parameters for inverse state projection training."""
+
     num_epochs: int = 100
     batch_size: int = 64
     learning_rate: float = 0.001
@@ -681,6 +683,7 @@ class StateProjectionParams(BaseModel):
 
 class CoordinateToStateRequest(BaseModel):
     """Request to map coordinates to environment states."""
+
     coordinates: List[List[float]]  # List of [x, y] coordinates
     model_path: str  # Path to trained inverse state projection model
 
@@ -689,11 +692,11 @@ class CoordinateToStateRequest(BaseModel):
 async def coordinates_to_states(request: CoordinateToStateRequest):
     """
     Map 2D coordinates to environment states for demo generation.
-    
+
     Args:
         coordinates: List of [x, y] coordinate pairs
         model_path: Path to trained inverse state projection model
-        
+
     Returns:
         List of environment states compatible with SaveResetWrapper
     """
@@ -701,13 +704,13 @@ async def coordinates_to_states(request: CoordinateToStateRequest):
         # Load trained model
         handler = InverseStateProjectionHandler()
         handler.load_model(request.model_path)
-        
+
         # Convert coordinates to numpy array
         coords_np = np.array(request.coordinates)
-        
+
         # Predict states
         predicted_states = handler.predict(coords_np)
-        
+
         # Convert numpy arrays to lists for JSON serialization
         serializable_states = []
         for state in predicted_states:
@@ -718,13 +721,9 @@ async def coordinates_to_states(request: CoordinateToStateRequest):
                 else:
                     serializable_state[key] = value
             serializable_states.append(serializable_state)
-        
-        return {
-            "states": serializable_states,
-            "coordinates": request.coordinates,
-            "num_states": len(serializable_states)
-        }
-        
+
+        return {"states": serializable_states, "coordinates": request.coordinates, "num_states": len(serializable_states)}
+
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Model not found: {request.model_path}")
     except Exception as e:
@@ -735,20 +734,17 @@ async def coordinates_to_states(request: CoordinateToStateRequest):
 async def get_available_state_models():
     """
     List available inverse state projection models.
-    
+
     Returns:
         List of available model paths
     """
     models_dir = INVERSE_MODELS_DIR / "states"
     models_dir.mkdir(exist_ok=True)
-    
+
     model_files = list(models_dir.glob("*.pkl"))
     model_paths = [str(f.relative_to(Path.cwd())) for f in model_files]
-    
-    return {
-        "available_models": model_paths,
-        "count": len(model_paths)
-    }
+
+    return {"available_models": model_paths, "count": len(model_paths)}
 
 
 @router.post("/train_state_projection", tags=["STATE_PROJECTION"])
@@ -759,11 +755,11 @@ async def train_state_projection_model(
     output_model_name: str,
     params: StateProjectionParams = StateProjectionParams(),
     max_trajectories: int = 100,
-    max_steps_per_trajectory: int = 200
+    max_steps_per_trajectory: int = 200,
 ):
     """
     Train an inverse state projection model in the background.
-    
+
     Args:
         environment_name: Name of the environment (e.g., 'metaworld_reach-v2')
         projection_coordinates_path: Path to projection coordinates file
@@ -771,7 +767,7 @@ async def train_state_projection_model(
         params: Training parameters
         max_trajectories: Maximum trajectories to process
         max_steps_per_trajectory: Maximum steps per trajectory
-        
+
     Returns:
         Task ID for tracking training progress
     """
@@ -779,10 +775,10 @@ async def train_state_projection_model(
     models_dir = INVERSE_MODELS_DIR / "states"
     models_dir.mkdir(exist_ok=True)
     output_path = models_dir / f"{output_model_name}.pkl"
-    
+
     # Add background training task
     task_id = f"state_projection_{output_model_name}_{hash(environment_name)}"
-    
+
     background_tasks.add_task(
         _train_state_projection_background,
         environment_name=environment_name,
@@ -791,52 +787,62 @@ async def train_state_projection_model(
         params=params,
         max_trajectories=max_trajectories,
         max_steps_per_trajectory=max_steps_per_trajectory,
-        task_id=task_id
+        task_id=task_id,
     )
-    
+
     return {
         "task_id": task_id,
         "status": "started",
         "output_path": str(output_path),
-        "message": "State projection model training started in background"
+        "message": "State projection model training started in background",
     }
 
 
 async def _train_state_projection_background(
     environment_name: str,
-    projection_coordinates_path: str, 
+    projection_coordinates_path: str,
     output_path: str,
     params: StateProjectionParams,
     max_trajectories: int,
     max_steps_per_trajectory: int,
-    task_id: str
+    task_id: str,
 ):
     """Background task for training state projection model."""
     try:
         import subprocess
         import sys
-        
+
         # Run the training script
         cmd = [
-            sys.executable, "-m", "scripts.train_inverse_state_projection",
-            "--environment", environment_name,
-            "--projection-file", projection_coordinates_path,
-            "--output-model", output_path,
-            "--max-trajectories", str(max_trajectories),
-            "--max-steps", str(max_steps_per_trajectory),
-            "--epochs", str(params.num_epochs),
-            "--batch-size", str(params.batch_size),
-            "--learning-rate", str(params.learning_rate)
+            sys.executable,
+            "-m",
+            "scripts.train_inverse_state_projection",
+            "--environment",
+            environment_name,
+            "--projection-file",
+            projection_coordinates_path,
+            "--output-model",
+            output_path,
+            "--max-trajectories",
+            str(max_trajectories),
+            "--max-steps",
+            str(max_steps_per_trajectory),
+            "--epochs",
+            str(params.num_epochs),
+            "--batch-size",
+            str(params.batch_size),
+            "--learning-rate",
+            str(params.learning_rate),
         ]
-        
+
         logger.info(f"Starting training task {task_id}: {' '.join(cmd)}")
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path.cwd())
-        
+
         if result.returncode == 0:
             logger.info(f"Task {task_id} completed successfully")
         else:
             logger.error(f"Task {task_id} failed: {result.stderr}")
-            
+
     except Exception as e:
         logger.error(f"Task {task_id} failed with exception: {e}")

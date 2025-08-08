@@ -21,7 +21,7 @@ class SaveResetEnvWrapper(gym.Wrapper):
         set of enviornments. If you encounter an unsupported env, feel free to
         add them to the CUSTOM_SAVE_RESET_WRAPPERS dict
         """
-        super(SaveResetEnvWrapper, self).__init__(env)
+        super().__init__(env)
 
         env_id = env.spec.id if env.spec is not None else env.__class__.__name__
         for key, wrapper_ctor in CUSTOM_SAVE_RESET_WRAPPERS.items():
@@ -111,5 +111,5 @@ class SaveResetEnvWrapper(gym.Wrapper):
         Reset the environment. If a state is provided, load it after resetting.
         Otherwise, perform a normal reset.
         """
-        observation, info = super(SaveResetEnvWrapper, self).reset(**kwargs)
+        observation, info = super().reset(**kwargs)
         return observation, info

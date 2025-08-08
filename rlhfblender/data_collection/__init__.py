@@ -13,6 +13,7 @@ class RecordedEpisodesContainer:
     renders: np.ndarray
     features: np.ndarray
     probs: np.ndarray
+    env_states: np.ndarray
     episode_rewards: np.ndarray
     episode_lengths: np.ndarray
     additional_metrics: np.ndarray

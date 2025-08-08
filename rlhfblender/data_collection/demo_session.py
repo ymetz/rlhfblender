@@ -31,13 +31,16 @@ def find_available_port(start_port=65432, max_attempts=100):
     raise RuntimeError("No available ports found.")
 
 
-async def create_new_session(session_id: str, exp: Experiment, db_env: Environment, seed: str | int):
+async def create_new_session(
+    session_id: str, exp: Experiment, db_env: Environment, seed: str | int, initial_state: dict = None
+):
     """
     Create a new session as a asynchronous process. In the process, initialize a gym environment and
     wait for commands via a pipe.
     :param session_id: The unique id of the session
     :param gym_env: The gym environment id
     :param seed: The seed for the environment
+    :param initial_state: Optional initial state to load into environment
     :return:
     """
     # Create render directory if it doesn't exist
@@ -50,7 +53,7 @@ async def create_new_session(session_id: str, exp: Experiment, db_env: Environme
         demo_number += 1
 
     # Create a new process
-    p = Process(target=run_env_session, args=(session_id, demo_number, exp, db_env, seed))
+    p = Process(target=run_env_session, args=(session_id, demo_number, exp, db_env, seed, initial_state))
     p.start()
 
     # Wait for the process to be ready
@@ -60,13 +63,16 @@ async def create_new_session(session_id: str, exp: Experiment, db_env: Environme
     return p.pid, demo_number
 
 
-def run_env_session(session_id: str, demo_number: int, exp: Experiment, database_env: Environment, seed: str | int):
+def run_env_session(
+    session_id: str, demo_number: int, exp: Experiment, database_env: Environment, seed: str | int, initial_state: dict = None
+):
     """
     Blocking loop that initializes a gym environment and waits for commands via a socket.
     :param session_id: (str) The unique id of the session (used for the socket port
     :param demo_number: (int) The index of the demo
     :param gym_env: (str) The gym environment id
     :param seed: (int) The seed for the environment
+    :param initial_state: (dict) Optional initial state to load into environment
     :return:
     """
     # Create the gym environment

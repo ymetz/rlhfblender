@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 import gymnasium as gym
 import numpy as np
+from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 from rl_zoo3.utils import get_wrapper_class
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (
@@ -117,6 +118,14 @@ def get_environment(
 
     env_wrapper = get_wrapper_class(environment_config)
 
+    # Create a wrapper function that applies both the original wrapper and SaveResetEnvWrapper
+    def combined_wrapper(env):
+        if env_wrapper is not None:
+            env = env_wrapper(env)
+        # Always wrap with SaveResetEnvWrapper for env_state functionality
+        env = SaveResetEnvWrapper(env)
+        return env
+
     vec_env_cls = DummyVecEnv
 
     print(f"Creating environment {env_name} with config: {environment_config}")
@@ -139,7 +148,7 @@ def get_environment(
         env = make_vec_metaworld_env(
             env_id=environment_name,
             n_envs=n_envs,
-            wrapper_class=env_wrapper,
+            wrapper_class=combined_wrapper,
             env_kwargs=env_kwargs,
             vec_env_cls=vec_env_cls,
             vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
@@ -148,7 +157,7 @@ def get_environment(
         env = make_vec_env(
             env_name,
             n_envs=n_envs,
-            wrapper_class=env_wrapper,
+            wrapper_class=combined_wrapper,
             env_kwargs=env_kwargs,
             vec_env_cls=vec_env_cls,
             vec_env_kwargs=environment_config.get("vec_env_kwargs", None),

@@ -317,7 +317,7 @@ def debug_feedback_output(feedback_data):
 
 def generate_feedback(
     model_class: Type[Union[PPO, SAC]],
-    expert_models: List[Union[PPO, SAC]],
+    expert_models: List[Union[PPO, SAC], Union[VecNormalize, None]],
     environment: gym.Env,
     environment_name: str = "HalfCheetah-v5",
     checkpoints_path: str = "gt_agents",

@@ -21,6 +21,7 @@ class ProjectionHandler:
         self.is_fitted = False
         self.joint_projection_path = kwargs.get("joint_projection_path", None)
         self.projection_results = None  # Store projection results consistently
+        self.state_model_path = None  # Path to inverse state projection model for joint obs-state projections
 
         # If a joint projection path is provided, load it
         if self.joint_projection_path:
@@ -92,58 +93,55 @@ class ProjectionHandler:
             with open(joint_projection_path, "r") as f:
                 metadata = json.load(f)
 
-            handler_path = metadata["handler_path"]
-            if not os.path.exists(handler_path):
-                raise FileNotFoundError(f"Joint projection handler not found: {handler_path}")
+            # Handle joint observation-state projection format
+            if "state_model_path" in metadata:
+                # Load the underlying observation projection first
+                obs_proj_metadata_path = metadata["observation_projection_metadata"]
+                if not os.path.exists(obs_proj_metadata_path):
+                    raise FileNotFoundError(f"Observation projection metadata not found: {obs_proj_metadata_path}")
 
-            # Load the fitted handler data
-            with open(handler_path, "rb") as f:
-                save_data = pickle.load(f)
+                # Recursively load the observation projection
+                self.load_joint_projection(obs_proj_metadata_path)
 
-            # Handle both old format (direct handler) and new format (save_data dict)
-            if isinstance(save_data, dict):
-                # New format
-                self.embedding_method = save_data["embedding_method"]
-                self.projection_results = save_data["projection_results"]
-                self.is_fitted = save_data.get("is_fitted", True)
+                # Store reference to state model for later use if needed
+                self.state_model_path = metadata["state_model_path"]
+                return
+
+            # Handle old observation projection format
+            elif "handler_path" in metadata:
+                handler_path = metadata["handler_path"]
+                if not os.path.exists(handler_path):
+                    raise FileNotFoundError(f"Joint projection handler not found: {handler_path}")
+
+                # Load the fitted handler data
+                with open(handler_path, "rb") as f:
+                    save_data = pickle.load(f)
+
+                # Handle both old format (direct handler) and new format (save_data dict)
+                if isinstance(save_data, dict):
+                    # New format
+                    self.embedding_method = save_data["embedding_method"]
+                    self.projection_results = save_data["projection_results"]
+                    self.is_fitted = save_data.get("is_fitted", True)
+                else:
+                    # Old format - save_data is the handler itself
+                    fitted_handler = save_data
+                    self.embedding_method = fitted_handler.embedding_method
+                    self.projection_results = getattr(fitted_handler, "projection_results", None)
+                    # Try to get results from method-specific storage if not available
+                    if self.projection_results is None and hasattr(fitted_handler.embedding_method, "embedding_"):
+                        self.projection_results = fitted_handler.embedding_method.embedding_
+                    self.is_fitted = True
+
+                print(f"Loaded observation projection: {metadata['projection_method']}")
+                print(f"Experiment: {metadata['experiment_name']}")
+                print(f"Checkpoints: {metadata['checkpoints']}")
+                return
+
             else:
-                # Old format - save_data is the handler itself
-                fitted_handler = save_data
-                self.embedding_method = fitted_handler.embedding_method
-                self.projection_results = getattr(fitted_handler, "projection_results", None)
-                # Try to get results from method-specific storage if not available
-                if self.projection_results is None and hasattr(fitted_handler.embedding_method, "embedding_"):
-                    self.projection_results = fitted_handler.embedding_method.embedding_
-                self.is_fitted = True
-
-            print(f"Loaded joint projection: {metadata['projection_method']}")
-            print(f"Experiment: {metadata['experiment_name']}")
-            print(f"Checkpoints: {metadata['checkpoints']}")
-
-        elif joint_projection_path.endswith(".pkl"):
-            # Load directly from handler pickle file
-            with open(joint_projection_path, "rb") as f:
-                save_data = pickle.load(f)
-
-            # Handle both formats
-            if isinstance(save_data, dict):
-                # New format
-                self.embedding_method = save_data["embedding_method"]
-                self.projection_results = save_data["projection_results"]
-                self.is_fitted = save_data.get("is_fitted", True)
-            else:
-                # Old format
-                fitted_handler = save_data
-                self.embedding_method = fitted_handler.embedding_method
-                self.projection_results = getattr(fitted_handler, "projection_results", None)
-                if self.projection_results is None and hasattr(fitted_handler.embedding_method, "embedding_"):
-                    self.projection_results = fitted_handler.embedding_method.embedding_
-                self.is_fitted = True
-
-            print(f"Loaded joint projection handler from: {joint_projection_path}")
-
-        else:
-            raise ValueError("Joint projection path must be a .json metadata file or .pkl handler file")
+                raise ValueError(
+                    "Unsupported joint projection format - missing required metadata keys (need either 'state_model_path' or 'handler_path')"
+                )
 
     def fit(self, data: np.ndarray, sequence_length: int, step_range=None, episode_indices=None, actions=None, suffix=""):
         """

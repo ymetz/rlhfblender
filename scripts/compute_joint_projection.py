@@ -82,7 +82,7 @@ class JointProjectionComputer:
             key_column="exp_name",
         )
         self.env_name = process_env_name(self.db_experiment.env_id)
-        self.env_config = self.db_experiment.env_config or {}
+        self.environment_config = self.db_experiment.environment_config or {}
         print(f"Loaded experiment: {self.experiment_name} (ID: {self.db_experiment.id})")
         print(f"Environment: {self.env_name}")
 

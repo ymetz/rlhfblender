@@ -911,8 +911,10 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
         # Start simulated training
         simulation_key = f"{session_id}_{phase}"
 
+        print(f"Simulating training for session {session_id}, phase {phase}")
+
         # Get the next training step number (increment from previous phases)
-        training_step = 1
+        training_step = 0
         for key, data in simulation_store.items():
             if key.startswith(f"{session_id}_") and "final_training_step" in data:
                 training_step = max(training_step, data["final_training_step"] + 1)
@@ -924,6 +926,7 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
             "uncertainty": random.uniform(0.1, 0.5),
             "avg_reward": random.uniform(0.3, 0.8),
             "progress": 0.0,
+            "simulation": True,
         }
 
         return JSONResponse(
@@ -935,6 +938,7 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
                 "phaseReward": 0.0,
                 "session_id": session_id,
                 "num_feedback": 0,
+                "simulation": True,
             }
         )
 
@@ -984,6 +988,7 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
                 "phaseReward": 0.0,
                 "session_id": session_id,
                 "num_feedback": 0,
+                "simulation": False,
             }
         )
 
@@ -1001,6 +1006,9 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
                 "phaseTrainingStep": 0,
                 "phaseUncertainty": 0.0,
                 "phaseReward": 0.0,
+                "session_id": session_id,
+                "num_feedback": 0,
+                "simulation": False,
             },
         )
 
@@ -1027,6 +1035,9 @@ async def get_training_status(request: Request):
 
     if simulate_training:
         simulation_key = f"{session_id}_{phase}"
+
+        print(f"Retrieve training status for session {session_id}, phase {phase}", simulation_store.keys())
+
         if simulation_key in simulation_store:
             sim_data = simulation_store[simulation_key]
             elapsed_time = time.time() - sim_data["start_time"]
@@ -1045,6 +1056,7 @@ async def get_training_status(request: Request):
                     "message": ("Training in progress" if sim_data["status"] == "training" else "Training completed"),
                     "progress": progress,
                     "training_step": sim_data["training_step"],
+                    "simulation": True,
                 }
             )
         else:
@@ -1080,6 +1092,7 @@ async def get_training_status(request: Request):
                         "message": "Waiting for human feedback",
                         "progress": 0.5,  # 50% complete, waiting for feedback
                         "training_step": session.get("training_step", 0),
+                        "simulation": False,
                     }
                 )
             elif feedback_status.get("status") == "feedback_received":
@@ -1089,6 +1102,7 @@ async def get_training_status(request: Request):
                         "message": "Processing received feedback",
                         "progress": 0.8,  # 80% complete, processing feedback
                         "training_step": session.get("training_step", 0),
+                        "simulation": False,
                     }
                 )
         except Exception as e:
@@ -1142,6 +1156,7 @@ async def get_training_status(request: Request):
             "message": message,
             "progress": progress,
             "training_step": session.get("training_step", 0),
+            "simulation": False,
         }
     )
 
@@ -1201,8 +1216,8 @@ async def get_training_results(request: Request):
                     "metrics": {
                         "training_step": sim_data["training_step"],
                         "progress": progress,
-                        "simulated": True,
                     },
+                    "simulation": True,
                 }
             )
         else:
@@ -1231,6 +1246,7 @@ async def get_training_results(request: Request):
                 "trainingComplete": False,
                 "modelPath": "",
                 "metrics": {},
+                "simulation": False,
             }
         )
 
@@ -1280,5 +1296,6 @@ async def get_training_results(request: Request):
             "trainingComplete": training_complete,
             "modelPath": "",  # Would be populated with actual model path
             "metrics": metrics,
+            "simulation": False,
         }
     )
