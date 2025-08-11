@@ -1,0 +1,24 @@
+{
+  "experiment_name": "Demo-Data-v0",
+  "experiment_id": 61,
+  "env_name": "metaworld-sweep-into-v3",
+  "checkpoints": [
+    200000,
+    400000,
+    600000,
+    800000,
+    1000000
+  ],
+  "projection_method": "PCA",
+  "projection_props": {
+    "n_components": 2
+  },
+  "sequence_length": 1,
+  "step_range": "[]",
+  "reproject": false,
+  "append_time": false,
+  "transition_embedding": true,
+  "feature_embedding": true,
+  "handler_path": "data/saved_projections/joint/metaworld-sweep-into-v3_61_joint_PCA_200000_1000000_handler.pkl",
+  "results_path": "data/saved_projections/joint/metaworld-sweep-into-v3_61_joint_PCA_200000_1000000_results.npz"
+}

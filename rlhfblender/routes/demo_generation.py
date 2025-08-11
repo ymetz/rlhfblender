@@ -176,13 +176,10 @@ async def gym_offer(request: Request):
                 # Construct state model path from experiment info
                 # Use the experiment's checkpoint list to get the min/max checkpoints
                 checkpoint_list = exp.checkpoint_list if hasattr(exp, "checkpoint_list") and exp.checkpoint_list else []
-                if checkpoint_list:
-                    min_checkpoint = min(checkpoint_list)
-                    max_checkpoint = max(checkpoint_list)
-                    state_model_path = f"data/saved_projections/joint_obs_state/{environment_id}_{experiment_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
-                else:
-                    # Fallback to hardcoded checkpoints (should be rare)
-                    state_model_path = f"data/saved_projections/joint_obs_state/{environment_id}_{experiment_id}_joint_obs_state_PCA_200000_600000_state_model.pkl"
+
+                min_checkpoint = min(checkpoint_list)
+                max_checkpoint = max(checkpoint_list)
+                state_model_path = f"data/saved_projections/joint_obs_state/{environment_id}_{experiment_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
 
                 print(f"Loading state from coordinate {coordinate} using model {state_model_path}")
                 handler = InverseStateProjectionHandler()
@@ -203,7 +200,7 @@ async def gym_offer(request: Request):
 
                 # Construct the episode file path
                 episode_file_path = (
-                    f"data/env_states/{environment_id}_{experiment_id}_{checkpoint}/env_states_{episode_num}.npz"
+                    f"data/env_states/{environment_id}/{environment_id}_{experiment_id}_{checkpoint}/env_states_{episode_num}.npy"
                 )
 
                 # Load the episode data
@@ -214,7 +211,7 @@ async def gym_offer(request: Request):
                     raise Exception(f"Step {step} not found in episode {episode_num} (max step: {len(env_states)-1})")
 
                 # Get the env_state for the requested step
-                env_state = env_states[step][0]
+                env_state = env_states[step][0]["state"]
 
                 if env_state is None:
                     raise Exception(f"env_state is None for episode {episode_num}, step {step}")
@@ -229,6 +226,9 @@ async def gym_offer(request: Request):
             except Exception as e:
                 print(f"Failed to load saved state: {e}")
                 initial_state = None
+
+        print("INITIAL_STATE", initial_state)
+        print(initial_state["qpos"].dtype)
 
         gym_track = GymEnvironmentTrack(session_id=session_id, exp=exp, db_env=db_env, seed=42, initial_state=initial_state)
 
@@ -364,19 +364,10 @@ async def coordinate_to_render(request: Request):
 
         # Construct paths from experiment info
         checkpoint_list = exp.checkpoint_list if hasattr(exp, "checkpoint_list") and exp.checkpoint_list else []
-        if checkpoint_list:
-            min_checkpoint = min(checkpoint_list)
-            max_checkpoint = max(checkpoint_list)
-            joint_projection_path = f"data/saved_projections/joint_obs_state/{env_id}_{exp_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_metadata.json"
-            state_model_path = f"data/saved_projections/joint_obs_state/{env_id}_{exp_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
-        else:
-            # Fallback to hardcoded checkpoints (should be rare)
-            joint_projection_path = (
-                f"data/saved_projections/joint_obs_state/{env_id}_{exp_id}_joint_obs_state_PCA_200000_600000_metadata.json"
-            )
-            state_model_path = (
-                f"data/saved_projections/joint_obs_state/{env_id}_{exp_id}_joint_obs_state_PCA_200000_600000_state_model.pkl"
-            )
+        min_checkpoint = min(checkpoint_list)
+        max_checkpoint = max(checkpoint_list)
+        state_model_path = f"data/saved_projections/joint_obs_state/{env_id}_{exp_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
+
 
         # Load inverse state projection model directly
         state_handler = InverseStateProjectionHandler()
