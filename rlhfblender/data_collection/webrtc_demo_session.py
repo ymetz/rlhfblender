@@ -263,6 +263,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
                 # Render environment to get current state (always render for visual feedback)
                 frame = self.env.render()
+                logger.info(f"Environment render result: {type(frame)}, shape={getattr(frame, 'shape', 'N/A')}")
                 if frame is not None:
                     # Only log render info when action is taken to reduce spam
                     if action_taken:
@@ -307,6 +308,9 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
         self.counter += 1
 
+        # Debug: Log frame info
+        logger.info(f"Generated frame: shape={img.shape}, dtype={img.dtype}, min={img.min()}, max={img.max()}")
+        
         # Create video frame
         video_frame = VideoFrame.from_ndarray(img, format="rgb24")
         video_frame.pts = pts
