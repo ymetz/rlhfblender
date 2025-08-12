@@ -2,6 +2,8 @@ import asyncio
 import base64
 import os
 from io import BytesIO
+from typing import List, Dict, Any
+import httpx
 
 import numpy as np
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
@@ -25,6 +27,79 @@ from rlhfblender.projections.projection_handler import ProjectionHandler
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/demo_generation")
+
+
+async def create_expiring_turn_credential() -> Dict[str, Any]:
+    """
+    Create expiring TURN credentials using the Metered API.
+    Returns the credential info including username, password, and apiKey.
+    """
+    secret_key = os.environ.get("METERED_SECRET_KEY")
+    if not secret_key:
+        raise HTTPException(500, detail="METERED_SECRET_KEY not configured")
+    
+    # Create credential that expires in 4 hours (1800 seconds)
+    url = f"https://mla2.metered.live/api/v1/turn/credential?secretKey={secret_key}"
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            url,
+            headers={'Content-Type': 'application/json'},
+            json={
+                "expiryInSeconds": 1800,  # 30 mins
+                "label": "rlhfblender-session"
+            }
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(500, detail=f"Failed to create TURN credential: {response.text}")
+        
+        return response.json()
+
+
+async def get_ice_servers_from_credential(api_key: str) -> List[Dict[str, Any]]:
+    """
+    Fetch ICE servers using the API key from expiring credential.
+    """
+    url = f"https://mla2.metered.live/api/v1/turn/credentials?apiKey={api_key}"
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        
+        if response.status_code != 200:
+            raise HTTPException(500, detail=f"Failed to fetch ICE servers: {response.text}")
+        
+        return response.json()
+
+
+@router.get("/webrtc_config")
+async def get_webrtc_config():
+    """
+    Get WebRTC ICE server configuration with expiring TURN credentials.
+    This endpoint should be called by the frontend before establishing WebRTC connections.
+    """
+    try:
+        # Create expiring credential
+        credential = await create_expiring_turn_credential()
+        
+        # Get ICE servers using the API key
+        ice_servers = await get_ice_servers_from_credential(credential["apiKey"])
+        
+        # Add STUN server as fallback
+        stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.relay.metered.ca")
+        ice_servers.insert(0, {
+            "urls": f"stun:{stun_server_host}:80"
+        })
+        
+        return JSONResponse({
+            "iceServers": ice_servers,
+            "credentialExpiry": credential["expiryInSeconds"]
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, detail=f"Failed to get WebRTC configuration: {str(e)}")
 
 
 @router.post("/initialize_demo_session")
@@ -155,7 +230,31 @@ async def gym_offer(request: Request):
     if db_env is None:
         raise HTTPException(404, detail="Environment not found")
 
-    ice_servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])]
+    # Get ICE servers using expiring credentials
+    try:
+        credential = await create_expiring_turn_credential()
+        ice_servers_data = await get_ice_servers_from_credential(credential["apiKey"])
+        
+        # Convert to RTCIceServer objects
+        ice_servers = []
+        
+        # Add STUN server
+        stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.relay.metered.ca")
+        ice_servers.append(RTCIceServer(urls=[f"stun:{stun_server_host}:80"]))
+        
+        # Add TURN servers from API response
+        for server in ice_servers_data:
+            ice_servers.append(RTCIceServer(
+                urls=[server["urls"]],
+                username=server.get("username"),
+                credential=server.get("credential")
+            ))
+            
+    except Exception as e:
+        print(f"Warning: Failed to get expiring TURN credentials: {e}")
+        # Fallback to basic STUN server only
+        stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.l.google.com")
+        ice_servers = [RTCIceServer(urls=[f"stun:{stun_server_host}:19302"])]
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
 
@@ -226,9 +325,6 @@ async def gym_offer(request: Request):
             except Exception as e:
                 print(f"Failed to load saved state: {e}")
                 initial_state = None
-
-        print("INITIAL_STATE", initial_state)
-        print(initial_state["qpos"].dtype)
 
         gym_track = GymEnvironmentTrack(session_id=session_id, exp=exp, db_env=db_env, seed=42, initial_state=initial_state)
 
@@ -364,8 +460,8 @@ async def coordinate_to_render(request: Request):
 
         # Construct paths from experiment info
         checkpoint_list = exp.checkpoint_list if hasattr(exp, "checkpoint_list") and exp.checkpoint_list else []
-        min_checkpoint = min(checkpoint_list)
-        max_checkpoint = max(checkpoint_list)
+        min_checkpoint = min(checkpoint_list, key=int) if checkpoint_list else None
+        max_checkpoint = max(checkpoint_list, key=int) if checkpoint_list else None
         state_model_path = f"data/saved_projections/joint_obs_state/{env_id}_{exp_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
 
 
