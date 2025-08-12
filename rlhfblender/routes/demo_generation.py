@@ -35,11 +35,14 @@ async def create_expiring_turn_credential() -> Dict[str, Any]:
     Returns the credential info including username, password, and apiKey.
     """
     secret_key = os.environ.get("METERED_SECRET_KEY")
+    application_name = os.environ.get("METERED_APP_NAME")
     if not secret_key:
         raise HTTPException(500, detail="METERED_SECRET_KEY not configured")
+    if not application_name:
+        raise HTTPException(500, detail="METERED_APP_NAME not configured")
     
     # Create credential that expires in 4 hours (1800 seconds)
-    url = f"https://mla2.metered.live/api/v1/turn/credential?secretKey={secret_key}"
+    url = f"https://{application_name}.metered.live/api/v1/turn/credential?secretKey={secret_key}"
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -61,7 +64,11 @@ async def get_ice_servers_from_credential(api_key: str) -> List[Dict[str, Any]]:
     """
     Fetch ICE servers using the API key from expiring credential.
     """
-    url = f"https://mla2.metered.live/api/v1/turn/credentials?apiKey={api_key}"
+    application_name = os.environ.get("METERED_APP_NAME")
+    if not application_name:
+        raise HTTPException(500, detail="METERED_APP_NAME not configured")
+
+    url = f"https://{application_name}.metered.live/api/v1/turn/credentials?apiKey={api_key}"
     
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
