@@ -15,6 +15,8 @@ RUN micromamba install -n base -y python=$PYTHON_VERSION \
     micromamba clean --all --yes
 
 ENV CODE_DIR /home/$MAMBA_USER
+ENV DISPLAY=:99
+ENV MUJOCO_GL=osmesa
 
 # Copy setup file only to install dependencies
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./setup.py ${CODE_DIR}/rlhfblender/setup.py
@@ -31,6 +33,7 @@ RUN cd ${CODE_DIR}/rlhfblender && \
     pip install -e .[tests,docs] && \
     # Use headless version for docker
     #pip uninstall -y opencv-python && \
+    pip install -y libglfw3 libglew2.0 libgl1-mesa-glx libosmesa6 && \
     pip install opencv-python-headless && \
     pip cache purge
 
