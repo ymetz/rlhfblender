@@ -79,28 +79,6 @@ async def get_ice_servers_from_credential(api_key: str) -> List[Dict[str, Any]]:
         return response.json()
 
 
-@router.get("/webrtc_config")
-async def get_webrtc_config():
-    """
-    Get WebRTC ICE server configuration with expiring TURN credentials.
-    This endpoint should be called by the frontend before establishing WebRTC connections.
-    """
-    try:
-        # Create expiring credential
-        credential = await create_expiring_turn_credential()
-        
-        # Get ICE servers using the API key
-        ice_servers = await get_ice_servers_from_credential(credential["apiKey"])
-        
-        return JSONResponse({
-            "iceServers": ice_servers,
-            "credentialExpiry": credential["expiryInSeconds"]
-        })
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, detail=f"Failed to get WebRTC configuration: {e!s}")
 
 
 @router.post("/initialize_demo_session")
@@ -240,8 +218,8 @@ async def gym_offer(request: Request):
         ice_servers = []
         
         # Add STUN server
-        stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.relay.metered.ca")
-        ice_servers.append(RTCIceServer(urls=[f"stun:{stun_server_host}:80"]))
+        #stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.relay.metered.ca")
+        #ice_servers.append(RTCIceServer(urls=[f"stun:{stun_server_host}:80"]))
         
         # Add TURN servers from API response
         for server in ice_servers_data:
@@ -420,7 +398,13 @@ async def gym_offer(request: Request):
 
     await pc.setLocalDescription(answer)
 
-    return JSONResponse({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "session_id": session_id})
+    return JSONResponse({
+        "sdp": pc.localDescription.sdp, 
+        "type": pc.localDescription.type, 
+        "session_id": session_id,
+        "iceServers": ice_servers_data,
+        "credentialExpiry": credential.get("expiryInSeconds", 1800) if 'credential' in locals() else 1800
+    })
 
 
 @router.post("/coordinate_to_render")
