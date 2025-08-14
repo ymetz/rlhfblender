@@ -2,8 +2,9 @@ import asyncio
 import base64
 from logging import warning
 import os
+import time
 from io import BytesIO
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import httpx
 
 import numpy as np
@@ -28,6 +29,13 @@ from rlhfblender.projections.projection_handler import ProjectionHandler
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/demo_generation")
+
+# Global cache for ICE server credentials
+_ice_server_cache: Dict[str, Any] = {
+    "servers": None,
+    "credential": None,
+    "expires_at": 0
+}
 
 
 async def create_expiring_turn_credential() -> Dict[str, Any]:
@@ -61,7 +69,42 @@ async def create_expiring_turn_credential() -> Dict[str, Any]:
         return response.json()
 
 
-async def get_ice_servers_from_credential(api_key: str) -> List[Dict[str, Any]]:
+async def get_cached_ice_servers() -> tuple[list[dict[str, Any]], Optional[dict[str, Any]]]:
+    """
+    Get cached ICE servers or create new ones if cache is expired.
+    Returns (ice_servers_data, credential) tuple.
+    """
+    current_time = time.time()
+    
+    # Check if cache is still valid (with 5min safety margin)
+    if (_ice_server_cache["expires_at"] > current_time and 
+        _ice_server_cache["servers"] is not None):
+        print("Using cached ICE servers")
+        return _ice_server_cache["servers"], _ice_server_cache["credential"]
+    
+    try:
+        print("Creating new ICE server credentials")
+        # Create new credentials
+        credential = await create_expiring_turn_credential()
+        ice_servers_data = await get_ice_servers_from_credential(credential["apiKey"])
+        
+        # Cache with expiry (25min to be safe, original is 30min)
+        _ice_server_cache.update({
+            "servers": ice_servers_data,
+            "credential": credential,
+            "expires_at": current_time + 1500  # 25 minutes
+        })
+        
+        return ice_servers_data, credential
+        
+    except Exception as e:
+        print(f"Failed to get ICE servers: {e}")
+        # Return fallback
+        fallback_servers = [{"urls": "stun:stun.l.google.com:19302"}]
+        return fallback_servers, None
+
+
+async def get_ice_servers_from_credential(api_key: str) -> list[dict[str, Any]]:
     """
     Fetch ICE servers using the API key from expiring credential.
     """
@@ -210,32 +253,19 @@ async def gym_offer(request: Request):
     if db_env is None:
         raise HTTPException(404, detail="Environment not found")
 
-    # Get ICE servers using expiring credentials
-    ice_servers_data = []
-    credential = None
-    try:
-        credential = await create_expiring_turn_credential()
-        ice_servers_data = await get_ice_servers_from_credential(credential["apiKey"])
-        
-        # Convert to RTCIceServer objects
-        ice_servers = []
-        
-        # Add TURN servers from API response
-        for server in ice_servers_data:
-            ice_servers.append(RTCIceServer(
-                urls=[server["urls"]],
-                username=server.get("username"),
-                credential=server.get("credential")
-            ))
-        print(f"Using {len(ice_servers)} ICE servers from expiring credential")
-            
-    except Exception as e:
-        warning(f"Failed to create expiring TURN credential: {e}")
-        # Fallback to basic STUN server only
-        stun_server_host = "stun.l.google.com"
-        ice_servers = [RTCIceServer(urls=[f"stun:{stun_server_host}:19302"])]
-        # Set fallback ice_servers_data for response
-        ice_servers_data = [{"urls": f"stun:{stun_server_host}:19302"}]
+    # Get ICE servers using caching
+    ice_servers_data, credential = await get_cached_ice_servers()
+    
+    # Convert to RTCIceServer objects for WebRTC peer connection
+    ice_servers = []
+    for server in ice_servers_data:
+        ice_servers.append(RTCIceServer(
+            urls=[server["urls"]],
+            username=server.get("username"),
+            credential=server.get("credential")
+        ))
+    
+    print(f"Using {len(ice_servers)} ICE servers for WebRTC connection")
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
 
