@@ -33,7 +33,7 @@ RUN cd ${CODE_DIR}/rlhfblender && \
     pip install -e .[tests,docs] && \
     # Use headless version for docker
     #pip uninstall -y opencv-python && \
-    pip install -y libglfw3 libglew2.0 libgl1-mesa-glx libosmesa6 && \
+    pip install libglfw3 libglew2.0 libgl1-mesa-glx libosmesa6 && \
     pip install opencv-python-headless && \
     pip cache purge
 
