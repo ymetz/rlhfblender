@@ -19,6 +19,8 @@ ENV CODE_DIR=/home/${MAMBA_USER}
 ENV DISPLAY=:99
 ENV MUJOCO_GL=osmesa
 ENV PYOPENGL_PLATFORM=osmesa
+# Disable numba JIT compilation as it causes problems in the docker container
+ENV NUMBA_DISABLE_JIT=1
 
 # Copy setup file only to install dependencies
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./setup.py ${CODE_DIR}/rlhfblender/setup.py
