@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from logging import warning
 import os
 from io import BytesIO
 from typing import List, Dict, Any
@@ -210,16 +211,14 @@ async def gym_offer(request: Request):
         raise HTTPException(404, detail="Environment not found")
 
     # Get ICE servers using expiring credentials
+    ice_servers_data = []
+    credential = None
     try:
         credential = await create_expiring_turn_credential()
         ice_servers_data = await get_ice_servers_from_credential(credential["apiKey"])
         
         # Convert to RTCIceServer objects
         ice_servers = []
-        
-        # Add STUN server
-        #stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.relay.metered.ca")
-        #ice_servers.append(RTCIceServer(urls=[f"stun:{stun_server_host}:80"]))
         
         # Add TURN servers from API response
         for server in ice_servers_data:
@@ -228,12 +227,15 @@ async def gym_offer(request: Request):
                 username=server.get("username"),
                 credential=server.get("credential")
             ))
+        print(f"Using {len(ice_servers)} ICE servers from expiring credential")
             
     except Exception as e:
-        print(f"Warning: Failed to get expiring TURN credentials: {e}")
+        warning(f"Failed to create expiring TURN credential: {e}")
         # Fallback to basic STUN server only
-        stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.l.google.com")
+        stun_server_host = "stun.l.google.com"
         ice_servers = [RTCIceServer(urls=[f"stun:{stun_server_host}:19302"])]
+        # Set fallback ice_servers_data for response
+        ice_servers_data = [{"urls": f"stun:{stun_server_host}:19302"}]
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
 
@@ -403,7 +405,7 @@ async def gym_offer(request: Request):
         "type": pc.localDescription.type, 
         "session_id": session_id,
         "iceServers": ice_servers_data,
-        "credentialExpiry": credential.get("expiryInSeconds", 1800) if 'credential' in locals() else 1800
+        "credentialExpiry": credential.get("expiryInSeconds", 1800) if credential else 1800
     })
 
 
