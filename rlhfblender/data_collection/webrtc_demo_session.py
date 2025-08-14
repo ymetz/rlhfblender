@@ -102,6 +102,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
     async def _initialize_environment(self):
         """Initialize gymnasium environment."""
+        print(f"[WEBRTC DEBUG] Initializing environment for session {self.session_id}")
         try:
             env_config = self.exp.environment_config.copy() if self.exp.environment_config else {}
             env_config["render_mode"] = "rgb_array"
@@ -263,7 +264,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
                 # Render environment to get current state (always render for visual feedback)
                 frame = self.env.render()
-                logger.info(f"Environment render result: {type(frame)}, shape={getattr(frame, 'shape', 'N/A')}")
+                print(f"[WEBRTC DEBUG] Environment render result: {type(frame)}, shape={getattr(frame, 'shape', 'N/A')}")
                 if frame is not None:
                     # Only log render info when action is taken to reduce spam
                     if action_taken:
@@ -309,7 +310,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self.counter += 1
 
         # Debug: Log frame info
-        logger.info(f"Generated frame: shape={img.shape}, dtype={img.dtype}, min={img.min()}, max={img.max()}")
+        print(f"[WEBRTC DEBUG] Generated frame: shape={img.shape}, dtype={img.dtype}, min={img.min()}, max={img.max()}")
         
         # Create video frame
         video_frame = VideoFrame.from_ndarray(img, format="rgb24")

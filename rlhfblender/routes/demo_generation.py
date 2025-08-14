@@ -92,12 +92,6 @@ async def get_webrtc_config():
         # Get ICE servers using the API key
         ice_servers = await get_ice_servers_from_credential(credential["apiKey"])
         
-        # Add STUN server as fallback
-        stun_server_host = os.environ.get("WEBRTC_STUN_HOST", "stun.relay.metered.ca")
-        ice_servers.insert(0, {
-            "urls": f"stun:{stun_server_host}:80"
-        })
-        
         return JSONResponse({
             "iceServers": ice_servers,
             "credentialExpiry": credential["expiryInSeconds"]
@@ -106,7 +100,7 @@ async def get_webrtc_config():
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, detail=f"Failed to get WebRTC configuration: {str(e)}")
+        raise HTTPException(500, detail=f"Failed to get WebRTC configuration: {e!s}")
 
 
 @router.post("/initialize_demo_session")
