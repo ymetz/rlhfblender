@@ -54,6 +54,7 @@ setup(
         f"multi-type-feedback @ {get_abs_path('multi-type-feedback')}",
         "aiortc==1.12.0",
         "av",
+        "httpx"
     ],
     extras_require={
         "tests": [
@@ -69,7 +70,6 @@ setup(
             "ruff>=0.0.288",
             # Reformat
             "black",
-            "httpx",
         ],
         "docs": [
             "sphinx>=5,<8",
