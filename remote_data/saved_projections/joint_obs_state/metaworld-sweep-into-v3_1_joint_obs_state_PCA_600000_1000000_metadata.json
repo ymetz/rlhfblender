@@ -1,0 +1,53 @@
+{
+  "experiment_name": "Metaworld-With-States",
+  "experiment_id": 1,
+  "env_name": "metaworld-sweep-into-v3",
+  "checkpoints": [
+    600000,
+    700000,
+    800000,
+    900000,
+    1000000
+  ],
+  "projection_method": "PCA",
+  "projection_props": {
+    "n_components": 2
+  },
+  "sequence_length": 1,
+  "step_range": "[]",
+  "reproject": false,
+  "append_time": false,
+  "transition_embedding": true,
+  "feature_embedding": true,
+  "max_trajectories_per_checkpoint": 50,
+  "max_steps_per_trajectory": 100,
+  "state_network_params": {
+    "hidden_dims": [
+      128,
+      256,
+      256,
+      128
+    ],
+    "learning_rate": 0.001,
+    "num_epochs": 20,
+    "batch_size": 64
+  },
+  "observation_projection_metadata": "data/saved_projections/joint/metaworld-sweep-into-v3_1_joint_PCA_600000_1000000_metadata.json",
+  "state_model_path": "data/saved_projections/joint_obs_state/metaworld-sweep-into-v3_1_joint_obs_state_PCA_600000_1000000_state_model.pkl",
+  "combined_results_path": "data/saved_projections/joint_obs_state/metaworld-sweep-into-v3_1_joint_obs_state_PCA_600000_1000000_results.npz",
+  "observation_data_shape": [
+    25005,
+    39
+  ],
+  "state_consistency_mse": Infinity,
+  "matched_state_coordinate_pairs": 5000,
+  "total_states_found": 5000,
+  "global_x_range": [
+    -0.7700032508164473,
+    0.8102358847976268
+  ],
+  "global_y_range": [
+    -0.8662942274926281,
+    0.8100288802294142
+  ]
+}
