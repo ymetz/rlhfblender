@@ -640,7 +640,7 @@ def main():
         except:
             warnings.warn(
                 """No expert benchmark results could be found. Only random policies are available. Make sure to train expert models with train_baselines,
-                          or change the path. Experts need to be trained with an SB3 MonitorWrapper and EvalCallback to retreive benchmark score"""
+                          or change the path. Experts need to be trained with an SB3 MonitorWrapper and EvalCallback to retrieve benchmark scores"""
             )
 
     expert_models = TrainingUtils.load_expert_models(

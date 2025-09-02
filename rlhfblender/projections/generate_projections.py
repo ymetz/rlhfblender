@@ -462,7 +462,7 @@ def compute_projections_and_clusters(
         transition_projection = np.zeros((0, 2))
 
     # Normalize main projection
-    if main_projection.shape[0] > 0:
+    """if main_projection.shape[0] > 0:
         min_val = main_projection.min()
         max_val = main_projection.max()
         if max_val > min_val:
@@ -481,6 +481,7 @@ def compute_projections_and_clusters(
         max_val = transition_projection.max()
         if max_val > min_val:
             transition_projection = (transition_projection - min_val) / (max_val - min_val)
+    """
 
     return {
         "projection_array": main_projection,
@@ -966,6 +967,24 @@ async def generate_projections(
 
         # Get original data for inverse mapping
         original_data = episode_data["obs"]
+
+        # Load global bounds from joint projection if available
+        if joint_projection_path and inverse_options.auto_grid_range:
+            try:
+                print(f"Loading global bounds from joint projection: {joint_projection_path}")
+                with open(joint_projection_path, "r") as f:
+                    joint_metadata = json.load(f)
+                
+                if "global_x_range" in joint_metadata and "global_y_range" in joint_metadata:
+                    # Use global bounds from joint projection
+                    inverse_options.x_range = tuple(joint_metadata["global_x_range"])
+                    inverse_options.y_range = tuple(joint_metadata["global_y_range"])
+                    inverse_options.auto_grid_range = False  # Use explicit ranges instead of auto
+                    print(f"Using global bounds from joint projection: x_range={inverse_options.x_range}, y_range={inverse_options.y_range}")
+                else:
+                    print("Warning: Global bounds not found in joint projection metadata, using auto-computed bounds")
+            except Exception as e:
+                print(f"Warning: Failed to load global bounds from joint projection: {e}")
 
         # Compute inverse projection
         inverse_results = compute_inverse_projection(

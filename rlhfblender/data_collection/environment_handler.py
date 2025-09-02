@@ -85,7 +85,7 @@ def get_metaworld_env(
         raise ImportError("Please install MetaWorld to use MetaWorld environments")
 
     # Initialize MT1 benchmark
-    mt1 = gym.make("MetaWorld/MT1", env_name=env_name, seed=seed)
+    mt1 = gym.make("Meta-World/MT1", env_name=env_name, seed=seed)
 
     # Create vectorized environment
     vec_env = DummyVecEnv([lambda: mt1])

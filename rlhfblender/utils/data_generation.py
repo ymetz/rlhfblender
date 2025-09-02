@@ -226,6 +226,13 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
             process_env_name(exp.env_id), f"{process_env_name(exp.env_id)}_{exp.id}_{benchmark_run['checkpoint_step']}"
         )
 
+        # Create persistent initial state path if consistent start state is enabled
+        persistent_state_path = None
+        if benchmark_run.get("consistent_start_state", False):
+            persistent_state_path = os.path.join(
+                "data", "initial_states", f"{process_env_name(exp.env_id)}_{exp.id}_initial_state.pkl"
+            )
+
         # Create an instance of EpisodeRecorder with the required parameters
         recorder = EpisodeRecorder(
             agent=agent,
@@ -236,7 +243,8 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
             overwrite=True,
             render=True,
             deterministic=False,
-            reset_to_initial_state=False,
+            reset_to_initial_state=True,
+            persistent_initial_state_path=persistent_state_path,
         )
 
         # Call the record_episodes method to start recording

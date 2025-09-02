@@ -1,7 +1,7 @@
 import os
+import pickle
 import random
 from collections.abc import Callable
-from copy import deepcopy
 from typing import Any
 
 import gymnasium as gym
@@ -33,6 +33,7 @@ class EpisodeRecorder:
         deterministic: bool = False,
         render: bool = True,
         reset_to_initial_state: bool = True,
+        persistent_initial_state_path: str | None = None,
         additional_out_attributes: dict[str, Any] | None = None,
         callback: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
     ):
@@ -45,6 +46,7 @@ class EpisodeRecorder:
         self.deterministic = deterministic
         self.render = render
         self.reset_to_initial_state = reset_to_initial_state
+        self.persistent_initial_state_path = persistent_initial_state_path
         self.additional_out_attributes = additional_out_attributes
         self.callback = callback
 
@@ -127,10 +129,36 @@ class EpisodeRecorder:
                     self.infos[i]["mission"] = self.observations[i]["mission"]
                     self.infos[i]["seed"] = seed
         if self.reset_to_initial_state:
-            if isinstance(self.env, VecEnv):
-                self.initial_states = tuple(deepcopy(e) for e in self.env.envs)
+            # Try to load persistent initial state
+            if self.persistent_initial_state_path and os.path.exists(self.persistent_initial_state_path):
+                with open(self.persistent_initial_state_path, 'rb') as f:
+                    self.initial_states = pickle.load(f)
+                # Load state into environment
+                if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
+                    for i, env in enumerate(self.env.envs):
+                        if i < len(self.initial_states):
+                            obs = env.load_state(self.initial_states[i])
+                            if obs is not None:
+                                self.observations[i] = obs
+                else:
+                    obs = self.env.load_state(self.initial_states)
+                    if obs is not None:
+                        self.observations[0] = obs
             else:
-                self.initial_states = deepcopy(self.env)
+                # Generate and save new initial state
+                if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
+                    self.initial_states = []
+                    for i, env in enumerate(self.env.envs):
+                        obs_for_env = self.observations[i] if i < len(self.observations) else self.observations[0]
+                        self.initial_states.append(env.save_state(obs_for_env))
+                else:
+                    self.initial_states = self.env.save_state(self.observations[0])
+                
+                # Save for future checkpoints
+                if self.persistent_initial_state_path:
+                    os.makedirs(os.path.dirname(self.persistent_initial_state_path), exist_ok=True)
+                    with open(self.persistent_initial_state_path, 'wb') as f:
+                        pickle.dump(self.initial_states, f)
         self.reset_obs = self.observations.copy()
 
     def collect_agent_outputs(self, actions):
@@ -160,7 +188,7 @@ class EpisodeRecorder:
         self.buffers["infos"].append(self.process_infos(additional_outputs))
 
         # Save environment state if the environment supports it
-        if isinstance(self.env, VecEnv):
+        if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
             # For VecEnv, check individual environments for save_state support
             env_states = []
             for i in range(self.n_envs):
@@ -222,11 +250,26 @@ class EpisodeRecorder:
 
     def reset_environment(self, i):
         if self.reset_to_initial_state:
-            if isinstance(self.env, VecEnv):
-                self.env.envs[i] = deepcopy(self.initial_states[i])
+            if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
+                # Use load_state method to reset to initial state for VecEnv
+                if hasattr(self.env.envs[i], 'load_state'):
+                    obs = self.env.envs[i].load_state(self.initial_states[i])
+                    if obs is not None:
+                        self.observations[i] = obs
+                    else:
+                        self.observations[i] = self.reset_obs[i]
+                else:
+                    raise RuntimeError(f"Environment {self.env.envs[i]} does not support load_state method.")
             else:
-                self.env = deepcopy(self.initial_states)
-            self.observations[i] = self.reset_obs[i]
+                # Use load_state method to reset to initial state for single environment
+                if hasattr(self.env, 'load_state'):
+                    obs = self.env.load_state(self.initial_states)
+                    if obs is not None:
+                        self.observations[0] = obs
+                    else:
+                        self.observations[0] = self.reset_obs[0]
+                else:
+                    raise RuntimeError("Environment does not support load_state method.")
 
     def handle_rendering(self):
         if self.render:
@@ -236,9 +279,9 @@ class EpisodeRecorder:
             # and has a camera name starting with "corner"
             # TODO: Remove this special case when the bug is fixed in metaworld/mujoco
             try:
-                if hasattr(self.env.envs[0].unwrapped, "camera_name") and self.env.envs[0].unwrapped.camera_name.startswith(
-                    "corner"
-                ):
+                if (isinstance(self.env, VecEnv) and hasattr(self.env, 'envs') and 
+                    hasattr(self.env.envs[0].unwrapped, "camera_name") and 
+                    self.env.envs[0].unwrapped.camera_name.startswith("corner")):
                     # Rotate 180 degrees (2 times 90 degrees clockwise)
                     render_frame = np.rot90(render_frame, k=2)
             except AttributeError:

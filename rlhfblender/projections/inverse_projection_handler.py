@@ -428,6 +428,8 @@ class InverseProjectionHandler:
         resolution=400,
         method="linear",
         mask_radius=None,
+        global_x_range=None,
+        global_y_range=None,
     ):
         """
         Creates an interpolated surface prioritizing original data over grid data.
@@ -471,13 +473,20 @@ class InverseProjectionHandler:
             points = grid_coords
             values = grid_values
 
-        # Rest of function remains the same...
-        x_min, x_max = min(points[:, 0]), max(points[:, 0])
-        y_min, y_max = min(points[:, 1]), max(points[:, 1])
+        # Use global bounds if provided, otherwise compute from data
+        if global_x_range is not None and global_y_range is not None:
+            x_min, x_max = global_x_range
+            y_min, y_max = global_y_range
+        else:
+            x_min, x_max = min(points[:, 0]), max(points[:, 0])
+            y_min, y_max = min(points[:, 1]), max(points[:, 1])
 
-        # Add a small buffer to avoid edge effects
-        x_buffer = 0
-        y_buffer = 0
+        # Add half-cell buffer so pixel edges align with domain edges
+        # Using resolution cells across the range => (resolution-1) intervals
+        dx = (x_max - x_min) / max(resolution - 1, 1)
+        dy = (y_max - y_min) / max(resolution - 1, 1)
+        x_buffer = dx / 2.0
+        y_buffer = dy / 2.0
 
         xi = np.linspace(x_min - x_buffer, x_max + x_buffer, resolution)
         yi = np.linspace(y_min - y_buffer, y_max + y_buffer, resolution)
@@ -498,10 +507,20 @@ class InverseProjectionHandler:
         zi_grid = griddata(points, values, (xi_grid, yi_grid), method="linear")
         zi_grid = gaussian_filter(zi_grid, sigma=1.5)
 
-        # Create visualization
-        fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution / 8)
+        # Create visualization with exact pixel control
+        fig = plt.figure(figsize=(1, 1), dpi=resolution)
+        ax = fig.add_axes([0, 0, 1, 1])
         norm = Normalize(vmin=min(values), vmax=max(values))
-        im = ax.pcolormesh(xi_grid, yi_grid, zi_grid, shading="auto", cmap="viridis", norm=norm)
+        # Render as image over the exact extent for consistent alignment
+        ax.imshow(
+            zi_grid,
+            origin="lower",
+            extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer],
+            interpolation="bilinear",
+            cmap="viridis",
+            norm=norm,
+            aspect="auto",
+        )
 
         # Optionally mark original data points
         if additional_coords is not None:
@@ -512,12 +531,11 @@ class InverseProjectionHandler:
         ax.set_yticks([])
         ax.set_xlim(x_min - x_buffer, x_max + x_buffer)
         ax.set_ylim(y_min - y_buffer, y_max + y_buffer)
-        plt.tight_layout()
         plt.axis("off")
 
         # Save to base64-encoded PNG
         buf = BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+        plt.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
         buf.seek(0)
         img_str = base64.b64encode(buf.read()).decode("utf-8")
         plt.close()
@@ -668,6 +686,8 @@ class InverseProjectionHandler:
         resolution=400,
         method="linear",
         mask_radius=None,
+        global_x_range=None,
+        global_y_range=None,
     ):
         """
         Creates a bivariate interpolated surface combining prediction and uncertainty,
@@ -717,12 +737,19 @@ class InverseProjectionHandler:
             preds = grid_predictions
             uncertainties = grid_uncertainties
 
-        # Rest of function remains largely the same...
-        x_min, x_max = min(coords[:, 0]), max(coords[:, 0])
-        y_min, y_max = min(coords[:, 1]), max(coords[:, 1])
+        # Use global bounds if provided, otherwise compute from data
+        if global_x_range is not None and global_y_range is not None:
+            x_min, x_max = global_x_range
+            y_min, y_max = global_y_range
+        else:
+            x_min, x_max = min(coords[:, 0]), max(coords[:, 0])
+            y_min, y_max = min(coords[:, 1]), max(coords[:, 1])
 
-        x_buffer = 0
-        y_buffer = 0
+        # Add half-cell buffer so pixel edges align with domain edges
+        dx = (x_max - x_min) / max(resolution - 1, 1)
+        dy = (y_max - y_min) / max(resolution - 1, 1)
+        x_buffer = dx / 2.0
+        y_buffer = dy / 2.0
 
         xi = np.linspace(x_min - x_buffer, x_max + x_buffer, resolution)
         yi = np.linspace(y_min - y_buffer, y_max + y_buffer, resolution)
@@ -745,7 +772,8 @@ class InverseProjectionHandler:
             zi_uncertainty = np.where(np.isnan(zi_uncertainty), zi_uncertainty_nearest, zi_uncertainty)
 
         # Create a color-mapped image
-        fig, ax = plt.subplots(figsize=(8, 8), dpi=resolution / 8)
+        fig = plt.figure(figsize=(1, 1), dpi=resolution)
+        ax = fig.add_axes([0, 0, 1, 1])
 
         # Draw the interpolated surface
         norm_pred = Normalize(vmin=min(preds), vmax=max(preds))
@@ -782,12 +810,11 @@ class InverseProjectionHandler:
         ax.set_yticks([])
         ax.set_xlim(x_min - x_buffer, x_max + x_buffer)
         ax.set_ylim(y_min - y_buffer, y_max + y_buffer)
-        plt.tight_layout()
         plt.axis("off")
 
         # Save to base64-encoded PNG
         buf = BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+        plt.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
         buf.seek(0)
 
         img_str = base64.b64encode(buf.read()).decode("utf-8")

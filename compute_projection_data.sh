@@ -63,15 +63,6 @@ done
 
 echo "Generating data for experiment: $EXPERIMENT_NAME"
 
-python rlhfblender/generate_data.py \
-  --exp "$EXPERIMENT_NAME" \
-  --env "$ENV_NAME" \
-  --checkpoints "${CHECKPOINTS[@]}" \
-  --model-path "$EXPER_MODEL_PATH" \
-  --num-episodes "$NUM_EPISODES" \
-  --additional-gym-packages "$ADDITIONAL_GYM_PACKAGES" \
-  --env-kwargs camera_name:corner \
-
 echo "Generated data for experiment: $EXPERIMENT_NAME"
 echo "========================================================="
 
@@ -85,8 +76,8 @@ python scripts/compute_joint_obs_state_projection.py \
   --additional-gym-packages "$ADDITIONAL_GYM_PACKAGES" \
   --max-trajectories 50 \
   --max-steps 100 \
-  --state-epochs 50
-
+  --state-epochs 20
+  
 echo "Generated joint projections for experiment: $EXPERIMENT_NAME"
 echo "========================================================="
 

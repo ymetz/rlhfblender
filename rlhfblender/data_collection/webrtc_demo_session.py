@@ -48,6 +48,22 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self.step_count = 0
         self.initialization_done = False
 
+        # Data logging buffers (similar to EpisodeRecorder)
+        self.buffers = {
+            "obs": [],
+            "actions": [],
+            "rewards": [],
+            "dones": [],
+            "infos": [],
+            "renders": [],
+            "env_states": [],
+        }
+        self.episode_rewards = []
+        self.episode_lengths = []
+        self.current_episode_reward = 0.0
+        self.current_episode_length = 0
+        self.demo_started = False
+
         # Control state
         self.pressed_keys = set()
         self.action_queue = asyncio.Queue()
@@ -103,7 +119,11 @@ class GymEnvironmentTrack(VideoStreamTrack):
     async def _initialize_environment(self):
         """Initialize gymnasium environment."""
         try:
-            env_config = self.exp.environment_config.copy() if self.exp.environment_config else {}
+            # check if separate demo_gen_environment_config exists
+            if self.exp.demo_gen_environment_config:
+                env_config = self.exp.demo_gen_environment_config.copy()
+            else:
+                env_config = self.exp.environment_config.copy() if self.exp.environment_config else {}
             env_config["render_mode"] = "rgb_array"
 
             env_wrapper = get_environment(
@@ -137,6 +157,9 @@ class GymEnvironmentTrack(VideoStreamTrack):
                     logger.info("Successfully loaded initial state")
                 except Exception as e:
                     logger.warning(f"Failed to load initial state: {e}")
+
+            # Log initial observation (required for episode_recorder format)
+            self._log_initial_observation()
 
             self.initialization_done = True
 
@@ -173,6 +196,135 @@ class GymEnvironmentTrack(VideoStreamTrack):
         output[pad_y : pad_y + new_height, pad_x : pad_x + new_width] = resized
 
         return output
+
+    def _log_initial_observation(self):
+        """Log the initial observation to start the episode recording."""
+        if self.obs is not None:
+            self.buffers["obs"].append(np.array(self.obs))
+            # Also save environment state if supported
+            if hasattr(self.env, "save_state"):
+                try:
+                    env_state = self.env.save_state()
+                    self.buffers["env_states"].append(env_state)
+                except Exception as e:
+                    logger.warning(f"Failed to save environment state: {e}")
+                    self.buffers["env_states"].append(None)
+            else:
+                self.buffers["env_states"].append(None)
+            
+            self.demo_started = True
+            logger.info(f"Started data logging for demo session {self.session_id}")
+
+    def _log_step(self, action, reward, done, info, render_frame):
+        """Log step data to buffers in episode_recorder format."""
+        if not self.demo_started:
+            return
+            
+        # Log step data
+        self.buffers["actions"].append(np.array(action) if action is not None else np.array([]))
+        self.buffers["rewards"].append(float(reward) if reward is not None else 0.0)
+        self.buffers["dones"].append(bool(done))
+        self.buffers["infos"].append(info if info is not None else {})
+        
+        # Log render frame if available
+        if render_frame is not None:
+            self.buffers["renders"].append(render_frame.copy())
+        else:
+            # Create placeholder frame
+            self.buffers["renders"].append(np.zeros((480, 640, 3), dtype=np.uint8))
+            
+        # Log environment state if supported
+        if hasattr(self.env, "save_state"):
+            try:
+                env_state = self.env.save_state()
+                self.buffers["env_states"].append(env_state)
+            except Exception as e:
+                logger.warning(f"Failed to save environment state: {e}")
+                self.buffers["env_states"].append(None)
+        else:
+            self.buffers["env_states"].append(None)
+            
+        # Update episode tracking
+        self.current_episode_reward += float(reward) if reward is not None else 0.0
+        self.current_episode_length += 1
+        
+        # If episode is done, record episode stats
+        if done:
+            self.episode_rewards.append(self.current_episode_reward)
+            self.episode_lengths.append(self.current_episode_length)
+            logger.info(f"Episode completed: reward={self.current_episode_reward}, length={self.current_episode_length}")
+            
+            # Reset for potential next episode
+            self.current_episode_reward = 0.0
+            self.current_episode_length = 0
+            
+            # Log the reset observation for next episode
+            if self.obs is not None:
+                self.buffers["obs"].append(np.array(self.obs))
+
+    def save_demo_data(self, demo_number: int = 0):
+        """Save the recorded demo data in episode_recorder format."""
+        if not self.demo_started or len(self.buffers["actions"]) == 0:
+            logger.warning(f"No demo data to save for session {self.session_id}")
+            return False
+            
+        try:
+            # Create directories
+            import os
+            os.makedirs("data/generated_demos", exist_ok=True)
+            
+            # Convert buffers to numpy arrays (similar to EpisodeRecorder.finalize_buffers)
+            final_buffers = {}
+            
+            # Handle observations
+            if len(self.buffers["obs"]) > 0:
+                if len(self.buffers["obs"][0].shape) == 2:
+                    final_buffers["obs"] = np.expand_dims(self.buffers["obs"], axis=-1)
+                else:
+                    final_buffers["obs"] = np.array(self.buffers["obs"])
+            else:
+                final_buffers["obs"] = np.array([])
+                
+            # Convert other buffers
+            final_buffers["actions"] = np.array(self.buffers["actions"])
+            final_buffers["rewards"] = np.array(self.buffers["rewards"])
+            final_buffers["dones"] = np.array(self.buffers["dones"])
+            final_buffers["infos"] = np.array(self.buffers["infos"], dtype=object)
+            final_buffers["renders"] = np.array(self.buffers["renders"]) if len(self.buffers["renders"]) > 0 else np.zeros(1)
+            final_buffers["env_states"] = np.array(self.buffers["env_states"], dtype=object)
+            
+            # Include episode summary data
+            episode_rewards = np.array(self.episode_rewards) if self.episode_rewards else np.array([self.current_episode_reward])
+            episode_lengths = np.array(self.episode_lengths) if self.episode_lengths else np.array([self.current_episode_length])
+            
+            # Create save path
+            save_path = f"data/generated_demos/{self.session_id}_{demo_number}.npz"
+            
+            # Save in episode_recorder format
+            with open(save_path, "wb") as f:
+                np.savez(
+                    f,
+                    obs=final_buffers["obs"],
+                    actions=final_buffers["actions"],
+                    rewards=final_buffers["rewards"],
+                    dones=final_buffers["dones"],
+                    infos=final_buffers["infos"],
+                    renders=final_buffers["renders"],
+                    env_states=final_buffers["env_states"],
+                    episode_rewards=episode_rewards,
+                    episode_lengths=episode_lengths,
+                    additional_metrics={}  # Empty dict for compatibility
+                )
+                
+            logger.info(f"Saved demo data to {save_path}")
+            logger.info(f"Demo stats: {len(final_buffers['actions'])} steps, {len(episode_rewards)} episodes")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save demo data: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     def _get_current_action(self):
         """Convert pressed keys to environment action."""
@@ -248,6 +400,12 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
                         self.step_count += 1
                         action_taken = True
+                        
+                        # Get render frame for logging (before any transformations)
+                        log_frame = self.env.render()
+
+                        # Log the step data
+                        self._log_step(action, reward, self.episode_done, info, log_frame)
 
                         if self.episode_done:
                             logger.info(f"Episode completed after {self.step_count} steps")

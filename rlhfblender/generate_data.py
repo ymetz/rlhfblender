@@ -93,6 +93,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Only register the environment and experiment, do not generate data.",
     )
+    parser.add_argument(
+        "--consistent-start-state",
+        action="store_true",
+        help="Use the same start state across all checkpoints for consistent comparison.",
+    )
 
     args = parser.parse_args()
 
@@ -170,6 +175,7 @@ if __name__ == "__main__":
             "env_kwargs": env_kwargs,
             "project": args.project,
             "framework": "random" if args.random else args.framework,
+            "consistent_start_state": args.consistent_start_state,
         }
         for checkpoint in checkpoints
     ]

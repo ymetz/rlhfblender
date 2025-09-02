@@ -46,6 +46,7 @@ class Experiment(BaseModel):
     status: list[str] = []
     env_id: str = "Cartpole-v1"
     environment_config: dict = {}
+    demo_gen_environment_config: dict = {}
     framework: str = ""
     path: str = ""
     algorithm: str = ""
@@ -69,6 +70,7 @@ class Experiment(BaseModel):
         "checkpoint_list",
         "exp_tags",
         "environment_config",
+        "demo_gen_environment_config",
         "hyperparams",
         mode="before",
     )

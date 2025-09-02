@@ -25,7 +25,6 @@ from multi_type_feedback.feedback_dataset import (
 from multi_type_feedback.feedback_oracle import FeedbackOracle
 from multi_type_feedback.multi_head_networks import (
     MultiHeadNetwork,
-    # MultiHeadCnnNetwork,
 )
 from multi_type_feedback.networks import (
     SingleCnnNetwork,
@@ -46,7 +45,6 @@ from multi_type_feedback.utils import (
     RewardFn,
     TrainingUtils,
     get_project_root,
-    discount_factors,
 )
 from multi_type_feedback.wandb_logger import ContinuousWandbLogger
 from train_baselines.exp_manager import ExperimentManager

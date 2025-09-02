@@ -209,12 +209,68 @@ async def stop_webrtc_demo_session(session_id: str) -> bool:
     """
     try:
         if session_id in webrtc_demo_session.gym_sessions:
+            # Save demo data before cleaning up
+            track = webrtc_demo_session.gym_sessions[session_id]
+            try:
+                # Find the demo number by checking existing files
+                import os
+                demo_number = 0
+                while os.path.exists(f"data/generated_demos/{session_id}_{demo_number}.npz"):
+                    demo_number += 1
+                
+                # Save the demo data
+                success = track.save_demo_data(demo_number)
+                if success:
+                    print(f"Successfully saved WebRTC demo data for session {session_id}")
+                else:
+                    print(f"Failed to save WebRTC demo data for session {session_id}")
+            except Exception as e:
+                print(f"Error saving WebRTC demo data: {e}")
+            
             # Clean up the gym session
+            track.stop()
             del webrtc_demo_session.gym_sessions[session_id]
         return True
     except Exception as e:
         print(f"Error stopping WebRTC demo session: {e}")
         return False
+
+
+@router.post("/save_webrtc_demo")
+async def save_webrtc_demo(request: Request):
+    """
+    Save the current WebRTC demo session data to file
+    """
+    request = await request.json()
+    session_id = request["session_id"]
+    
+    try:
+        if session_id not in webrtc_demo_session.gym_sessions:
+            return {"success": False, "message": "Session not found"}
+            
+        track = webrtc_demo_session.gym_sessions[session_id]
+        
+        # Find the demo number by checking existing files
+        import os
+        demo_number = 0
+        while os.path.exists(f"data/generated_demos/{session_id}_{demo_number}.npz"):
+            demo_number += 1
+        
+        # Save the demo data
+        success = track.save_demo_data(demo_number)
+        
+        if success:
+            return {
+                "success": True, 
+                "message": f"Demo saved as {session_id}_{demo_number}.npz",
+                "demo_number": demo_number,
+                "file_path": f"data/generated_demos/{session_id}_{demo_number}.npz"
+            }
+        else:
+            return {"success": False, "message": "Failed to save demo data"}
+            
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}"}
 
 
 @router.post("/gym_offer")
