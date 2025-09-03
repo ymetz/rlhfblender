@@ -123,6 +123,26 @@ async def get_ice_servers_from_credential(api_key: str) -> list[dict[str, Any]]:
         return response.json()
 
 
+@router.get("/ice_servers")
+async def ice_servers():
+    """
+    Return cached or newly created ICE servers for WebRTC (TURN/STUN).
+    This lets the frontend fetch ICE config before creating RTCPeerConnection.
+    """
+    try:
+        ice_servers_data, credential = await get_cached_ice_servers()
+        return JSONResponse({
+            "iceServers": ice_servers_data,
+            "credentialExpiry": credential.get("expiryInSeconds", 1800) if credential else 1800
+        })
+    except Exception as e:
+        # Fallback to public STUN to avoid total failure
+        return JSONResponse({
+            "iceServers": [{"urls": "stun:stun.l.google.com:19302"}],
+            "error": str(e)
+        })
+
+
 
 
 @router.post("/initialize_demo_session")
