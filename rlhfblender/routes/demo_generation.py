@@ -343,8 +343,8 @@ async def gym_offer(request: Request):
                 # Use the experiment's checkpoint list to get the min/max checkpoints
                 checkpoint_list = exp.checkpoint_list if hasattr(exp, "checkpoint_list") and exp.checkpoint_list else []
 
-                min_checkpoint = min(checkpoint_list)
-                max_checkpoint = max(checkpoint_list)
+                min_checkpoint = min(checkpoint_list, key=int) if checkpoint_list else None
+                max_checkpoint = max(checkpoint_list, key=int) if checkpoint_list else None
                 state_model_path = f"data/saved_projections/joint_obs_state/{environment_id}_{experiment_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
 
                 print(f"Loading state from coordinate {coordinate} using model {state_model_path}")
