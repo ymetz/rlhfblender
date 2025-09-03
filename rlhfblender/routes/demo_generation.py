@@ -413,12 +413,32 @@ async def gym_offer(request: Request):
                 print(f"Failed to load saved state: {e}")
                 initial_state = None
 
-        gym_track = GymEnvironmentTrack(session_id=session_id, exp=exp, db_env=db_env, seed=42, initial_state=initial_state)
+        gym_track = GymEnvironmentTrack(
+            session_id=session_id,
+            exp=exp,
+            db_env=db_env,
+            seed=42,
+            initial_state=initial_state,
+            target_width=480,
+            target_height=360,
+            target_fps=15,
+        )
 
         # Small delay to ensure track is properly initialized
         await asyncio.sleep(0.1)
 
-        pc.addTrack(gym_track)
+        sender = pc.addTrack(gym_track)
+        # Prefer H264 when available (often hardware-accelerated in browsers)
+        try:
+            from aiortc.rtcrtpsender import RTCRtpSender
+            caps = RTCRtpSender.getCapabilities("video")
+            preferred = [c for c in caps.codecs if getattr(c, 'mimeType', '').lower() == 'video/h264']
+            fallback = [c for c in caps.codecs if getattr(c, 'mimeType', '').lower() != 'video/h264']
+            for transceiver in pc.getTransceivers():
+                if transceiver.kind == 'video' and hasattr(transceiver, 'setCodecPreferences'):
+                    transceiver.setCodecPreferences(preferred + fallback)
+        except Exception as e:
+            print(f"Codec preference setup skipped: {e}")
         print(f"Track created successfully")
 
         # Store for control message handling

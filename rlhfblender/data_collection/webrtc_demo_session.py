@@ -33,7 +33,15 @@ class GymEnvironmentTrack(VideoStreamTrack):
     kind = "video"
 
     def __init__(
-        self, session_id: str, exp: Experiment, db_env: Environment, seed: int = 42, initial_state: Optional[dict] = None
+        self,
+        session_id: str,
+        exp: Experiment,
+        db_env: Environment,
+        seed: int = 42,
+        initial_state: Optional[dict] = None,
+        target_width: int = 480,
+        target_height: int = 360,
+        target_fps: int = 15,
     ):
         super().__init__()
         self.session_id = session_id
@@ -85,6 +93,12 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self._init_task.add_done_callback(lambda t: None)
 
         print(f"GymEnvironmentTrack initialized for session {session_id}")
+
+        # Streaming parameters
+        self.target_width = target_width
+        self.target_height = target_height
+        self.target_fps = max(1, target_fps)
+        self._last_sent_ts = 0.0
 
     def _get_key_mappings(self):
         """Get keyboard mappings for different environment types."""
@@ -169,8 +183,12 @@ class GymEnvironmentTrack(VideoStreamTrack):
             logger.error(f"Failed to initialize environment: {e}")
             self.initialization_done = True  # Mark as done even if failed
 
-    def _resize_frame(self, frame: np.ndarray, target_width: int = 640, target_height: int = 480) -> np.ndarray:
+    def _resize_frame(self, frame: np.ndarray, target_width: Optional[int] = None, target_height: Optional[int] = None) -> np.ndarray:
         """Resize and pad frame to target dimensions while maintaining aspect ratio."""
+        if target_width is None:
+            target_width = self.target_width
+        if target_height is None:
+            target_height = self.target_height
         orig_height, orig_width = frame.shape[:2]
 
         # Calculate scaling factor to fit within target dimensions
@@ -360,9 +378,18 @@ class GymEnvironmentTrack(VideoStreamTrack):
             except asyncio.TimeoutError:
                 pass  # Continue with loading screen
 
+        # Throttle frame production to target_fps to reduce CPU/bandwidth
+        loop = asyncio.get_event_loop()
+        now = loop.time()
+        min_interval = 1.0 / self.target_fps
+        sleep_needed = (self._last_sent_ts + min_interval) - now
+        if sleep_needed > 0:
+            await asyncio.sleep(sleep_needed)
+        self._last_sent_ts = loop.time()
+
         if self.env is None or not self.initialization_done:
             # Create black frame if no environment loaded yet
-            img = np.zeros((480, 640, 3), dtype=np.uint8)
+            img = np.zeros((self.target_height, self.target_width, 3), dtype=np.uint8)
             # Add some visual indication that env is loading
             img[50:100, 50:100] = [255, 0, 0]  # Red square
         else:
@@ -451,17 +478,17 @@ class GymEnvironmentTrack(VideoStreamTrack):
                     if frame.max() <= 1.0:
                         frame = (frame * 255).astype(np.uint8)
 
-                    # Resize/pad frame to target size (640x480)
-                    img = self._resize_frame(frame, target_width=640, target_height=480)
+                    # Resize/pad frame to target size
+                    img = self._resize_frame(frame)
                 else:
                     logger.warning("Environment render returned None")
-                    img = np.zeros((480, 640, 3), dtype=np.uint8)
+                    img = np.zeros((self.target_height, self.target_width, 3), dtype=np.uint8)
                     # Add visual indicator for render failure
                     img[100:150, 100:150] = [0, 255, 0]  # Green square
 
             except Exception as e:
                 logger.error(f"Error in environment step: {e}")
-                img = np.zeros((480, 640, 3), dtype=np.uint8)
+                img = np.zeros((self.target_height, self.target_width, 3), dtype=np.uint8)
 
         self.counter += 1
 
