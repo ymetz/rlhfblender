@@ -1,10 +1,12 @@
 import asyncio
 import base64
-from logging import warning
+import json
 import os
 import time
 from io import BytesIO
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import httpx
 
 import numpy as np
@@ -25,6 +27,7 @@ from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.global_models import Environment, Experiment
 from rlhfblender.projections.inverse_state_projection_handler import InverseStateProjectionHandler
 from rlhfblender.projections.projection_handler import ProjectionHandler
+from rlhfblender.utils.data_generation import encode_video
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -38,6 +41,225 @@ _ice_server_cache: Dict[str, Any] = {
 }
 
 
+def _sanitize_component(value: Optional[Any]) -> str:
+    """Create a filesystem-friendly identifier component."""
+    if value is None:
+        return "unknown"
+    text = str(value).strip()
+    if not text:
+        return "unknown"
+    for token in ("/", "\\", ":", " "):
+        text = text.replace(token, "_")
+    return text
+
+
+def _build_projection_output_dir(environment_id: str, experiment_id: Optional[int], checkpoint: Optional[int]) -> Path:
+    env_component = _sanitize_component(environment_id)
+    exp_component = f"exp-{experiment_id}" if experiment_id is not None else "exp-unknown"
+    checkpoint_component = f"checkpoint-{checkpoint}" if checkpoint is not None else "checkpoint-unset"
+    output_dir = Path("data") / "saved_projections" / "generated_demos" / env_component / exp_component / checkpoint_component
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def _find_joint_projection_metadata(environment_id: str, experiment_id: Optional[int], projection_method: str) -> Optional[Path]:
+    if experiment_id is None:
+        return None
+
+    env_component = _sanitize_component(environment_id)
+    candidates: list[Path] = []
+
+    joint_state_dir = Path("data") / "saved_projections" / "joint_obs_state"
+    joint_dir = Path("data") / "saved_projections" / "joint"
+
+    pattern_state = f"{env_component}_{experiment_id}_joint_obs_state_{projection_method}_*_metadata.json"
+    pattern_joint = f"{env_component}_{experiment_id}_joint_{projection_method}_*_metadata.json"
+
+    if joint_state_dir.exists():
+        candidates.extend(joint_state_dir.glob(pattern_state))
+    if joint_dir.exists():
+        candidates.extend(joint_dir.glob(pattern_joint))
+
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _load_npz_arrays(npz_path: Path) -> Dict[str, np.ndarray]:
+    with np.load(npz_path, allow_pickle=True) as data:
+        return {key: data[key] for key in data.files}
+
+
+def _compute_episode_indices(dones: np.ndarray) -> List[int]:
+    episode_indices: List[int] = []
+    current_episode = 0
+    for flag in dones:
+        episode_indices.append(current_episode)
+        if bool(flag):
+            current_episode += 1
+    return episode_indices
+
+
+def _prepare_demo_artifacts(
+    track: GymEnvironmentTrack,
+    demo_path: Path,
+    *,
+    projection_method_override: Optional[str] = None,
+    projection_props_override: Optional[dict] = None,
+) -> Dict[str, Any]:
+    if not demo_path.exists():
+        raise FileNotFoundError(f"Demo file not found: {demo_path}")
+
+    metadata_path = demo_path.with_suffix(".json")
+    metadata_dict: Dict[str, Any] = {}
+    if metadata_path.exists():
+        with metadata_path.open("r", encoding="utf-8") as meta_file:
+            metadata_dict = json.load(meta_file)
+
+    demo_arrays = _load_npz_arrays(demo_path)
+
+    actions = np.array(demo_arrays.get("actions", []))
+    rewards = np.array(demo_arrays.get("rewards", []))
+    dones = np.array(demo_arrays.get("dones", []))
+    episode_steps_raw = np.array(demo_arrays.get("episode_steps", np.arange(len(actions))))
+    obs_array = demo_arrays.get("obs", np.array([]))
+
+    if isinstance(obs_array, np.ndarray) and obs_array.dtype == object:
+        obs_array = np.stack(obs_array.astype(np.float32)) if len(obs_array) else np.array([], dtype=np.float32)
+    else:
+        obs_array = np.array(obs_array)
+
+    if obs_array.ndim == 0 and actions.shape[0] > 0:
+        obs_array = np.repeat(obs_array[None], actions.shape[0], axis=0)
+
+    num_steps = actions.shape[0]
+
+    if obs_array.shape[0] > num_steps:
+        obs_array = obs_array[:num_steps]
+    elif obs_array.shape[0] < num_steps:
+        if obs_array.shape[0] == 0:
+            obs_array = np.zeros((num_steps, 1), dtype=np.float32)
+        else:
+            last_frame = obs_array[-1]
+            pad = np.repeat(last_frame[None, ...], num_steps - obs_array.shape[0], axis=0)
+            obs_array = np.concatenate([obs_array, pad], axis=0)
+
+    if rewards.shape[0] > num_steps:
+        rewards = rewards[:num_steps]
+    elif rewards.shape[0] < num_steps:
+        rewards = np.pad(rewards, (0, num_steps - rewards.shape[0]), mode="constant")
+
+    if dones.shape[0] > num_steps:
+        dones = dones[:num_steps]
+    elif dones.shape[0] < num_steps:
+        dones = np.pad(dones, (0, num_steps - dones.shape[0]), mode="constant")
+
+    if episode_steps_raw.shape[0] >= num_steps:
+        episode_steps = episode_steps_raw[:num_steps]
+    elif episode_steps_raw.shape[0] > 0:
+        start_idx = int(episode_steps_raw[-1]) + 1
+        extra = np.arange(start_idx, start_idx + (num_steps - episode_steps_raw.shape[0]))
+        episode_steps = np.concatenate([episode_steps_raw, extra])
+    else:
+        episode_steps = np.arange(num_steps)
+
+    # Normalize observation shape for projection handler
+    obs_array = np.array(obs_array, dtype=np.float32)
+    if obs_array.ndim > 2:
+        obs_array = obs_array.reshape(obs_array.shape[0], -1)
+    elif obs_array.ndim == 1:
+        obs_array = obs_array.reshape(-1, 1)
+
+    # Prepare renders and encode video if available
+    video_path: Optional[Path] = None
+    renders = demo_arrays.get("renders")
+    if isinstance(renders, np.ndarray) and renders.ndim == 4 and renders.shape[0] > 0:
+        video_base = demo_path.with_suffix("")
+        candidate_path = Path(f"{video_base}.mp4")
+        if not candidate_path.exists():
+            render_frames = renders
+            if render_frames.dtype != np.uint8:
+                if render_frames.size and render_frames.max() <= 1.0:
+                    render_frames = (render_frames * 255.0).clip(0, 255).astype(np.uint8)
+                else:
+                    render_frames = render_frames.clip(0, 255).astype(np.uint8)
+            encode_video(render_frames, str(video_base))
+        video_path = candidate_path
+
+    projection_method = (
+        projection_method_override
+        or track.projection_method
+        or metadata_dict.get("projection_method")
+        or "PCA"
+    )
+    projection_props = projection_props_override or track.projection_props
+
+    joint_metadata_path = _find_joint_projection_metadata(track.environment_id, track.experiment_id, projection_method)
+    joint_metadata: Dict[str, Any] = {}
+
+    if joint_metadata_path is None and projection_method != "PCA":
+        fallback = _find_joint_projection_metadata(track.environment_id, track.experiment_id, "PCA")
+        if fallback:
+            joint_metadata_path = fallback
+            projection_method = "PCA"
+
+    if joint_metadata_path and joint_metadata_path.exists():
+        with joint_metadata_path.open("r", encoding="utf-8") as joint_file:
+            joint_metadata = json.load(joint_file)
+            if projection_props is None:
+                projection_props = joint_metadata.get("projection_props")
+    else:
+        joint_metadata_path = None
+
+    projection_array = np.zeros((0, 2), dtype=np.float32)
+    if joint_metadata_path is not None:
+        sequence_length = joint_metadata.get("sequence_length", 1)
+        handler = ProjectionHandler(
+            projection_method=projection_method,
+            projection_props=projection_props,
+            joint_projection_path=str(joint_metadata_path),
+        )
+        try:
+            projection_raw = handler.fit(
+                obs_array,
+                sequence_length=sequence_length,
+                step_range=None,
+                episode_indices=None,
+                actions=None,
+                suffix=f"user_demo_{track.session_id}",
+            )
+            projection_array = np.array(projection_raw, dtype=np.float32)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Failed to project demo {demo_path.name}: {exc}")
+            projection_array = np.zeros((0, 2), dtype=np.float32)
+
+    episode_indices = _compute_episode_indices(dones)
+    projection_output_dir = _build_projection_output_dir(track.environment_id, track.experiment_id, track.current_checkpoint)
+    projection_json_path = projection_output_dir / f"{demo_path.stem}.json"
+
+    payload: Dict[str, Any] = {
+        "demo_file": str(demo_path),
+        "metadata_file": str(metadata_path) if metadata_path.exists() else None,
+        "projection_file": str(projection_json_path),
+        "projection_method": projection_method,
+        "joint_metadata_path": str(joint_metadata_path) if joint_metadata_path else None,
+        "projection": projection_array.tolist(),
+        "actions": actions.tolist(),
+        "rewards": rewards.tolist(),
+        "dones": dones.tolist(),
+        "episode_indices": episode_indices,
+        "episode_steps": episode_steps.astype(int).tolist(),
+        "video_path": str(video_path) if video_path else None,
+        "total_reward": float(rewards.sum()) if rewards.size else 0.0,
+        "num_steps": int(num_steps),
+        "metadata": metadata_dict,
+    }
+
+    with projection_json_path.open("w", encoding="utf-8") as proj_file:
+        json.dump(payload, proj_file, indent=2)
+
+    return payload
 async def create_expiring_turn_credential() -> Dict[str, Any]:
     """
     Create expiring TURN credentials using the Metered API.
@@ -232,18 +454,14 @@ async def stop_webrtc_demo_session(session_id: str) -> bool:
             # Save demo data before cleaning up
             track = webrtc_demo_session.gym_sessions[session_id]
             try:
-                # Find the demo number by checking existing files
-                import os
-                demo_number = 0
-                while os.path.exists(f"data/generated_demos/{session_id}_{demo_number}.npz"):
-                    demo_number += 1
-                
-                # Save the demo data
-                success = track.save_demo_data(demo_number)
-                if success:
+                demo_number = track.demo_counter
+                saved_path = track.save_demo_data(demo_number)
+                if saved_path:
+                    artifacts = _prepare_demo_artifacts(track, saved_path)
                     print(f"Successfully saved WebRTC demo data for session {session_id}")
+                    print(f"Artifacts stored at {artifacts.get('projection_file')}")
                 else:
-                    print(f"Failed to save WebRTC demo data for session {session_id}")
+                    print(f"No demo data recorded for session {session_id}")
             except Exception as e:
                 print(f"Error saving WebRTC demo data: {e}")
             
@@ -263,32 +481,56 @@ async def save_webrtc_demo(request: Request):
     """
     request = await request.json()
     session_id = request["session_id"]
-    
+    projection_method = request.get("projection_method")
+    projection_props = request.get("projection_props")
+    checkpoint = request.get("checkpoint")
+
     try:
         if session_id not in webrtc_demo_session.gym_sessions:
             return {"success": False, "message": "Session not found"}
             
         track = webrtc_demo_session.gym_sessions[session_id]
-        
-        # Find the demo number by checking existing files
-        import os
-        demo_number = 0
-        while os.path.exists(f"data/generated_demos/{session_id}_{demo_number}.npz"):
-            demo_number += 1
-        
-        # Save the demo data
-        success = track.save_demo_data(demo_number)
-        
-        if success:
-            return {
-                "success": True, 
-                "message": f"Demo saved as {session_id}_{demo_number}.npz",
-                "demo_number": demo_number,
-                "file_path": f"data/generated_demos/{session_id}_{demo_number}.npz"
-            }
-        else:
+
+        if checkpoint is not None:
+            try:
+                track.current_checkpoint = int(checkpoint)
+            except (TypeError, ValueError):
+                track.current_checkpoint = None
+
+        if projection_method:
+            track.projection_method = projection_method
+        if projection_props:
+            track.projection_props = projection_props
+
+        demo_number = request.get("demo_number")
+        if demo_number is None:
+            demo_number = track.demo_counter
+
+        try:
+            demo_number = int(demo_number)
+        except (TypeError, ValueError):
+            demo_number = track.demo_counter
+
+        saved_path = track.save_demo_data(demo_number)
+
+        if not saved_path:
             return {"success": False, "message": "Failed to save demo data"}
-            
+
+        artifacts = _prepare_demo_artifacts(
+            track,
+            saved_path,
+            projection_method_override=projection_method,
+            projection_props_override=projection_props,
+        )
+
+        return {
+            "success": True,
+            "message": f"Demo saved as {saved_path.name}",
+            "demo_number": demo_number,
+            "file_path": str(saved_path),
+            "artifacts": artifacts,
+        }
+
     except Exception as e:
         return {"success": False, "message": f"Error: {str(e)}"}
 
@@ -312,6 +554,8 @@ async def gym_offer(request: Request):
         episode_num = params.get("episode_num")  # Episode number for saved state loading
         step = params.get("step")  # Step number for saved state loading
         checkpoint = params.get("checkpoint")
+        projection_method = params.get("projection_method")
+        projection_props = params.get("projection_props")
 
         print("Received WebRTC offer for session:", session_id, "experiment:", experiment_id, " environment:", environment_id)
         if coordinate:
@@ -347,7 +591,7 @@ async def gym_offer(request: Request):
 
     webrtc_demo_session.pcs.add(pc)
 
-    # Try to create gymnasium environment track
+    # Try to create or reuse gymnasium environment track for this session
     try:
         print(f"Creating track for {db_env.registration_id}")
 
@@ -413,21 +657,71 @@ async def gym_offer(request: Request):
                 print(f"Failed to load saved state: {e}")
                 initial_state = None
 
-        gym_track = GymEnvironmentTrack(
-            session_id=session_id,
-            exp=exp,
-            db_env=db_env,
-            seed=42,
-            initial_state=initial_state,
-            target_width=480,
-            target_height=360,
-            target_fps=15,
-        )
+        # Session cache with TTL
+        SESSION_TTL_SECONDS = 30 * 60
+        import time as _time
 
-        # Small delay to ensure track is properly initialized
-        await asyncio.sleep(0.1)
+        # Lazy cleanup of expired sessions
+        try:
+            to_delete = []
+            for sid, t in list(webrtc_demo_session.gym_sessions.items()):
+                if getattr(t, 'stopped', False):
+                    to_delete.append(sid)
+                    continue
+                last_access = getattr(t, 'last_access', 0)
+                if last_access and (_time.time() - last_access) > SESSION_TTL_SECONDS:
+                    try:
+                        t.stop()
+                    except Exception:
+                        pass
+                    to_delete.append(sid)
+            for sid in to_delete:
+                del webrtc_demo_session.gym_sessions[sid]
+        except Exception as e:
+            print(f"Session cleanup warning: {e}")
 
-        sender = pc.addTrack(gym_track)
+        # Reuse existing track if available and not expired
+        if session_id in webrtc_demo_session.gym_sessions:
+            gym_track = webrtc_demo_session.gym_sessions[session_id]
+            print(f"Reusing existing environment for session {session_id}")
+            gym_track.touch()
+            if checkpoint is not None:
+                try:
+                    gym_track.current_checkpoint = int(checkpoint)
+                except (TypeError, ValueError):
+                    gym_track.current_checkpoint = None
+            if projection_method:
+                gym_track.projection_method = projection_method
+            if projection_props:
+                gym_track.projection_props = projection_props
+        else:
+            gym_track = GymEnvironmentTrack(
+                session_id=session_id,
+                exp=exp,
+                db_env=db_env,
+                seed=42,
+                initial_state=initial_state,
+                target_width=480,
+                target_height=360,
+                target_fps=15,
+            )
+            # Small delay to ensure track is properly initialized
+            await asyncio.sleep(0.1)
+            if checkpoint is not None:
+                try:
+                    gym_track.current_checkpoint = int(checkpoint)
+                except (TypeError, ValueError):
+                    gym_track.current_checkpoint = None
+            if projection_method:
+                gym_track.projection_method = projection_method
+            if projection_props:
+                gym_track.projection_props = projection_props
+            webrtc_demo_session.gym_sessions[session_id] = gym_track
+            print(f"Created and cached new environment for session {session_id}")
+
+        # Use MediaRelay to subscribe a per-connection track to the shared session track
+        local_track = webrtc_demo_session.relay.subscribe(gym_track)
+        sender = pc.addTrack(local_track)
         # Prefer H264 when available (often hardware-accelerated in browsers)
         try:
             from aiortc.rtcrtpsender import RTCRtpSender
@@ -441,9 +735,8 @@ async def gym_offer(request: Request):
             print(f"Codec preference setup skipped: {e}")
         print(f"Track created successfully")
 
-        # Store for control message handling
-        webrtc_demo_session.gym_sessions[session_id] = gym_track
-        print(f"Session {session_id} stored")
+        # Store data channel handler mapping
+        print(f"Session {session_id} ready")
 
     except Exception as e:
         print(f"Failed to create gymnasium track: {e}")
