@@ -1,16 +1,15 @@
-# just use a random segment as the opposite
 import os
 import pickle
+import random
 from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from scipy.stats import truncnorm
+from numpy.typing import NDArray
+from scipy.stats import truncnorm, uniform
 from torch.utils.data import Dataset
 
 from multi_type_feedback.datatypes import FeedbackData, FeedbackType, SegmentT
-from multi_type_feedback.utils import discount_factors
-
 
 def truncated_uniform_vectorized(mean, width, low=0, upp=9):
     # Handle scalar inputs
@@ -63,7 +62,7 @@ def discounted_sum_numpy(rewards, gamma):
 
 
 class FeedbackDataset(Dataset):
-    """PyTorch Dataset for loading the feedback data with masking support."""
+    """PyTorch Dataset for loading the feedback data."""
 
     def __init__(
         self,
@@ -76,20 +75,26 @@ class FeedbackDataset(Dataset):
         env=None,
         seed: int = 1234,
         zero_tolerance: float = 1e6,
+        discount_factor: float = 0.99,
+        stratifier=None,
     ):
         """Initialize dataset."""
         print("Loading dataset...")
 
         self.targets: Union[
-            List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],  # (obs, actions, mask)
-            List[Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]],  # pairs with masks
+            List[SegmentT],
+            List[NDArray],
+            Tuple[SegmentT, SegmentT, SegmentT],
+            Tuple[NDArray, NDArray, NDArray],
         ] = []
-        self.preds: List[float] = []
+        self.preds: List[int] = []
+        self.ranks: List[float] = []  # For RT-rank loss
+        self.partition_ids: List[int] = []  # For stratification
 
         if not feedback_data:
             self.targets = torch.empty((0, segment_len if segment_len else 1))
             self.preds = torch.empty(0)
-            return
+            return self.targets, self.preds
 
         if feedback_type == "evaluative":
             for seg in feedback_data["segments"]:
@@ -119,13 +124,18 @@ class FeedbackDataset(Dataset):
                     low=0,
                     upp=9,
                 )
-
+            
+            # Initialize empty ranks and partition_ids for non-comparative feedback
+            self.ranks = [0.0] * len(self.targets)
+            self.partition_ids = [0] * len(self.targets)
         elif feedback_type == "comparative":
             rews_min, rews_max = np.min(
                 [e * -1 for e in feedback_data["opt_gaps"]]
             ), np.max([e * -1 for e in feedback_data["opt_gaps"]])
             ref_diff = np.abs(rews_max - rews_min)
 
+            # Collect all examples for stratification
+            all_examples = []
             flipped = 0
             for comp in feedback_data["preferences"]:
                 # seg 1
@@ -142,6 +152,23 @@ class FeedbackDataset(Dataset):
                 mask = torch.ones(len_obs, 1)
                 mask2 = torch.ones(len_obs2, 1)
 
+                # Calculate reward difference for synthetic ranking
+                rew1 = -feedback_data["opt_gaps"][comp[0]]
+                rew2 = -feedback_data["opt_gaps"][comp[1]]
+                reward_diff = abs(rew1 - rew2)
+                
+                # Synthetic rank based on negative reward difference (higher diff = stronger preference)
+                synthetic_rank = -reward_diff
+                
+                # Create example metadata for stratification
+                trajectory_length = max(len_obs, len_obs2)
+                example_metadata = {
+                    "rank": synthetic_rank,
+                    "trajectory_length": trajectory_length,
+                    "evaluator": "default",  # Could be extended to use actual evaluator info
+                }
+                all_examples.append(example_metadata)
+
                 # Pad both trajectories to the maximum length, necessary for batching with data loader
                 if len_obs < segment_len:
                     pad_size = segment_len - len_obs
@@ -157,31 +184,40 @@ class FeedbackDataset(Dataset):
 
                 # add noise and recompute preferences
                 if noise_level > 0:
-                    rew1 = -feedback_data["opt_gaps"][comp[0]]
-                    rew2 = -feedback_data["opt_gaps"][comp[1]]
-
-                    rew1 = truncated_gaussian_vectorized(
+                    rew1_noisy = truncated_gaussian_vectorized(
                         mean=np.array(rew1),
                         width=np.array(noise_level) * ref_diff,
                         low=rews_min,
                         upp=rews_max,
                     )
-                    rew2 = truncated_gaussian_vectorized(
+                    rew2_noisy = truncated_gaussian_vectorized(
                         mean=np.array(rew2),
                         width=np.array(noise_level) * ref_diff,
                         low=rews_min,
                         upp=rews_max,
                     )
 
-                    if rew2 > rew1:
+                    # put the "chosen" segment first
+                    if rew1_noisy > rew2_noisy:
                         self.targets.append(((obs, actions, mask), (obs2, actions2, mask2)))
                     else:
                         self.targets.append(((obs2, actions2, mask2), (obs, actions, mask)))
                         flipped += 1
-                    self.preds.append(comp[2])
+                    self.preds.append(0)
                 else:
                     self.targets.append(((obs, actions, mask), (obs2, actions2, mask2)))
-                    self.preds.append(comp[2])
+                    self.preds.append(0)
+                
+                self.ranks.append(synthetic_rank)
+            
+            # Compute stratification partitions if stratifier is provided
+            if stratifier is not None and all_examples:
+                rng = np.random.default_rng(seed)
+                self.partition_ids = stratifier.compute_partitions(all_examples, rng)
+                print(f"Computed {len(set(self.partition_ids))} partitions for RT-rank loss")
+            else:
+                # Default: all examples in same partition
+                self.partition_ids = [0] * len(self.targets)
 
         elif feedback_type == "demonstrative":
             with open(os.path.join("samples", f"random_{env_name}.pkl"), "rb") as random_file:
@@ -272,6 +308,10 @@ class FeedbackDataset(Dataset):
                 self.targets.append(((obs_rand, actions_rand, mask_rand), (obs, actions, mask_demo)))
                 self.preds.append(1)  # assume that the demonstration is optimal
 
+            # Initialize empty ranks and partition_ids for demonstrative feedback
+            self.ranks = [0.0] * len(self.targets)
+            self.partition_ids = [0] * len(self.targets)
+
         elif feedback_type == "corrective":
             rews_min, rews_max = np.min(
                 [e * -1 for e in feedback_data["opt_gaps"]]
@@ -333,6 +373,10 @@ class FeedbackDataset(Dataset):
                 else:
                     self.targets.append(((obs1, actions1, mask1), (obs2, actions2, mask2)))
                     self.preds.append(1)
+            
+            # Initialize empty ranks and partition_ids for corrective feedback
+            self.ranks = [0.0] * len(self.targets)
+            self.partition_ids = [0] * len(self.targets)
 
         elif feedback_type == "descriptive":
             cluster_rews = np.array([cr[2] for cr in feedback_data["description"]])
@@ -356,6 +400,10 @@ class FeedbackDataset(Dataset):
                     self.preds.append(rew.item())
                 else:
                     self.preds.append(cluster_representative[2])
+            
+            # Initialize empty ranks and partition_ids for descriptive feedback
+            self.ranks = [0.0] * len(self.targets)
+            self.partition_ids = [0] * len(self.targets)
 
         elif feedback_type == "descriptive_preference":
             cluster_rews = np.array([cr[2] for cr in feedback_data["description"]])
@@ -404,6 +452,10 @@ class FeedbackDataset(Dataset):
                 else:
                     self.targets.append(((obs1, actions1, mask1), (obs2, actions2, mask2)))
                     self.preds.append(cpref[2])
+            
+            # Initialize empty ranks and partition_ids for descriptive_preference feedback
+            self.ranks = [0.0] * len(self.targets)
+            self.partition_ids = [0] * len(self.targets)
         else:
             raise NotImplementedError("Dataset not implemented for this feedback type.")
 
@@ -424,7 +476,12 @@ class FeedbackDataset(Dataset):
 
     def __getitem__(self, index):
         """Return item with given index."""
-        return self.targets[index], self.preds[index]
+        if hasattr(self, 'ranks') and len(self.ranks) > 0:
+            # Return additional data for RT-rank loss
+            return (self.targets[index], self.preds[index], 
+                   self.ranks[index], self.partition_ids[index])
+        else:
+            return self.targets[index], self.preds[index]
 
 
 class LoadFeedbackDataset(FeedbackDataset):
@@ -440,7 +497,10 @@ class LoadFeedbackDataset(FeedbackDataset):
         segment_len: int = 50,
         env=None,
         seed: int = 1234,
+        discount_factor: float = 0.99,
+        stratifier=None,
     ):
+
         with open(dataset_path, "rb") as feedback_file:
             feedback_data: FeedbackData = pickle.load(feedback_file)
 
@@ -453,10 +513,13 @@ class LoadFeedbackDataset(FeedbackDataset):
             segment_len,
             env,
             seed,
+            discount_factor=discount_factor,
+            stratifier=stratifier,
         )
 
 
 class BufferDataset(Dataset):
+
     def __init__(self, buffer):
         self.buffer = buffer
 

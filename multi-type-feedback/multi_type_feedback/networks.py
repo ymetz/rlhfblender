@@ -37,7 +37,9 @@ def calculate_pairwise_loss(network: LightningModule, batch: Tensor):
     (obs1, actions1, mask1), (obs2, actions2, mask2) = pair_data
 
     # Compute network outputs
-    outputs1 = network(obs1, actions1)  # Shape: (batch_size, segment_length, output_dim)
+    outputs1 = network(
+        obs1, actions1
+    )  # Shape: (batch_size, segment_length, output_dim)
     outputs2 = network(obs2, actions2)
 
     # Sum over sequence dimension
@@ -74,9 +76,6 @@ def calculate_single_reward_loss(network: LightningModule, batch: Tensor):
     return loss
 
 
-# Lightning networks
-
-
 class SingleNetwork(LightningModule):
     """Neural network to model the RL agent's reward using Pytorch Lightning."""
 
@@ -105,7 +104,9 @@ class SingleNetwork(LightningModule):
 
         action_is_discrete = isinstance(action_space, gym.spaces.Discrete)
 
-        input_dim = np.prod(obs_space.shape) + (np.prod(action_space.shape) if not action_is_discrete else action_space.n)
+        input_dim = np.prod(obs_space.shape) + (
+            np.prod(action_space.shape) if not action_is_discrete else action_space.n
+        )
 
         # Initialize the network
         layers_unit = [input_dim] + [hidden_dim] * (layer_num - 1)
@@ -168,7 +169,9 @@ class SingleNetwork(LightningModule):
         actions_flat = actions.reshape(-1, action_dim)
 
         # Concatenate observations and actions
-        batch = torch.cat((obs_flat, actions_flat), dim=1)  # Shape: (batch_size * segment_length, obs_dim + action_dim)
+        batch = torch.cat(
+            (obs_flat, actions_flat), dim=1
+        )  # Shape: (batch_size * segment_length, obs_dim + action_dim)
 
         # Pass through the network
         output = self.network(batch)  # Shape: (batch_size * segment_length, output_dim)
@@ -188,8 +191,52 @@ class SingleNetwork(LightningModule):
     def validation_step(self, batch: Tensor, _batch_idx: int):
         """Compute the loss for validation."""
         loss = self.loss_function(self, batch)
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
-        return loss
+        self.log("val_loss", loss, prog_bar=True)
+        
+        # Compute accuracy for comparative feedback if applicable
+        if self._is_comparative_feedback(batch):
+            accuracy = self._compute_pairwise_accuracy(batch)
+            self.log("val_accuracy", accuracy, prog_bar=True)
+
+    def _is_comparative_feedback(self, batch):
+        """Check if this is comparative feedback (pairwise comparison)."""
+        # Comparative feedback has pair_data structure
+        try:
+            if len(batch) >= 2:
+                pair_data = batch[0]
+                if isinstance(pair_data, tuple) and len(pair_data) == 2:
+                    # Check if each element in pair_data is a trajectory tuple (obs, actions, mask)
+                    trajectory1, trajectory2 = pair_data
+                    if (isinstance(trajectory1, tuple) and len(trajectory1) == 3 and
+                        isinstance(trajectory2, tuple) and len(trajectory2) == 3):
+                        return True
+        except Exception:
+            pass
+        return False
+    
+    def _compute_pairwise_accuracy(self, batch):
+        """Compute accuracy for pairwise comparisons."""
+        # Handle both standard format and RT-rank format
+        pair_data, preferred_indices = batch
+        
+        (obs1, actions1, mask1), (obs2, actions2, mask2) = pair_data
+        
+        # Compute network outputs
+        outputs1 = self(obs1, actions1)
+        outputs2 = self(obs2, actions2)
+        
+        # Sum over sequence dimension
+        rewards1 = (outputs1 * mask1).sum(dim=1).squeeze(-1)
+        rewards2 = (outputs2 * mask2).sum(dim=1).squeeze(-1)
+        
+        # Compute predictions (0 if first trajectory is better, 1 if second)
+        predictions = (rewards2 > rewards1).long()
+        
+        # Compute accuracy
+        correct = (predictions == preferred_indices).float()
+        accuracy = correct.mean()
+        
+        return accuracy
 
     def configure_optimizers(self):
         """Configure optimizer to optimize the neural network."""
@@ -245,7 +292,8 @@ class SingleCnnNetwork(LightningModule):
         ).float()
 
         self.fc = nn.Linear(
-            self.compute_flattened_size(obs_space.shape, cnn_channels) + action_hidden_dim,
+            self.compute_flattened_size(obs_space.shape, cnn_channels)
+            + action_hidden_dim,
             output_dim,
         )
 
@@ -257,10 +305,14 @@ class SingleCnnNetwork(LightningModule):
     def residual_block(self, in_channels):
         return nn.Sequential(
             nn.ReLU(),
-            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
+            Masksembles2D(
+                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
+            ).float(),
             self.conv_layer(in_channels, in_channels),
             nn.ReLU(),
-            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
+            Masksembles2D(
+                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
+            ).float(),
             self.conv_layer(in_channels, in_channels),
         )
 
@@ -274,7 +326,9 @@ class SingleCnnNetwork(LightningModule):
 
     def compute_flattened_size(self, observation_space, cnn_channels):
         with torch.no_grad():
-            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(-1)
+            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(
+                -1
+            )
             sample_output = self.conv_layers(sample_input).flatten(start_dim=1)
             return sample_output.shape[-1]
 
@@ -285,7 +339,9 @@ class SingleCnnNetwork(LightningModule):
         _, _, action_dim = actions.shape
 
         # Process observations through convolutional layers
-        obs_flat = observations.reshape(batch_size * segment_length, channels, height, width)
+        obs_flat = observations.reshape(
+            batch_size * segment_length, channels, height, width
+        )
         x = self.conv_layers(obs_flat)
         x = self.flatten(x)
         x = F.relu(x)
@@ -315,8 +371,51 @@ class SingleCnnNetwork(LightningModule):
     def validation_step(self, batch: Tensor, _batch_idx: int):
         """Compute the loss for validation."""
         loss = self.loss_function(self, batch)
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
-        return loss
+        self.log("val_loss", loss, prog_bar=True)
+        
+        # Compute accuracy for comparative feedback if applicable
+        if self._is_comparative_feedback(batch):
+            accuracy = self._compute_pairwise_accuracy(batch)
+            self.log("val_accuracy", accuracy, prog_bar=True)
+
+    def _is_comparative_feedback(self, batch):
+        """Check if this is comparative feedback (pairwise comparison)."""
+        # Comparative feedback has pair_data structure
+        try:
+            if len(batch) >= 2:
+                pair_data = batch[0]
+                if isinstance(pair_data, tuple) and len(pair_data) == 2:
+                    # Check if each element in pair_data is a trajectory tuple (obs, actions, mask)
+                    trajectory1, trajectory2 = pair_data
+                    if (isinstance(trajectory1, tuple) and len(trajectory1) == 3 and
+                        isinstance(trajectory2, tuple) and len(trajectory2) == 3):
+                        return True
+        except Exception:
+            pass
+        return False
+    
+    def _compute_pairwise_accuracy(self, batch):
+        """Compute accuracy for pairwise comparisons."""
+        pair_data, preferred_indices = batch
+        
+        (obs1, actions1, mask1), (obs2, actions2, mask2) = pair_data
+        
+        # Compute network outputs
+        outputs1 = self(obs1, actions1)
+        outputs2 = self(obs2, actions2)
+        
+        # Sum over sequence dimension
+        rewards1 = (outputs1 * mask1).sum(dim=1).squeeze(-1)
+        rewards2 = (outputs2 * mask2).sum(dim=1).squeeze(-1)
+        
+        # Compute predictions (0 if first trajectory is better, 1 if second)
+        predictions = (rewards2 > rewards1).long()
+        
+        # Compute accuracy
+        correct = (predictions == preferred_indices).float()
+        accuracy = correct.mean()
+        
+        return accuracy
 
     def configure_optimizers(self):
         """Configure optimizer to optimize the neural network."""

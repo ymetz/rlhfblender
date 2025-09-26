@@ -234,6 +234,28 @@ def _prepare_demo_artifacts(
             print(f"Failed to project demo {demo_path.name}: {exc}")
             projection_array = np.zeros((0, 2), dtype=np.float32)
 
+    # Fallback: if we could not load a joint projection, generate a fresh 2D projection directly
+    if (projection_array.size == 0 or projection_array.shape[0] != obs_array.shape[0]) and obs_array.size > 0:
+        try:
+            fallback_method = projection_method or "PCA"
+            fallback_props = projection_props or {}
+            fallback_handler = ProjectionHandler(
+                projection_method=fallback_method,
+                projection_props=fallback_props,
+            )
+            projection_raw = fallback_handler.fit(
+                obs_array,
+                sequence_length=1,
+                step_range=None,
+                episode_indices=None,
+                actions=None,
+                suffix=f"user_demo_{track.session_id}_local",
+            )
+            projection_array = np.array(projection_raw, dtype=np.float32)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Fallback projection failed for demo {demo_path.name}: {exc}")
+            projection_array = np.zeros((0, 2), dtype=np.float32)
+
     episode_indices = _compute_episode_indices(dones)
     projection_output_dir = _build_projection_output_dir(track.environment_id, track.experiment_id, track.current_checkpoint)
     projection_json_path = projection_output_dir / f"{demo_path.stem}.json"

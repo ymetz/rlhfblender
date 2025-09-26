@@ -567,7 +567,7 @@ class InverseProjectionHandler:
         """
         # BrBG color scheme (Brown-Blue-Green) color stops
         # Based on d3.interpolateBrBG
-        colors = [
+        """colors = [
             [0.329, 0.188, 0.020],  # Dark brown
             [0.549, 0.318, 0.039],  # Brown
             [0.749, 0.506, 0.176],  # Light brown
@@ -579,6 +579,19 @@ class InverseProjectionHandler:
             [0.207, 0.592, 0.561],  # Teal
             [0.004, 0.424, 0.376],  # Dark teal
             [0.000, 0.235, 0.188],  # Very dark teal
+        ]"""
+        colors = [
+            [0.000, 0.125, 0.318],
+            [0.039, 0.196, 0.416],
+            [0.169, 0.267, 0.431],
+            [0.302, 0.337, 0.427],
+            [0.412, 0.412, 0.439],
+            [0.498, 0.486, 0.459],
+            [0.580, 0.561, 0.471],
+            [0.678, 0.643, 0.463],
+            [0.792, 0.729, 0.416],
+            [0.918, 0.820, 0.337],
+            [0.992, 0.918, 0.271],
         ]
 
         colors = np.array(colors)

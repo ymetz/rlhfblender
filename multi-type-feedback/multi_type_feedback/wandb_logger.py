@@ -1,9 +1,4 @@
-import os
-from argparse import Namespace
-from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Union
-
-import wandb
+from typing import Dict, Mapping, Optional
 from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
 
@@ -47,7 +42,9 @@ class ContinuousWandbLogger(WandbLogger):
         self._cumulative_feedback = {}
 
     @rank_zero_only
-    def log_metrics(self, metrics: Mapping[str, float], step: Optional[int] = None) -> None:
+    def log_metrics(
+        self, metrics: Mapping[str, float], step: Optional[int] = None
+    ) -> None:
         """
         Log metrics at a specific step.
 
@@ -60,7 +57,10 @@ class ContinuousWandbLogger(WandbLogger):
 
     @rank_zero_only
     def log_reward_metrics(
-        self, reward_metrics: Dict[str, float] = None, feedback_counts: Dict[str, int] = None, step: Optional[int] = None
+        self,
+        reward_metrics: Dict[str, float] = None,
+        feedback_counts: Dict[str, int] = None,
+        step: Optional[int] = None,
     ) -> None:
         """
         Log reward model metrics and feedback statistics at a specific step.
@@ -84,7 +84,9 @@ class ContinuousWandbLogger(WandbLogger):
                 if feedback_type not in self._cumulative_feedback:
                     self._cumulative_feedback[feedback_type] = 0
                 self._cumulative_feedback[feedback_type] += count
-                metrics_to_log[f"feedback/{feedback_type}_cumulative"] = self._cumulative_feedback[feedback_type]
+                metrics_to_log[f"feedback/{feedback_type}_cumulative"] = (
+                    self._cumulative_feedback[feedback_type]
+                )
 
         if metrics_to_log and step is not None:
             # Log using provided step

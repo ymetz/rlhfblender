@@ -46,28 +46,8 @@ except ImportError:
     print("Cannot import procgen")
 
 
-# for convenice sake, todo: make dynamic in the future
-discount_factors = {
-    "HalfCheetah-v5": 0.98,
-    "Hopper-v5": 0.99,
-    "Swimmer-v5": 0.9999,
-    "Ant-v5": 0.99,
-    "Walker2d-v5": 0.99,
-    "ALE/BeamRider-v5": 0.99,
-    "ALE/MsPacman-v5": 0.99,
-    "ALE/Enduro-v5": 0.99,
-    "ALE/Pong-v5": 0.99,
-    "Humanoid-v5": 0.99,
-    "highway-fast-v0": 0.8,
-    "merge-v0": 0.8,
-    "roundabout-v0": 0.8,
-    "metaworld-sweep-into-v2": 0.99,
-    "metaworld-button-press-v2": 0.99,
-    "metaworld-pick-place-v2": 0.99,
-}
-
-
 class TrainingUtils:
+
     @staticmethod
     def setup_environment(
         env_name: str, seed: Optional[int] = None, env_kwargs: Optional[Dict[str, Any]] = None, save_reset_wrapper: bool = True
@@ -102,25 +82,23 @@ class TrainingUtils:
     def setup_base_parser() -> argparse.ArgumentParser:
         """Create a base argument parser with common arguments."""
         parser = argparse.ArgumentParser()
-        parser.add_argument("--environment", type=str, default="HalfCheetah-v5", help="Environment name")
         parser.add_argument(
-            "--environment-kwargs",
-            type=str,
-            nargs="+",
-            help='Environment Kwargs (e.g. --env-kwargs key1:value1 key2:value2), e.g.: \
-                "env_wrapper:stable_baselines3.common.atari_wrappers.AtariWrapper frame_stack:4"',
-            default=[],
+            "--environment", type=str, default="HalfCheetah-v5", help="Environment name"
         )
         parser.add_argument("--algorithm", type=str, default="ppo", help="RL algorithm")
         parser.add_argument("--seed", type=int, default=12, help="Random seed")
-        parser.add_argument("--n-feedback", type=int, default=-1, help="Number of feedback instances")
+        parser.add_argument(
+            "--n-feedback", type=int, default=-1, help="Number of feedback instances"
+        )
         parser.add_argument(
             "--noise-level",
             type=float,
             default=0.0,
             help="Noise level to add to feedback/demonstrations",
         )
-        parser.add_argument("--wandb-project-name", default="dynamic_rlhf", help="W&B project name")
+        parser.add_argument(
+            "--wandb-project-name", default="dynamic_rlhf", help="W&B project name"
+        )
         return parser
 
     @staticmethod
@@ -140,9 +118,15 @@ class TrainingUtils:
     @staticmethod
     def get_model_ids(args: argparse.Namespace) -> Tuple[str, str]:
         """Generate feedback and model IDs based on arguments."""
-        env_name = args.environment if "ALE" not in args.environment else args.environment.replace("/", "-")
+        env_name = (
+            args.environment
+            if "ALE" not in args.environment
+            else args.environment.replace("/", "-")
+        )
         feedback_id = f"{args.algorithm}_{env_name}_{args.seed}"
-        model_id = f"{feedback_id}_{getattr(args, 'feedback_type', 'default')}_{args.seed}"
+        model_id = (
+            f"{feedback_id}_{getattr(args, 'feedback_type', 'default')}_{args.seed}"
+        )
 
         if args.noise_level > 0.0:
             model_id = f"{model_id}_noise_{str(args.noise_level)}"
@@ -168,14 +152,20 @@ class TrainingUtils:
 
         if top_n_models:
             try:
-                run_eval_scores = pd.read_csv(os.path.join(checkpoints_path, "collected_results.csv"))
+                run_eval_scores = pd.read_csv(
+                    os.path.join(checkpoints_path, "collected_results.csv")
+                )
                 run_eval_scores = (
                     run_eval_scores.loc[run_eval_scores["env"] == env_name]
                     .sort_values(by=["eval_score"], ascending=False)
                     .head(top_n_models)["run"]
                     .to_list()
                 )
-                expert_model_paths = [path for path in expert_model_paths if path.split(os.path.sep)[-1] in run_eval_scores]
+                expert_model_paths = [
+                    path
+                    for path in expert_model_paths
+                    if path.split(os.path.sep)[-1] in run_eval_scores
+                ]
             except:
                 print("[WARN] No eval benchmark results available.")
 
@@ -183,7 +173,9 @@ class TrainingUtils:
         model_class = PPO if algorithm == "ppo" else SAC
 
         for expert_model_path in expert_model_paths:
-            if os.path.isfile(os.path.join(expert_model_path, env_name, "vecnormalize.pkl")):
+            if os.path.isfile(
+                os.path.join(expert_model_path, env_name, "vecnormalize.pkl")
+            ):
                 norm_env = VecNormalize.load(
                     os.path.join(expert_model_path, env_name, "vecnormalize.pkl"),
                     DummyVecEnv([lambda: environment]),
@@ -198,19 +190,6 @@ class TrainingUtils:
             expert_models.append((model_class.load(model_path), norm_env))
 
         return expert_models
-
-    @staticmethod
-    def parse_env_kwargs(env_kwargs: list[str]) -> Dict[str, Any]:
-        """Parse environment keyword arguments from a list of strings."""
-        env_kwargs_dict = {}
-        for kwarg in env_kwargs:
-            try:
-                key, value = kwarg.split(":")
-                env_kwargs_dict[key] = value
-            except ValueError:
-                print(f"Invalid env_kwargs format: {kwarg}. Expected format is key:value.")
-                raise
-        return env_kwargs_dict
 
     @staticmethod
     def setup_wandb_logging(

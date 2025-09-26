@@ -45,7 +45,9 @@ class UnifiedNetwork(LightningModule):
             ]
 
         self.feedback_types = feedback_types
-        self.feedback_type_map = {fb_type: i for i, fb_type in enumerate(feedback_types)}
+        self.feedback_type_map = {
+            fb_type: i for i, fb_type in enumerate(feedback_types)
+        }
         self.learning_rate = learning_rate
         self.ensemble_count = ensemble_count
         self.masksemble_scale = masksemble_scale
@@ -54,10 +56,14 @@ class UnifiedNetwork(LightningModule):
         action_is_discrete = isinstance(action_space, gym.spaces.Discrete)
 
         # Determine input dimension
-        input_dim = np.prod(obs_space.shape) + (np.prod(action_space.shape) if not action_is_discrete else action_space.n)
+        input_dim = np.prod(obs_space.shape) + (
+            np.prod(action_space.shape) if not action_is_discrete else action_space.n
+        )
 
         # Create feedback type embedding
-        self.feedback_embedding = nn.Embedding(len(feedback_types), feedback_embedding_dim)
+        self.feedback_embedding = nn.Embedding(
+            len(feedback_types), feedback_embedding_dim
+        )
 
         # Adjust input dimension to include feedback embedding
         augmented_input_dim = input_dim + feedback_embedding_dim
@@ -118,8 +124,6 @@ class UnifiedNetwork(LightningModule):
         """
         Forward pass through the network with feedback type conditioning.
         """
-        # observations: (batch_size, segment_length, obs_dim)
-        # actions: (batch_size, segment_length, action_dim)
 
         if len(observations.shape) > 3:  # For 2D spaces like highway-env
             observations = observations.flatten(start_dim=2)
@@ -129,7 +133,9 @@ class UnifiedNetwork(LightningModule):
 
         # Get feedback type index and embedding
         feedback_idx = self.feedback_type_map[feedback_type]
-        feedback_embedding = self.feedback_embedding(torch.tensor(feedback_idx, device=observations.device))
+        feedback_embedding = self.feedback_embedding(
+            torch.tensor(feedback_idx, device=observations.device)
+        )
 
         # Expand embedding to match batch and sequence dimensions
         # Shape: (batch_size, segment_length, embedding_dim)
@@ -156,7 +162,12 @@ class UnifiedNetwork(LightningModule):
         A universal loss function that handles all feedback types with optimized ensemble handling.
         """
         feedback_type, data = batch
-        feedback_type = feedback_type[0]  # note: thats terrible, Volvo pls fix
+
+        if isinstance(feedback_type, (list, tuple, torch.Tensor)):
+            feedback_type = feedback_type[0]
+        if isinstance(feedback_type, torch.Tensor):
+            feedback_type = feedback_type.item()
+    
         feedback_idx = self.feedback_type_map[feedback_type]
 
         # Skip ensemble repetition if ensemble_count is 1
@@ -178,16 +189,21 @@ class UnifiedNetwork(LightningModule):
             # For ensemble models, use optimized batch repetition
             if self.ensemble_count > 1:
                 # Create repeat pattern once - for ensembles we only expand the batch dimension
-                repeat_pattern = [self.ensemble_count] + [1] * (len(obs1.shape) - 1)
+                obs_repeat = [self.ensemble_count] + [1] * (len(obs1.shape) - 1)
+                act_repeat = [self.ensemble_count] + [1] * (len(actions1.shape) - 1)
+                mask_repeat = [self.ensemble_count] + [1] * (len(mask1.shape) - 1)
 
                 # Batch the repetition operations (helps compiler optimize)
-                obs1 = obs1.repeat(*repeat_pattern)
-                actions1 = actions1.repeat(*repeat_pattern)
-                mask1 = mask1.repeat(*repeat_pattern)
-                obs2 = obs2.repeat(*repeat_pattern)
-                actions2 = actions2.repeat(*repeat_pattern)
-                mask2 = mask2.repeat(*repeat_pattern)
-                preferred_indices = preferred_indices.repeat(self.ensemble_count, 1).squeeze()
+                obs1 = obs1.repeat(*obs_repeat)
+                actions1 = actions1.repeat(*act_repeat)
+                mask1 = mask1.repeat(*mask_repeat)
+                obs2 = obs2.repeat(*obs_repeat)
+                actions2 = actions2.repeat(*act_repeat)
+                mask2 = mask2.repeat(*mask_repeat)
+                preferred_indices = preferred_indices.repeat(
+                    self.ensemble_count, 1
+                ).squeeze()
+                print("PREFERRED INDICES", obs1.shape, preferred_indices, preferred_indices.shape)
 
             # Compute network outputs for both trajectories
             outputs1 = self.forward(obs1, actions1, feedback_type)
@@ -209,6 +225,7 @@ class UnifiedNetwork(LightningModule):
             log_probs = F.log_softmax(rewards, dim=1)
 
             # Compute NLL loss
+            print("LOG PROBS AND PREF. INDICES", log_probs, preferred_indices)
             loss = F.nll_loss(log_probs, preferred_indices)
 
         elif feedback_type in ["evaluative", "descriptive", "supervised"]:
@@ -229,6 +246,7 @@ class UnifiedNetwork(LightningModule):
 
                 # Convert targets to float and repeat
                 targets = targets.float().repeat(self.ensemble_count, 1).squeeze()
+                print("targets", observations, observations.shape, targets, targets.shape)
 
             # Network output: (batch_size, segment_length, output_dim)
             outputs = self.forward(observations, actions, feedback_type)
@@ -243,6 +261,7 @@ class UnifiedNetwork(LightningModule):
             normalized_rewards = total_rewards * scale + bias
 
             # Compute MSE loss
+            print("LOG PROBS AND PREF. INDICES", normalized_rewards, targets)
             loss = F.mse_loss(normalized_rewards, targets)
 
         else:
@@ -255,6 +274,11 @@ class UnifiedNetwork(LightningModule):
         loss = self.universal_loss(batch)
 
         feedback_type = batch[0]
+        if isinstance(feedback_type, (list, tuple, torch.Tensor)):
+            feedback_type = feedback_type[0]
+        if isinstance(feedback_type, torch.Tensor):
+            feedback_type = feedback_type.item()
+
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True)
         self.log("train_loss", loss, on_epoch=True)
 
@@ -317,7 +341,9 @@ class UnifiedCnnNetwork(LightningModule):
             ]
 
         self.feedback_types = feedback_types
-        self.feedback_type_map = {fb_type: i for i, fb_type in enumerate(feedback_types)}
+        self.feedback_type_map = {
+            fb_type: i for i, fb_type in enumerate(feedback_types)
+        }
         self.learning_rate = learning_rate
         self.ensemble_count = ensemble_count
         self.masksemble_scale = masksemble_scale
@@ -328,13 +354,19 @@ class UnifiedCnnNetwork(LightningModule):
         # Create CNN layers
         cnn_layers = []
         for i in range(min(layer_num, len(cnn_channels))):
-            cnn_layers.append(self.conv_sequence(input_channels if i == 0 else cnn_channels[i - 1], cnn_channels[i]))
+            cnn_layers.append(
+                self.conv_sequence(
+                    input_channels if i == 0 else cnn_channels[i - 1], cnn_channels[i]
+                )
+            )
 
         self.conv_layers = nn.Sequential(*cnn_layers)
         self.flatten = nn.Flatten()
 
         # Create feedback type embedding
-        self.feedback_embedding = nn.Embedding(len(feedback_types), feedback_embedding_dim)
+        self.feedback_embedding = nn.Embedding(
+            len(feedback_types), feedback_embedding_dim
+        )
 
         # Action input layer
         action_shape = action_space.shape if action_space.shape else 1
@@ -346,7 +378,9 @@ class UnifiedCnnNetwork(LightningModule):
         ).float()
 
         # Calculate CNN output size and combine with action and feedback embedding
-        self.cnn_out_size = self.compute_flattened_size(obs_space.shape, cnn_channels[:layer_num])
+        self.cnn_out_size = self.compute_flattened_size(
+            obs_space.shape, cnn_channels[:layer_num]
+        )
         combined_size = self.cnn_out_size + action_hidden_dim + feedback_embedding_dim
 
         # Final fully connected layer
@@ -364,10 +398,14 @@ class UnifiedCnnNetwork(LightningModule):
     def residual_block(self, in_channels):
         return nn.Sequential(
             nn.ReLU(),
-            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
+            Masksembles2D(
+                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
+            ).float(),
             self.conv_layer(in_channels, in_channels),
             nn.ReLU(),
-            Masksembles2D(channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale).float(),
+            Masksembles2D(
+                channels=in_channels, n=self.ensemble_count, scale=self.masksemble_scale
+            ).float(),
             self.conv_layer(in_channels, in_channels),
         )
 
@@ -381,7 +419,9 @@ class UnifiedCnnNetwork(LightningModule):
 
     def compute_flattened_size(self, observation_space, cnn_channels):
         with torch.no_grad():
-            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(-1)
+            sample_input = torch.zeros(self.ensemble_count, *observation_space).squeeze(
+                -1
+            )
             sample_output = self.conv_layers(sample_input).flatten(start_dim=1)
             return sample_output.shape[-1]
 
@@ -396,10 +436,14 @@ class UnifiedCnnNetwork(LightningModule):
 
         # Get feedback type index and embedding
         feedback_idx = self.feedback_type_map[feedback_type]
-        feedback_embedding = self.feedback_embedding(torch.tensor(feedback_idx, device=observations.device))
+        feedback_embedding = self.feedback_embedding(
+            torch.tensor(feedback_idx, device=observations.device)
+        )
 
         # Process observations through CNN
-        obs_flat = observations.reshape(batch_size * segment_length, channels, height, width)
+        obs_flat = observations.reshape(
+            batch_size * segment_length, channels, height, width
+        )
         x = self.conv_layers(obs_flat)
         x = self.flatten(x)
         x = F.relu(x)
@@ -429,6 +473,7 @@ class UnifiedCnnNetwork(LightningModule):
         A universal loss function that handles all feedback types.
         """
         feedback_type, data = batch
+        feedback_type = feedback_types[0] if isinstance(feedback_types, list) else feedback_types
         feedback_idx = self.feedback_type_map[feedback_type]
 
         if feedback_type in [
@@ -498,6 +543,11 @@ class UnifiedCnnNetwork(LightningModule):
         loss = self.universal_loss(batch)
 
         feedback_type = batch[0]
+        if isinstance(feedback_type, (list, tuple, torch.Tensor)):
+            feedback_type = feedback_type[0]
+        if isinstance(feedback_type, torch.Tensor):
+            feedback_type = feedback_type.item()
+
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True, prog_bar=True)
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
 

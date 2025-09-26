@@ -1,19 +1,22 @@
 import json
 import os
+import pickle
 import random
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+import uuid
 
 import numpy as np
-import torch
 from databases import Database
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from multi_type_feedback.dynamic_rlhf_human import DynamicRLHF
 from pydantic import BaseModel
 from train_baselines.exp_manager import ExperimentManager
+from rlhfblender.data_models.global_models import Experiment
+from rlhfblender.utils.data_generation import register_experiment
 
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.global_models import Experiment
@@ -205,6 +208,36 @@ def save_feedback_status(
         print(f"Error saving feedback status: {e}")
 
 
+def update_session_saved_paths(session: dict[str, Any], checkpoint_base_path: str) -> None:
+    """Load saved model paths from the checkpoint state file and cache them on the session."""
+    state_path = f"{checkpoint_base_path}state.pkl"
+    session["last_saved_models"] = {}
+    session["last_saved_agent"] = ""
+
+    if not os.path.exists(state_path):
+        print(f"Checkpoint state file not found at {state_path}")
+        return
+
+    try:
+        with open(state_path, "rb") as f:
+            state_data = pickle.load(f)
+    except Exception as exc:
+        print(f"Failed to load checkpoint state from {state_path}: {exc}")
+        return
+
+    saved_models = state_data.get("saved_model_paths") or {}
+    saved_agent = state_data.get("saved_agent_path") or ""
+
+    session["last_saved_models"] = saved_models
+    session["last_saved_agent"] = saved_agent
+    session["last_saved_state"] = state_path
+
+    print(
+        f"Updated session saved paths: models={list(saved_models.keys())}, "
+        f"agent={'present' if saved_agent else 'missing'}"
+    )
+
+
 async def process_dynamic_rlhf_trajectories(env_name: str, exp_id: str, checkpoint_step: int) -> bool:
     """
     Process DynamicRLHF trajectories to generate videos, rewards, uncertainty, and thumbnails.
@@ -318,13 +351,14 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
         # 2. Generate reward and uncertainty predictions
         # We need to find the DynamicRLHF session that contains this experiment
         session = None
-        session_id_found = None
         for sid, sess_data in active_rlhf_sessions.items():
             if str(sess_data.get("experiment_id")) == str(exp_id):
                 session = sess_data
                 break
 
-        if session and "drlhf" in session:
+        print("FOUND SESSION:", session)
+
+        if session:
             # Get saved model paths from the session
             saved_models = session.get("last_saved_models", {})
             saved_agent = session.get("last_saved_agent", "")
@@ -445,7 +479,7 @@ async def initialize_dynamic_rlhf_session(
         env_kwargs=env_kwargs,
         algorithm=exp.algorithm,
         feedback_types=["evaluative", "comparative", "demonstrative", "corrective"],
-        n_training_iterations=num_iterations,
+        nr_of_iterations=num_iterations,
         n_feedback_per_iteration=10,
         feedback_buffer_size=1000,
         rl_steps_per_iteration=rl_steps_per_iteration,
@@ -486,6 +520,10 @@ async def initialize_dynamic_rlhf_session(
         "has_initial_data": has_initial_data,
         "resume_from_checkpoint": resume_from_checkpoint,
     }
+
+    if has_initial_data and resume_from_checkpoint is not None:
+        checkpoint_path = f"dynamic_rlhf_models/{session_id}_checkpoint_{resume_from_checkpoint}"
+        update_session_saved_paths(session_data, checkpoint_path)
 
     return session_data
 
@@ -570,12 +608,6 @@ async def start_dynamic_rlhf_training(request: Request):
                 status_code=400,
                 content={"status": "error", "message": "Either clone_from_experiment or environment_id must be provided"},
             )
-
-        # Import necessary modules
-        import uuid
-
-        from rlhfblender.data_models.global_models import Experiment
-        from rlhfblender.utils.data_generation import register_experiment
 
         # Generate unique session ID
         session_id = str(uuid.uuid4())
@@ -735,6 +767,7 @@ async def run_training_iteration_background(
             print("Saving initial (untrained) models for checkpoint 0")
             checkpoint_save_path = f"dynamic_rlhf_models/{session_id}_checkpoint_{checkpoint_step}"
             drlhf.save(checkpoint_save_path, checkpoint_step, str(exp_id))
+            update_session_saved_paths(session, checkpoint_save_path)
             print(f"Saved initial models to projection-compatible paths for checkpoint {checkpoint_step}")
 
             # Mark that initial data has been collected
@@ -828,6 +861,7 @@ async def run_training_iteration_background(
         session["status"] = "saving_checkpoint"
         checkpoint_save_path = f"dynamic_rlhf_models/{session_id}_checkpoint_{checkpoint_step}"
         drlhf.save(checkpoint_save_path, checkpoint_step, str(exp_id))
+        update_session_saved_paths(session, checkpoint_save_path)
         print(f"Saved full DynamicRLHF checkpoint to: {checkpoint_save_path}")
 
         # Process trajectories to generate videos, rewards, uncertainty files, and thumbnails

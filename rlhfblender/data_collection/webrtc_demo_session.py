@@ -173,8 +173,8 @@ class GymEnvironmentTrack(VideoStreamTrack):
             return {
                 "w": [0.0, 1.0, 0.0, 0.0],  # Forward (positive dx)
                 "s": [0.0, -1.0, 0.0, 0.0],  # Backward (negative dx)
-                "a": [1.0, 0.0, 0.0, 0.0],  # Left (positive dy)
-                "d": [-1.0, 0.0, 0.0, 0.0],  # Right (negative dy)
+                "a": [-1.0, 0.0, 0.0, 0.0],  # Left (positive dy)
+                "d": [1.0, 0.0, 0.0, 0.0],  # Right (negative dy)
                 "q": [0.0, 0.0, 0.0, -1.0],  # Gripper open (negative gripper)
                 "e": [0.0, 0.0, 0.0, 1.0],  # Gripper close (positive gripper)
                 "shift": [0.0, 0.0, 1.0, 0.0],  # Up (positive dz)
