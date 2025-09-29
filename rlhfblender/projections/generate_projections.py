@@ -435,6 +435,7 @@ def compute_projections_and_clusters(
     )
 
     print("Computing feature projection")
+    feature_input = None # we don't use it right now
     if feature_input is not None and feature_input.shape[0] > 0:
         feature_projection = handler.fit(
             feature_input,
@@ -1134,31 +1135,25 @@ if __name__ == "__main__":
                 print(f"Grid samples: {grid_samples.get('resolution', 0)}x{grid_samples.get('resolution', 0)} grid")
                 print(f"Model saved at: {model_path}")
 
-            # Save as JSON for easier analysis (optional)
-            import json
+        json_path = os.path.join("data", "saved_projections", f"{save_path}.json")
+        os.makedirs(os.path.dirname(json_path), exist_ok=True)
 
-            json_path = os.path.join("data", "saved_projections", f"{save_path}.json")
-            os.makedirs(os.path.dirname(json_path), exist_ok=True)
+        # Convert numpy arrays to lists for JSON serialization
+        json_results = {}
+        for key, value in projection_results.items():
+            if key == "inverse_results":
+                # Already in JSON-serializable format
+                json_results[key] = value
+            elif hasattr(value, "tolist"):  # Convert numpy arrays to lists
+                json_results[key] = value.tolist()
+            else:
+                json_results[key] = value
 
-            # Convert numpy arrays to lists for JSON serialization
-            json_results = {}
-            for key, value in projection_results.items():
-                if key == "inverse_results":
-                    # Already in JSON-serializable format
-                    json_results[key] = value
-                elif hasattr(value, "tolist"):  # Convert numpy arrays to lists
-                    json_results[key] = value.tolist()
-                else:
-                    json_results[key] = value
+        with open(json_path, "w") as f:
+            json.dump(json_results, f)
+        print(f"Results saved as JSON to {json_path}")
 
-            with open(json_path, "w") as f:
-                json.dump(json_results, f)
-            print(f"Results saved as JSON to {json_path}")
-
-            print("Projection generation completed successfully.")
-        else:
-            print("Warning: Projection generated empty results. Check input data and parameters.")
-
+        print("Projection generation completed successfully.")
     except Exception as e:
         print(f"Error generating projections: {e}")
         traceback.print_exc()

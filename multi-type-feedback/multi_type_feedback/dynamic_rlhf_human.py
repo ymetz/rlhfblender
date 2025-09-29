@@ -566,7 +566,7 @@ class DynamicRLHF:
         return all_feedback, feedback_counts
 
     def collect_trajectories(
-        self, n_trajectories: int, env: gym.Env | None = None, render: bool = False
+        self, n_trajectories: int, env: gym.Env | None = None, render: bool = False, segment_length: int | None = None
     ) -> Tuple[List[List[Tuple[np.ndarray, np.ndarray, float, bool, float]]], List[Any]]:
         """Collect trajectories using current policy, including reward model uncertainties."""
         if env is None:
@@ -591,7 +591,8 @@ class DynamicRLHF:
             if render:
                 render_img = env.render()
 
-            for _ in range(self.segment_len):
+            seg_len = segment_length if segment_length is not None else self.segment_len
+            for _ in range(seg_len):
                 if self.rl_agent is None:
                     # this is the case for initial generation, use random agent here
                     action = env.action_space.sample()
@@ -1504,7 +1505,7 @@ class DynamicRLHF:
             "exp_id": exp_id,
         }
 
-        state_path = str(save_path) + "state.pkl"
+        state_path = str(save_path) + "_state.pkl"
         with open(state_path, "wb") as f:
             pickle.dump(state_data, f)
 

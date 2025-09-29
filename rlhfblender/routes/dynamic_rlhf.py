@@ -3,6 +3,8 @@ import os
 import pickle
 import random
 import time
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -210,7 +212,7 @@ def save_feedback_status(
 
 def update_session_saved_paths(session: dict[str, Any], checkpoint_base_path: str) -> None:
     """Load saved model paths from the checkpoint state file and cache them on the session."""
-    state_path = f"{checkpoint_base_path}state.pkl"
+    state_path = f"{checkpoint_base_path}_state.pkl"
     session["last_saved_models"] = {}
     session["last_saved_agent"] = ""
 
@@ -297,11 +299,9 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
         exp_id: Experiment ID
         checkpoint_step: Checkpoint step number
 
-    Returns:
+    Returns:std
         True if generation was successful, False otherwise
     """
-    import subprocess
-    import sys
 
     try:
         # Get experiment from database to find the correct experiment name
@@ -335,12 +335,18 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
             "PCA",
             "--compute-inverse",
             "--auto-grid-range",
-            "--grid-resolution",
-            "20",
+            "--no-feature",
+            "--no-transition",
+            "--no-clustering",
+            "--joint-projection-path",
+            "data/saved_projections/joint/metaworld-sweep-into-v3_1_joint_PCA_0_1000000_metadata.json",
         ]
 
         print(f"Running projection generation: {' '.join(projection_cmd)}")
         projection_result = subprocess.run(projection_cmd, capture_output=True, text=True, timeout=120)  # 2 minute timeout
+
+        print("STDOUT:\n", projection_result.stdout)
+        print("STDERR:\n", projection_result.stderr)
 
         if projection_result.returncode != 0:
             print(f"Projection generation failed: {projection_result.stderr}")
@@ -356,14 +362,10 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
                 session = sess_data
                 break
 
-        print("FOUND SESSION:", session)
-
         if session:
             # Get saved model paths from the session
             saved_models = session.get("last_saved_models", {})
             saved_agent = session.get("last_saved_agent", "")
-
-            print("SAVED MODELS:", saved_models, saved_agent)
 
             if saved_models and saved_agent:
                 # Find the projection file that was just created
@@ -417,6 +419,9 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
                     prediction_result = subprocess.run(
                         prediction_cmd, capture_output=True, text=True, timeout=180  # 3 minute timeout
                     )
+                    print("STDOUT:\n", prediction_result.stdout)
+                    print("STDERR:\n", prediction_result.stderr)
+
 
                     if prediction_result.returncode != 0:
                         print(f"Reward/uncertainty prediction failed: {prediction_result.stderr}")
@@ -486,7 +491,7 @@ async def initialize_dynamic_rlhf_session(
         reward_training_epochs=10,
         device="cpu",
         num_ensemble_models=2,
-        initial_feedback_count=20,
+        initial_feedback_count=15,
         seed=42,
         exp_manager=exp_manager,
     )
@@ -746,6 +751,7 @@ async def run_training_iteration_background(
             trajectories, initial_states = drlhf.collect_trajectories(
                 n_trajectories=drlhf.initial_feedback_count,
                 render=True,
+                segment_length=200,
             )
 
             # Save trajectories to data directory
@@ -837,6 +843,7 @@ async def run_training_iteration_background(
             trajectories, initial_states = drlhf.collect_trajectories(
                 n_trajectories=drlhf.n_feedback_per_iteration,
                 render=True,
+                segment_length=200,
             )
 
             # Save new trajectories to data directory

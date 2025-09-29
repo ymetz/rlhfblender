@@ -69,6 +69,15 @@ echo "========================================================="
 
 echo "Compute joint observation and state projection for experiment: $EXPERIMENT_NAME"
 
+python rlhfblender/generate_data.py \
+  --exp "$EXPERIMENT_NAME" \
+  --env "$ENV_NAME" \
+  --checkpoints "${CHECKPOINTS[@]}" \
+  --model-path "$EXPER_MODEL_PATH" \
+  --num-episodes "$NUM_EPISODES" \
+  --additional-gym-packages "$ADDITIONAL_GYM_PACKAGES" \
+  --env-kwargs camera_name:corner
+
 python scripts/compute_joint_obs_state_projection.py \
   --experiment-name "$EXPERIMENT_NAME" \
   --checkpoints "${CHECKPOINTS[@]}" \

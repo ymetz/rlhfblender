@@ -32,7 +32,13 @@ if __name__ == "__main__":
         "--model-base-path", type=str, default="rlhfblender_model", help="Base path to the trained model checkpoints"
     )
 
-    parser.add_argument("--checkpoints", type=str, nargs="+", default=["-1"], help="The checkpoint steps to use.")
+    parser.add_argument(
+        "--checkpoints",
+        type=str,
+        nargs="+",
+        default=["-1"],
+        help="The checkpoint steps to use. Include 0 to also record a random baseline.",
+    )
 
     parser.add_argument(
         "--project",
@@ -164,21 +170,23 @@ if __name__ == "__main__":
             )
         )
 
-    benchmark_dicts = [
-        {
-            "env": args.env,
-            "benchmark_type": "random" if args.random else "trained",
-            "exp": args.exp,
-            "checkpoint_step": checkpoint,
-            "n_episodes": args.num_episodes,
-            "path": model_path,
-            "env_kwargs": env_kwargs,
-            "project": args.project,
-            "framework": "random" if args.random else args.framework,
-            "consistent_start_state": args.consistent_start_state,
-        }
-        for checkpoint in checkpoints
-    ]
+    benchmark_dicts = []
+    for checkpoint in checkpoints:
+        use_random_policy = args.random or checkpoint == "0"
+        benchmark_dicts.append(
+            {
+                "env": args.env,
+                "benchmark_type": "random" if use_random_policy else "trained",
+                "exp": args.exp,
+                "checkpoint_step": checkpoint,
+                "n_episodes": args.num_episodes,
+                "path": model_path,
+                "env_kwargs": env_kwargs,
+                "project": args.project,
+                "framework": "random" if use_random_policy else args.framework,
+                "consistent_start_state": args.consistent_start_state,
+            }
+        )
 
     if args.register_only:
         print("Registered environment and experiment. Did not generate data.")
