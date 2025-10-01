@@ -15,7 +15,7 @@ from rlhfblender.data_collection.episode_recorder import (
     BenchmarkSummary,
 )
 from rlhfblender.data_handling import database_handler as db_handler
-from rlhfblender.data_models.feedback_models import UnprocessedFeedback
+from rlhfblender.data_models.feedback_models import UnprocessedFeedback, FeedbackType
 from rlhfblender.data_models.global_models import (
     Environment,
     EpisodeID,
@@ -65,16 +65,6 @@ class BenchmarkResponseModel(BaseModel):
     n_steps: int
     models: list[BenchmarkSummary]
     env_space_info: dict
-
-
-# Feedback Type Enum
-class FeedbackType(str, Enum):
-    rating = "rating"
-    ranking = "ranking"
-    demonstration = "demonstration"
-    correction = "correction"
-    description = "description"
-    text = "text"
 
 
 class FeedbackModel(BenchmarkModel):

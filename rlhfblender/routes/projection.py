@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from databases import Database
@@ -136,10 +136,10 @@ async def generate_projection(
     try:
         import glob
         # Prefer joint obs-state metadata, then fall back to observation-only
-        joint_metadata_pattern = f"data/saved_projections/joint_obs_state/*_{db_experiment.id}_joint_obs_state_{projection_method}_*_metadata.json"
+        joint_metadata_pattern = f"data/saved_projections/joint_obs_state/{db_experiment.env_id}_*_joint_obs_state_{projection_method}_*_metadata.json"
         metadata_files = glob.glob(joint_metadata_pattern)
         if not metadata_files:
-            joint_metadata_pattern = f"data/saved_projections/joint/*_{db_experiment.id}_joint_{projection_method}_*_metadata.json"
+            joint_metadata_pattern = f"data/saved_projections/joint/{db_experiment.env_id}_*_joint_{projection_method}_*_metadata.json"
             metadata_files = glob.glob(joint_metadata_pattern)
         if metadata_files:
             joint_metadata_path = max(metadata_files, key=os.path.getctime)
@@ -238,32 +238,50 @@ async def load_grid_projection_data(
         raise HTTPException(status_code=500, detail=f"Error loading grid projection data: {str(e)}")
 
 
-def load_global_bounds(benchmark_id: int, projection_method: str = "UMAP"):
+def load_global_bounds(benchmark_id: Optional[int] = None, env_id: Optional[str] = None, projection_method: str = "UMAP"):
     """
     Load global bounds from joint projection metadata if available.
+    Benchmark_id takes priority over env_id.
     
     Returns:
         tuple: (global_x_range, global_y_range) or (None, None) if not found
     """
+
+    if benchmark_id is None and env_id is None:
+        return None, None
+
     try:
         # Look for joint projection metadata files
-        joint_metadata_pattern = f"data/saved_projections/joint_obs_state/*_{benchmark_id}_joint_obs_state_{projection_method}_*_metadata.json"
+        if benchmark_id is not None:
+            joint_metadata_pattern = f"data/saved_projections/joint_obs_state/*_{benchmark_id}_joint_obs_state_{projection_method}_*_metadata.json"
+        else:
+            joint_metadata_pattern = f"data/saved_projections/joint_obs_state/{env_id}_*_joint_obs_state_{projection_method}_*_metadata.json"
         import glob
         metadata_files = glob.glob(joint_metadata_pattern)
+
+        print("SEARCH PATTERN:", joint_metadata_pattern)
+        print("FOUND FILES:", metadata_files)
         
         if not metadata_files:
             # Try the simpler joint projection pattern
-            joint_metadata_pattern = f"data/saved_projections/joint/*_{benchmark_id}_joint_{projection_method}_*_metadata.json"
+            if benchmark_id is not None:
+                joint_metadata_pattern = f"data/saved_projections/joint/*_{benchmark_id}_joint_{projection_method}_*_metadata.json"
+            else:
+                joint_metadata_pattern = f"data/saved_projections/joint/{env_id}_*_joint_{projection_method}_*_metadata.json"
             metadata_files = glob.glob(joint_metadata_pattern)
         
         if metadata_files:
             # Use the most recent metadata file
             latest_file = max(metadata_files, key=os.path.getctime)
+
+            print("[INFO] Load global bounds from:", latest_file)
+
             with open(latest_file, "r") as f:
                 joint_metadata = json.load(f)
                 
             if "global_x_range" in joint_metadata and "global_y_range" in joint_metadata:
                 return tuple(joint_metadata["global_x_range"]), tuple(joint_metadata["global_y_range"])
+            
                 
     except Exception as e:
         logger.warning(f"Failed to load global bounds: {e}")
@@ -287,9 +305,15 @@ async def load_grid_projection_image(
         checkpoint_step=checkpoint_step,
         projection_method=projection_method,
     )
+
+    print("LOAD GRID PROJECTION IMAGE", benchmark_id, checkpoint_step, projection_method, map_type)
+
+    # load experiment from benchmark_id
+    db_experiment = await get_single_entry(database, Experiment, benchmark_id)
     
     # Load global bounds for consistent scaling across checkpoints
-    global_x_range, global_y_range = load_global_bounds(benchmark_id, projection_method)
+    global_x_range, global_y_range = load_global_bounds(None, db_experiment.env_id, projection_method)
+    print(f"Global bounds: {global_x_range}, {global_y_range}")
 
     # grid_coordianates are lists of lists, convert to numpy array
     prediction_data["grid_coordinates"] = np.array(prediction_data["grid_coordinates"])

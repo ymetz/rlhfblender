@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from rlhfblender.data_collection.feedback_dataset_adapter import UnifiedFeedbackDataset
 from rlhfblender.data_models.feedback_models import (
+    ClusterRating,
     Correction,
     Demonstration,
     Entire,
@@ -105,6 +106,7 @@ class FeedbackTranslator:
             FeedbackType.comparison: SimplifiedFeedbackType.comparison,
             FeedbackType.correction: SimplifiedFeedbackType.correction,
             FeedbackType.demonstration: SimplifiedFeedbackType.demonstration,
+            FeedbackType.clusterRating: SimplifiedFeedbackType.cluster_rating,
             FeedbackType.featureSelection: SimplifiedFeedbackType.feature_selection,
             FeedbackType.text: SimplifiedFeedbackType.text,
             FeedbackType.meta: SimplifiedFeedbackType.meta,
@@ -136,16 +138,20 @@ class FeedbackTranslator:
 
         elif feedback.feedback_type == FeedbackType.correction:
             targets = [self._create_target(t, feedback.granularity) for t in feedback.targets]
-            content = Correction(action_preferences=feedback.action_preferences or [])
+            content = Correction(action_preferences=feedback.action_preferences or [], path=feedback.correction_path)
 
         elif feedback.feedback_type == FeedbackType.demonstration:
             targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
             # For demonstrations, the actions are stored in the target data
-            content = Demonstration(actions=[])
+            content = Demonstration(actions=[], path=feedback.demonstration_path)
 
         elif feedback.feedback_type == FeedbackType.featureSelection:
             targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
             content = FeatureSelection(features=feedback.feature_selection or [], importance=feedback.feature_importance)
+
+        elif feedback.feedback_type == FeedbackType.clusterRating:
+            targets = [self._create_target(t, feedback.granularity) for t in feedback.targets]
+            content = ClusterRating(cluster_label=feedback.cluster_label or "Unknown", score=feedback.score or 0.0)
 
         elif feedback.feedback_type == FeedbackType.text:
             targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []

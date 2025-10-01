@@ -195,7 +195,8 @@ class ExperimentManager:
         self.pruner = pruner
         self.n_startup_trials = n_startup_trials
         self.n_evaluations = n_evaluations
-        self.deterministic_eval = not (self.is_atari(env_id) or self.is_minigrid(env_id))
+        self.deterministic_eval = not (self.is_atari(env_id) or self.is_minigrid(env_id) or self.is_metaworld(env_id))
+        print("Deterministic eval:", self.deterministic_eval)
         self.device = device
 
         # For training with reward function wrapper
@@ -326,7 +327,7 @@ class ExperimentManager:
 
         :param model:
         """
-        print(f"Saving to {self.save_path}")
+        print(f"Saving full model to {self.save_path}")
         model.save(f"{self.save_path}/{self.env_name}")
 
         if hasattr(model, "save_replay_buffer") and self.save_replay_buffer:
@@ -617,6 +618,10 @@ class ExperimentManager:
     @staticmethod
     def is_minigrid(env_id: str) -> bool:
         return "minigrid" in ExperimentManager.entry_point(env_id)
+    
+    @staticmethod
+    def is_metaworld(env_id: str) -> bool:
+        return "metaworld" in env_id.lower()
 
     @staticmethod
     def is_bullet(env_id: str) -> bool:
@@ -691,9 +696,9 @@ class ExperimentManager:
         ):
             self.monitor_kwargs = dict(info_keywords=("is_success",))
 
-        print(self.env_name)
         if "metaworld" not in self.env_name:
             spec = gym.spec(self.env_name.gym_id)
+            self.monitor_kwargs = dict(info_keywords=("success",))
 
         # Define make_env here, so it works with subprocesses
         # when the registry was modified with `--gym-packages`

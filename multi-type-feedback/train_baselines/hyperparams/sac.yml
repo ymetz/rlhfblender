@@ -285,7 +285,7 @@ metaworld-sweep-into-v3: &metaworld-defaults
     gamma: 0.99
     learning_rate: !!float 3e-4
     ent_coef: 'auto'
-    n_timesteps: !!float 1e6
+    n_timesteps: !!float 1e5
 
 metaworld-button-press-v3:
     <<: *metaworld-defaults

@@ -26,6 +26,7 @@ class FeedbackType(Enum):
     correction = "corrective"
     goal = "goal"
     featureSelection = "featureSelection"
+    clusterRating = "clusterRating"
     descriptivePreferences = "descriptivePreferences"
     text = "text"
     meta = "meta"
@@ -62,12 +63,17 @@ class UnprocessedFeedback(BaseModel):
     # Demo feedback is handled separately
     is_demo: bool = False
     demo_preferences: list[int] | None = None
+    demonstration_path: str | None = None
+    correction_path: str | None = None
 
     # Descriptive feedback content
     feature_selection: list[dict] | None | str = None
     feature_importance: float | list[float] | None | str = None
     feature_selections_preferences: list[list[dict]] | None = None
     feature_importance_preferences: list[float | list[float]] | None = None
+
+    # Cluster ratings
+    cluster_label: str | None = None
 
     # Text feedback content
     text_feedback: str = ""  # e.g.: "The agent is doing well in the beginning, but then it fails to collect the key."
@@ -129,15 +135,21 @@ class Ranking(FeedbackContent):
 
 class Correction(FeedbackContent):
     action_preferences: List[int]
+    path: Optional[str] = None  # Optional path to the corrected trajectory
 
 
 class Demonstration(FeedbackContent):
     actions: List[Union[int, List[float]]] = Field(default_factory=list)
+    path : Optional[str] = None  # Optional path to the demonstration trajectory
 
 
 class FeatureSelection(FeedbackContent):
     features: Union[List[dict], str]
     importance: Optional[Union[float, List[float], str]] = None
+
+class ClusterRating(FeedbackContent):
+    cluster_label: str | None = None
+    score: Union[int, float]
 
 
 class TextFeedback(FeedbackContent):
@@ -155,6 +167,7 @@ class SimplifiedFeedbackType(str, Enum):
     comparison = "comparison"
     correction = "correction"
     demonstration = "demonstration"
+    cluster_rating = "cluster_rating"
     feature_selection = "feature_selection"
     text = "text"
     meta = "meta"
@@ -173,7 +186,7 @@ class StandardizedFeedback(BaseModel):
     targets: List[Target]
 
     # Content is a discriminated union
-    content: Union[Rating, Ranking, Correction, Demonstration, FeatureSelection, TextFeedback, MetaFeedback]
+    content: Union[Rating, Ranking, Correction, Demonstration, FeatureSelection, ClusterRating, TextFeedback, MetaFeedback]
 
     # Optional metadata that can be inferred or specified
     granularity: Literal["state", "segment", "episode", "entire"] = "episode"

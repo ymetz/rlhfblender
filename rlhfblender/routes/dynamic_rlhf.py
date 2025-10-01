@@ -64,6 +64,7 @@ def save_trajectories_to_data_dir(
         "rewards": [],
         "dones": [],
         "infos": [],
+        "states": [],
         "probs": [],
         "renders": [],
         "uncertainty": [],  # Add uncertainty buffer
@@ -79,7 +80,7 @@ def save_trajectories_to_data_dir(
         # Extract components from trajectory
         for step_idx, step_data in enumerate(trajectory):
             if len(step_data) == 6:
-                obs, action, reward, done, uncertainty, render = step_data
+                obs, action, reward, done, uncertainty, render, save_state = step_data
             else:
                 # Fallback for trajectory without render data
                 obs, action, reward, done, uncertainty = step_data
@@ -90,6 +91,7 @@ def save_trajectories_to_data_dir(
             buffers["rewards"].append(reward)
             buffers["dones"].append(is_last_step or done)  # Use is_last_step for last step
             buffers["uncertainty"].append(uncertainty)  # Add uncertainty data
+            buffers["env_states"].append(save_state)
 
             # Create info with basic information including uncertainty
             info = {"timestep": step_idx, "episode_id": episode_idx}
@@ -128,6 +130,7 @@ def save_trajectories_to_data_dir(
             probs=buffers["probs"],
             renders=buffers["renders"],
             uncertainty=buffers["uncertainty"],
+            env_states=buffers["env_states"],
             episode_rewards=np.array(episode_rewards),
             episode_lengths=np.array(episode_lengths),
             additional_metrics={},
@@ -376,11 +379,21 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
 
                 # Use the first available reward model (for separate models) or the unified model
                 reward_model_path = None
+                reward_model_type = "separate"
                 if "unified" in saved_models:
                     reward_model_path = saved_models["unified"]
+                    if reward_model_path:
+                        basename = os.path.basename(reward_model_path).lower()
+                        if "_unified_" in basename:
+                            reward_model_type = "unified"
+                        elif "multi-head" in basename or "multi_head" in basename:
+                            reward_model_type = "multi-head"
+                        else:
+                            reward_model_type = "unified"
                 elif saved_models:
                     # Take the first available model for separate models
                     reward_model_path = list(saved_models.values())[0]
+                    reward_model_type = "separate"
 
                 print(f"Checking required files for prediction:")
                 print(
@@ -407,13 +420,21 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
                         reward_model_path,
                         "--output-dir",
                         "data/saved_projections",
+                        "--policy-algorithm",
+                        exp.algorithm.lower(),
                         "--policy-model",
                         saved_agent,
                         "--projection-data",
                         projection_file,
                         "--episode-path",
                         episode_path,
+                        "--reward-model-type",
+                        reward_model_type,
                     ]
+
+                    state_file_path = session.get("last_saved_state")
+                    if state_file_path and os.path.exists(state_file_path):
+                        prediction_cmd.extend(["--state-file", state_file_path])
 
                     print(f"Running reward/uncertainty prediction: {' '.join(prediction_cmd)}")
                     prediction_result = subprocess.run(
@@ -464,7 +485,8 @@ async def initialize_dynamic_rlhf_session(
 
     # Create ExperimentManager for proper hyperparameter loading
     exp_manager = ExperimentManager(
-        args=SimpleNamespace(), algo=exp.algorithm.lower(), env_id=exp.env_id, log_folder=f"dynamic_rlhf_models/{session_id}"
+        args=SimpleNamespace(), algo=exp.algorithm.lower(), env_id=exp.env_id, log_folder=f"dynamic_rlhf_models/{session_id}",
+        trained_agent="data/pretrained_policies/rl_model_50000_steps.zip" # optional: path to pretrained policy
     )
 
     # Get hyperparameters and total timesteps from ExperimentManager
@@ -483,7 +505,7 @@ async def initialize_dynamic_rlhf_session(
         env_name=exp.env_id,
         env_kwargs=env_kwargs,
         algorithm=exp.algorithm,
-        feedback_types=["evaluative", "comparative", "demonstrative", "corrective"],
+        feedback_types=["evaluative", "comparative", "demonstrative", "corrective", "descriptive"],
         nr_of_iterations=num_iterations,
         n_feedback_per_iteration=10,
         feedback_buffer_size=1000,
@@ -491,9 +513,9 @@ async def initialize_dynamic_rlhf_session(
         reward_training_epochs=10,
         device="cpu",
         num_ensemble_models=2,
-        initial_feedback_count=15,
+        initial_feedback_count=10,
         seed=42,
-        exp_manager=exp_manager,
+        exp_manager=exp_manager
     )
 
     # Load existing models if resuming from a checkpoint
@@ -628,6 +650,8 @@ async def start_dynamic_rlhf_training(request: Request):
                 actual_env_id = clone_exp.env_id
                 actual_env_kwargs = clone_exp.environment_config.get("env_kwargs", {})
 
+                demo_gen_environment_config = clone_exp.demo_gen_environment_config or {}
+
                 # Register new experiment with cloned settings
                 await register_experiment(
                     exp_name=experiment_name,
@@ -637,6 +661,7 @@ async def start_dynamic_rlhf_training(request: Request):
                     algorithm=clone_exp.algorithm,
                     framework=clone_exp.framework,
                     project="RLHF-Blender",
+                    exp_kwargs={"demo_gen_environment_config": demo_gen_environment_config},
                 )
             else:
                 return JSONResponse(

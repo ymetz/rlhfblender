@@ -545,6 +545,7 @@ def make_vec_metaworld_env(
 
     def make_env(rank):
         def _init():
+            print("METAWORLD SEED:", seed, rank)
             env = gym.make("Meta-World/MT1", env_name=env_id, seed=seed, **env_kwargs)
             if seed is not None:
                 env.action_space.seed(seed + rank)

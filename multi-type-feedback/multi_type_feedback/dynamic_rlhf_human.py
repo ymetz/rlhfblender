@@ -152,11 +152,12 @@ class DynamicRLHF:
         seed: int = None,
         wandb_logger: Any = None,
         custom_sb3_logger: Any = None,
-        reward_model_type: str = "separate",  # Options: "separate", "multi-head", "unified"
+        reward_model_type: str = "unified",  # Options: "separate", "multi-head", "unified"
         shared_layer_num: int = 5,
         head_layer_num: int = 1,
         feedback_embedding_dim: int = 32,
         exp_manager: ExperimentManager = None,  # Add ExperimentManager
+        pretrained_policy_path: Optional[str] = None,  # Path to pretrained policy
     ):
         self.oracle = oracle
         self.env_name = env_name
@@ -178,6 +179,8 @@ class DynamicRLHF:
         self.wandb_logger = wandb_logger
         self.wandb = wandb  # Store reference to wandb module
         self.exp_manager = exp_manager  # Store the experiment manager
+        self.pretrained_policy_path = pretrained_policy_path
+        print("SET PRETRAINED POLICY PATH:", self.pretrained_policy_path)
 
         self.reward_model_type = reward_model_type
         self.shared_layer_num = shared_layer_num
@@ -245,7 +248,6 @@ class DynamicRLHF:
         # (2) Defer RL-steps-per-iteration computation; set placeholders
         self.total_timesteps: Optional[int] = None
         self.rl_steps_per_iteration = rl_steps_per_iteration  # may be None until init
-        
 
         # Perform initial reward model training before initializing RL agent
         # Only if oracle is available (for automatic feedback generation)
@@ -282,6 +284,14 @@ class DynamicRLHF:
                 hyperparams["policy"] = "MlpPolicy"
 
             temp_env = TrainingUtils.setup_environment(self.env_name, self.seed, env_kwargs=self.env_kwargs)
+
+            if self.pretrained_policy_path is not None:
+                print(f"Loading pretrained policy from {self.pretrained_policy_path}")
+                if self.algorithm == "ppo":
+                    model = PPO.load(self.pretrained_policy_path, env=temp_env, device=self.device, **hyperparams)
+                else:
+                    model = SAC.load(self.pretrained_policy_path, env=temp_env, device=self.device, **hyperparams)
+                return model
 
             if self.algorithm == "ppo":
                 return PPO(
@@ -601,6 +611,7 @@ class DynamicRLHF:
 
                 # Compute uncertainty for current state-action pair
                 uncertainty = self._compute_step_uncertainty(obs, action)
+                save_state = env.save_state()["state"]
 
                 next_obs, reward, terminated, truncated, _ = env.step(action)
                 if self.action_one_hot:
@@ -610,10 +621,15 @@ class DynamicRLHF:
                 done = terminated or truncated
 
                 # Very special case for bug in metaworld...comment out for other envs
-                render_img = np.rot90(render_img, k=2)
-                trajectory.append((np.expand_dims(obs, axis=0), action, reward, done, uncertainty, render_img))
-                obs = next_obs
-                render_img = next_render if render else None
+                if render:
+                    render_img = np.rot90(render_img, k=2)
+                    trajectory.append((np.expand_dims(obs, axis=0), action, reward, done, uncertainty, render_img, save_state))
+                    obs = next_obs
+                    render_img = next_render if render else None
+                else:
+                    trajectory.append((np.expand_dims(obs, 0), action, reward, done))
+                    obs = next_obs
+                
 
                 if done:
                     break

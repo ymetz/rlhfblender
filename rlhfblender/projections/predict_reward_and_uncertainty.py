@@ -12,9 +12,10 @@ import argparse
 import asyncio
 import json
 import os
+import pickle
 import time as import_time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -32,6 +33,35 @@ from rlhfblender.data_models.global_models import Experiment
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
+def compute_grouped(tensor: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Group tensor entries spaced ``k`` apart and return their mean/std."""
+
+    if tensor.dim() > 1:
+        flat = tensor.reshape(-1)
+    else:
+        flat = tensor
+
+    if k <= 0:
+        return flat.new_empty(0), flat.new_empty(0)
+
+    total = flat.shape[0]
+    if total == 0:
+        return flat.new_empty(0), flat.new_empty(0)
+
+    if total % k != 0:
+        k = max(1, k)
+        n_inputs = total // k
+        flat = flat[: n_inputs * k]
+    else:
+        n_inputs = total // k
+
+    if n_inputs == 0:
+        return torch.empty(0, device=tensor.device), torch.empty(0, device=tensor.device)
+
+    grouped = flat.view(k, n_inputs).transpose(0, 1)
+    return grouped.mean(dim=1), grouped.std(dim=1)
+
+
 class RewardUncertaintyPredictor:
     """Class for predicting rewards and uncertainty with a reward model"""
 
@@ -41,6 +71,8 @@ class RewardUncertaintyPredictor:
         policy_model_path: Optional[str] = None,
         policy_algorithm: Optional[str] = "ppo",
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        reward_model_type: str = "separate",
+        state_file: Optional[str] = None,
     ):
         self.reward_model_path = reward_model_path
         self.policy_model_path = policy_model_path
@@ -48,6 +80,14 @@ class RewardUncertaintyPredictor:
         self.reward_model = None
         self.policy_model = None
         self.policy_algorithm = policy_algorithm
+
+        self.reward_model_type = reward_model_type
+        self.feedback_types: List[str] = []
+        self.feedback_buffers: Dict[str, list] = {}
+        self.reward_stats_by_type: Dict[str, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+
+        if state_file:
+            self._load_session_state(state_file)
 
         # Load reward model
         self._load_reward_model()
@@ -73,11 +113,55 @@ class RewardUncertaintyPredictor:
                 self.reward_model = SingleNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
             except Exception:
                 # Finally try unified network
-                from multi_type_feedback.unified_network import UnifiedNetwork
+                from multi_type_feedback.unified_networks import UnifiedNetwork
 
                 self.reward_model = UnifiedNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
 
         self.reward_model.eval()
+        if not self.feedback_types:
+            self.feedback_types = [ 
+                "evaluative",
+                "comparative",
+                "demonstrative",
+                "descriptive",
+                "corrective",
+            ]
+
+    def _load_session_state(self, state_file: str) -> None:
+        """Load optional DynamicRLHF session state for metadata/stats."""
+
+        try:
+            with open(state_file, "rb") as handle:
+                state_data = pickle.load(handle)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            print(f"Warning: unable to load session state from {state_file}: {exc}")
+            return
+
+        feedback_types = state_data.get("feedback_types")
+        if isinstance(feedback_types, list):
+            self.feedback_types = feedback_types
+
+        buffers = state_data.get("feedback_buffers")
+        if isinstance(buffers, dict):
+            self.feedback_buffers = buffers
+
+        reward_mean = state_data.get("reward_mean")
+        reward_counters = state_data.get("reward_counters")
+        sq_dist = state_data.get("squared_distance_from_mean")
+
+        if (
+            reward_mean is not None
+            and reward_counters is not None
+            and sq_dist is not None
+            and isinstance(reward_mean, np.ndarray)
+        ):
+            base_types = feedback_types if isinstance(feedback_types, list) else []
+            if base_types and len(reward_mean) == len(base_types):
+                for idx, fb_type in enumerate(base_types):
+                    mean_tensor = torch.as_tensor(reward_mean[idx], device=self.device, dtype=torch.float32)
+                    count_tensor = torch.as_tensor(reward_counters[idx], device=self.device, dtype=torch.float32)
+                    sq_tensor = torch.as_tensor(sq_dist[idx], device=self.device, dtype=torch.float32)
+                    self.reward_stats_by_type[fb_type] = (mean_tensor, count_tensor, sq_tensor)
         print("Successfully loaded reward model")
 
     def _fix_checkpoint_version(self):
@@ -197,33 +281,210 @@ class RewardUncertaintyPredictor:
             if len(action_tensor.shape) == 2:  # (batch_size, action_dim)
                 action_tensor = action_tensor.unsqueeze(1)
 
-            # Get predictions
-            if hasattr(self.reward_model, "ensemble_count") and self.reward_model.ensemble_count > 1:
+            # Unified reward models require combining predictions across feedback types
+            if self.reward_model_type == "unified" and hasattr(self.reward_model, "feedback_type_map"):
+                return self._predict_unified(obs_tensor, action_tensor)
+            if self.reward_model_type == "multi-head":
+                return self._predict_multi_head(obs_tensor, action_tensor)
 
-                # determine shape for tiling: ensemble count, then ones for following dimensions
-                obs_tile_shape = (self.reward_model.ensemble_count,) + (1,) * (len(obs_tensor.shape) - 1)
-                obs_tensor = torch.tile(obs_tensor, obs_tile_shape)
+            ensemble_count = getattr(self.reward_model, "ensemble_count", 1)
+            if ensemble_count > 1:
+                obs_tile_shape = (ensemble_count,) + (1,) * (len(obs_tensor.shape) - 1)
+                obs_expanded = torch.tile(obs_tensor, obs_tile_shape)
 
-                action_tile_shape = (self.reward_model.ensemble_count,) + (1,) * (len(action_tensor.shape) - 1)
-                action_tensor = torch.tile(action_tensor, action_tile_shape)
+                action_tile_shape = (ensemble_count,) + (1,) * (len(action_tensor.shape) - 1)
+                action_expanded = torch.tile(action_tensor, action_tile_shape)
 
-                predictions = self.reward_model(obs_tensor, action_tensor)
-
-                # Reshape predictions to get ensemble rewards per sample
-                # Shape: (ensemble_count, batch_size, 1)
-                predictions = predictions.view(self.reward_model.ensemble_count, batch_size, -1)
-
-                # Calculate mean and std across ensemble models
-                mean_rewards = torch.mean(predictions, dim=0).squeeze(-1)
-                uncertainties = torch.std(predictions, dim=0).squeeze(-1)
+                predictions = self.reward_model(obs_expanded, action_expanded)
+                predictions = predictions.view(ensemble_count, batch_size, -1)
+                mean_rewards = predictions.mean(dim=0).squeeze(-1)
+                uncertainties = predictions.std(dim=0).squeeze(-1)
             else:
-                # For single models
                 predictions = self.reward_model(obs_tensor, action_tensor)
                 mean_rewards = predictions.squeeze(-1)
-                # No real uncertainty for non-ensemble models, return zeros
                 uncertainties = torch.zeros_like(mean_rewards)
 
             return mean_rewards.cpu().numpy(), uncertainties.cpu().numpy()
+
+    def _predict_unified(self, obs_tensor: torch.Tensor, action_tensor: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
+        """Aggregate unified-model predictions across feedback types."""
+
+        uni_model = self.reward_model
+        ensemble_count = getattr(uni_model, "ensemble_count", 1)
+        batch_size = obs_tensor.shape[0]
+
+        available_types = []
+        for fb_type in self.feedback_types or list(getattr(uni_model, "feedback_types", [])):
+            buffer = self.feedback_buffers.get(fb_type)
+            if buffer is not None and len(buffer) == 0:
+                continue
+            available_types.append(fb_type)
+
+        if not available_types:
+            available_types = list(getattr(uni_model, "feedback_types", []))
+
+        if not available_types:
+            zeros = torch.zeros(batch_size, device=self.device)
+            return zeros.cpu().numpy(), zeros.cpu().numpy()
+
+        model_rewards: List[torch.Tensor] = []
+        model_uncertainties: List[torch.Tensor] = []
+        stats_meta: List[Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = []
+
+        for fb_type in available_types:
+            if ensemble_count > 1:
+                obs_repeat = obs_tensor.repeat(ensemble_count, *[1] * (len(obs_tensor.shape) - 1))
+                act_repeat = action_tensor.repeat(ensemble_count, *[1] * (len(action_tensor.shape) - 1))
+                preds = uni_model(obs_repeat, act_repeat, fb_type)
+                if preds.dim() == 3 and preds.shape[-1] == 1:
+                    preds = preds.squeeze(-1)
+                mean_r, unc = compute_grouped(preds, ensemble_count)
+            else:
+                preds = uni_model(obs_tensor, action_tensor, fb_type)
+                if preds.dim() == 3 and preds.shape[-1] == 1:
+                    preds = preds.squeeze(-1)
+                if preds.dim() == 2 and preds.shape[1] == 1:
+                    preds = preds.squeeze(-1)
+                mean_r = preds.view(batch_size)
+                unc = torch.zeros_like(mean_r)
+
+            model_rewards.append(mean_r)
+            model_uncertainties.append(unc)
+            stats_meta.append(self.reward_stats_by_type.get(fb_type))
+
+        if not model_rewards:
+            zeros = torch.zeros(batch_size, device=self.device)
+            return zeros.cpu().numpy(), zeros.cpu().numpy()
+
+        stacked_rewards = torch.stack(model_rewards, dim=0)  # (num_types, batch)
+        stacked_uncerts = torch.stack(model_uncertainties, dim=0)
+
+        rewards_for_standardization = stacked_rewards.transpose(0, 1)
+        standardized = self._standardize_rewards(rewards_for_standardization, stats_meta)
+        stacked_rewards = standardized.transpose(0, 1)
+
+        final_rewards = torch.zeros(batch_size, device=self.device, dtype=torch.float32)
+        avg_uncert = torch.zeros(batch_size, device=self.device, dtype=torch.float32)
+
+        for i in range(batch_size):
+            rewards_i = stacked_rewards[:, i]
+            uncert_i = stacked_uncerts[:, i]
+            positive_mask = uncert_i > 0
+            if torch.any(positive_mask):
+                weights = torch.where(positive_mask, 1.0 / torch.clamp(uncert_i, min=1e-8), torch.zeros_like(uncert_i))
+                weight_sum = weights.sum()
+                if weight_sum > 0:
+                    weights = weights / weight_sum
+                    final_rewards[i] = (rewards_i * weights).sum()
+                else:
+                    final_rewards[i] = rewards_i.mean()
+            else:
+                final_rewards[i] = rewards_i.mean()
+            avg_uncert[i] = uncert_i.mean()
+
+        return final_rewards.cpu().numpy(), avg_uncert.cpu().numpy()
+
+    def _predict_multi_head(self, obs_tensor: torch.Tensor, action_tensor: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
+        """Aggregate multi-head model predictions across feedback types."""
+
+        multi_model = self.reward_model
+        ensemble_count = getattr(multi_model, "ensemble_count", 1)
+        batch_size = obs_tensor.shape[0]
+
+        model_rewards: List[torch.Tensor] = []
+        model_uncertainties: List[torch.Tensor] = []
+        stats_meta: List[Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = []
+
+        if ensemble_count > 1:
+            obs_repeat = obs_tensor.repeat(ensemble_count, *[1] * (len(obs_tensor.shape) - 1))
+            act_repeat = action_tensor.repeat(ensemble_count, *[1] * (len(action_tensor.shape) - 1))
+            outputs = multi_model(obs_repeat, act_repeat)
+        else:
+            outputs = multi_model(obs_tensor, action_tensor)
+
+        if not isinstance(outputs, dict):
+            raise ValueError("Expected multi-head reward model to return a dictionary of outputs.")
+
+        available_types = list(outputs.keys())
+
+        for fb_type in available_types:
+            buffer = self.feedback_buffers.get(fb_type)
+            if buffer is not None and len(buffer) == 0:
+                continue
+
+            preds = outputs[fb_type]
+            if preds.dim() == 3 and preds.shape[-1] == 1:
+                preds = preds.squeeze(-1)
+
+            if ensemble_count > 1:
+                mean_r, unc = compute_grouped(preds, ensemble_count)
+            else:
+                if preds.dim() == 2 and preds.shape[1] == 1:
+                    preds = preds.squeeze(-1)
+                mean_r = preds.view(batch_size)
+                unc = torch.zeros_like(mean_r)
+
+            model_rewards.append(mean_r)
+            model_uncertainties.append(unc)
+            stats_meta.append(self.reward_stats_by_type.get(fb_type))
+
+        if not model_rewards:
+            zeros = torch.zeros(batch_size, device=self.device)
+            return zeros.cpu().numpy(), zeros.cpu().numpy()
+
+        stacked_rewards = torch.stack(model_rewards, dim=0)
+        stacked_uncerts = torch.stack(model_uncertainties, dim=0)
+
+        rewards_for_standardization = stacked_rewards.transpose(0, 1)
+        standardized = self._standardize_rewards(rewards_for_standardization, stats_meta)
+        stacked_rewards = standardized.transpose(0, 1)
+
+        final_rewards = torch.zeros(batch_size, device=self.device, dtype=torch.float32)
+        avg_uncert = torch.zeros(batch_size, device=self.device, dtype=torch.float32)
+
+        for i in range(batch_size):
+            rewards_i = stacked_rewards[:, i]
+            uncert_i = stacked_uncerts[:, i]
+            positive_mask = uncert_i > 0
+            if torch.any(positive_mask):
+                weights = torch.where(positive_mask, 1.0 / torch.clamp(uncert_i, min=1e-8), torch.zeros_like(uncert_i))
+                weight_sum = weights.sum()
+                if weight_sum > 0:
+                    weights = weights / weight_sum
+                    final_rewards[i] = (rewards_i * weights).sum()
+                else:
+                    final_rewards[i] = rewards_i.mean()
+            else:
+                final_rewards[i] = rewards_i.mean()
+            avg_uncert[i] = uncert_i.mean()
+
+        return final_rewards.cpu().numpy(), avg_uncert.cpu().numpy()
+
+    def _standardize_rewards(
+        self,
+        rewards: torch.Tensor,
+        stats_meta: List[Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]],
+    ) -> torch.Tensor:
+        """Standardize rewards using stored running statistics when available."""
+
+        if not stats_meta or all(item is None for item in stats_meta):
+            return rewards
+
+        standardized = rewards.clone()
+        for idx, stats in enumerate(stats_meta):
+            if stats is None:
+                continue
+            mean, count, sq = stats
+            count_val = float(count.item()) if isinstance(count, torch.Tensor) else float(count)
+            if count_val <= 1:
+                continue
+            variance_tensor = sq / torch.clamp(count - 1, min=1.0)
+            variance_val = float(variance_tensor.item()) if isinstance(variance_tensor, torch.Tensor) else float(variance_tensor)
+            if variance_val <= 0:
+                continue
+            std = torch.sqrt(torch.as_tensor(variance_val, device=rewards.device, dtype=rewards.dtype))
+            standardized[:, idx] = (rewards[:, idx] - mean) / std
+        return standardized
 
     def predict_for_states(
         self, observations: np.ndarray, actions: Optional[np.ndarray] = None, action_space_size: int = None
@@ -529,6 +790,13 @@ def main():
     # Required arguments
     parser.add_argument("--reward-model", type=str, required=True, help="Path to reward model checkpoint")
     parser.add_argument("--output-dir", type=str, required=True, help="Directory to save predictions")
+    parser.add_argument(
+        "--reward-model-type",
+        type=str,
+        default="separate",
+        choices=["separate", "multi-head", "unified"],
+        help="Type of reward model checkpoint provided",
+    )
 
     # Optional arguments
     parser.add_argument("--policy-model", type=str, default=None, help="Path to policy model (if predicting actions)")
@@ -541,6 +809,7 @@ def main():
     # Input data sources - no longer mutually exclusive
     parser.add_argument("--episode-path", type=str, help="Path to episode NPZ file")
     parser.add_argument("--projection-data", type=str, help="Path to projection (+inverse projection) JSON file")
+    parser.add_argument("--state-file", type=str, help="Optional path to DynamicRLHF state pickle for metadata")
 
     args = parser.parse_args()
 
@@ -550,6 +819,8 @@ def main():
         policy_model_path=args.policy_model,
         policy_algorithm=args.policy_algorithm,
         device=args.device,
+        reward_model_type=args.reward_model_type,
+        state_file=args.state_file,
     )
 
     loop = asyncio.get_event_loop()
