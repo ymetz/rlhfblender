@@ -77,6 +77,7 @@ class EpisodeRecorder:
         self.initial_states = None
         self.reset_obs = None
         self.reset_info = None
+        self.skip_next_step = False
 
     def check_monitor_wrapped(self):
         # Avoid circular import
@@ -92,7 +93,7 @@ class EpisodeRecorder:
         """Runs the agent in the environment and records episodes."""
         self.initialize_environment()
 
-        while (self.episode_counts < self.episode_count_targets).any() and self.total_steps <= self.max_steps:
+        while (self.episode_counts < self.episode_count_targets).any():
             actions = self.agent.act(self.observations)
             additional_outputs = self.collect_agent_outputs(actions)
             self.handle_resets()
@@ -229,9 +230,53 @@ class EpisodeRecorder:
 
                 self.total_steps += 1
 
+                self.truncate_episode_if_needed(i)
+
                 if self.dones[i]:
                     self.handle_episode_end(i)
                     self.reset_environment(i)
+                    if not isinstance(self.env, VecEnv):
+                        self.skip_next_step = True
+
+    def truncate_episode_if_needed(self, i: int):
+        if self.max_steps is None:
+            return
+
+        if self.current_lengths[i] < self.max_steps:
+            return
+
+        if self.dones[i]:
+            return
+
+        self.dones[i] = True
+        self._update_last_done_flag(i)
+
+    def _update_last_done_flag(self, i: int):
+        if not self.buffers["dones"]:
+            return
+
+        last_done = self.buffers["dones"][-1]
+
+        if np.isscalar(last_done):
+            self.buffers["dones"][-1] = True
+            return
+
+        if isinstance(last_done, np.ndarray):
+            if last_done.ndim == 0:
+                self.buffers["dones"][-1] = True
+                return
+            updated = last_done.copy()
+            updated[i] = True
+            self.buffers["dones"][-1] = updated
+            return
+
+        if isinstance(last_done, list):
+            updated = list(last_done)
+            updated[i] = True
+            self.buffers["dones"][-1] = updated
+            return
+
+        self.buffers["dones"][-1] = True
 
     def handle_episode_end(self, i):
         if self.is_monitor_wrapped and "episode" in self.infos[i]:
@@ -292,6 +337,20 @@ class EpisodeRecorder:
 
     def environment_step(self, actions):
         if not isinstance(self.env, VecEnv):
+            if self.skip_next_step:
+                self.skip_next_step = False
+                self.rewards = np.zeros(1)
+                self.dones = np.zeros(1, dtype=bool)
+                info = {}
+                if self.reset_info is not None:
+                    if isinstance(self.reset_info, dict):
+                        if "mission" in self.reset_info:
+                            info["mission"] = self.reset_info["mission"]
+                        if "seed" in self.reset_info:
+                            info["seed"] = self.reset_info["seed"]
+                    self.reset_info = None
+                self.infos = [info]
+                return
             # squeeze for now, as we are not expecting vectorized/batched environments
             self.observations, self.rewards, terminated, truncated, self.infos = self.env.step(actions)
             self.dones = terminated or truncated
@@ -307,6 +366,7 @@ class EpisodeRecorder:
             self.observations, self.rewards, self.dones, self.infos = self.env.step(actions)
 
     def finalize_buffers(self):
+        print(len(self.buffers["obs"]), len(self.buffers["actions"]), len(self.buffers["rewards"]))
         if self.render:
             self.buffers["renders"] = np.array(self.buffers["renders"])
         else:
@@ -358,6 +418,7 @@ class EpisodeRecorder:
         )
 
         os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
+        print("[INFO] Saving episodes to", self.save_path + ".npz")
         with open(os.path.join(self.save_path + ".npz"), "wb") as f:
             np.savez(
                 f,

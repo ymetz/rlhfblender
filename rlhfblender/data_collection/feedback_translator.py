@@ -127,6 +127,8 @@ class FeedbackTranslator:
         # Map to new feedback type
         new_feedback_type = self._map_feedback_type(feedback.feedback_type)
 
+        print("FEEDBACK:", feedback)
+
         # Handle each feedback type
         if feedback.feedback_type == FeedbackType.rating:
             targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []

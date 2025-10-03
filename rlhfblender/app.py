@@ -53,6 +53,7 @@ app.include_router(demo_generation.router)
 app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_files")), name="files")
 app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")
 app.mount("/logs", StaticFiles(directory="logs"), name="logs")
+app.mount("/datafiles", StaticFiles(directory="data"), name="datafiles")
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 

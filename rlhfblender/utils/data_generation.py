@@ -238,7 +238,7 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
             agent=agent,
             env=benchmark_env,
             n_eval_episodes=benchmark_run["n_episodes"],
-            max_steps=int(2e4),
+            max_steps=benchmark_run.get("max_steps", int(2e4)),
             save_path=os.path.join("data", "saved_benchmarks", save_file_name),
             overwrite=True,
             render=True,

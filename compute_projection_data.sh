@@ -69,6 +69,7 @@ echo "========================================================="
 
 echo "Compute joint observation and state projection for experiment: $EXPERIMENT_NAME"
 
+: '
 python rlhfblender/generate_data.py \
   --exp "$EXPERIMENT_NAME" \
   --env "$ENV_NAME" \
@@ -78,14 +79,14 @@ python rlhfblender/generate_data.py \
   --additional-gym-packages "$ADDITIONAL_GYM_PACKAGES" \
   --env-kwargs camera_name:corner
 
+
 python scripts/compute_joint_obs_state_projection.py \
   --experiment-name "$EXPERIMENT_NAME" \
   --checkpoints "${CHECKPOINTS[@]}" \
   --projection-method "$PROJECTION_METHOD" \
   --additional-gym-packages "$ADDITIONAL_GYM_PACKAGES" \
-  --max-trajectories 50 \
-  --max-steps 100 \
-  --state-epochs 20
+  --state-epochs 500
+'
   
 echo "Generated joint projections for experiment: $EXPERIMENT_NAME"
 echo "========================================================="

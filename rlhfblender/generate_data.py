@@ -185,6 +185,7 @@ if __name__ == "__main__":
                 "project": args.project,
                 "framework": "random" if use_random_policy else args.framework,
                 "consistent_start_state": args.consistent_start_state,
+                "max_steps": 200,
             }
         )
 

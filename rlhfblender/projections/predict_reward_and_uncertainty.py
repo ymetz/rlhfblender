@@ -119,11 +119,12 @@ class RewardUncertaintyPredictor:
 
         self.reward_model.eval()
         if not self.feedback_types:
-            self.feedback_types = [ 
-                "evaluative",
+            self.feedback_types = [ "evaluative",
                 "comparative",
                 "demonstrative",
                 "descriptive",
+                "cluster_rating",
+                "descriptive_preference",
                 "corrective",
             ]
 

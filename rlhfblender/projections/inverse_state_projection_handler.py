@@ -439,7 +439,7 @@ def collect_states_from_multiple_checkpoints(
     environment_name: str,
     environment_config: Dict[str, Any] = None,
     max_trajectories_per_checkpoint: int = 50,
-    max_steps_per_trajectory: int = 200,
+    max_steps_per_trajectory: int = 500,
     additional_gym_packages: List[str] = [],
 ) -> Tuple[List[Dict[str, np.ndarray]], np.ndarray, List[int]]:
     """

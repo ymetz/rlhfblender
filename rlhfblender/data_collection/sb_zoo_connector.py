@@ -84,7 +84,7 @@ class StableBaselines3Agent(TrainedAgent):
 
         out_dict = {}
         obs_to_tensor = self.model.policy.obs_to_tensor(observation)[0]
-        if "log_probs" in output_list:
+        """if "log_probs" in output_list:
             if isinstance(self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy) and isinstance(
                 self.model.policy.action_dist,
                 stable_baselines3.common.distributions.CategoricalDistribution,
@@ -94,8 +94,9 @@ class StableBaselines3Agent(TrainedAgent):
                 )
             else:
                 out_dict["log_prob"] = np.array([0.0])
-        if "feature_extractor_output" in output_list:
-            out_dict["feature_extractor_output"] = self.model.policy.extract_features(obs_to_tensor).detach().cpu().numpy()
+        """
+        #if "feature_extractor_output" in output_list:
+        #    out_dict["feature_extractor_output"] = self.model.policy.extract_features(obs_to_tensor).detach().cpu().numpy()
         if any(v in ["value", "entropy"] for v in output_list):
             if isinstance(self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy):
                 value, _, entropy = self.model.policy.evaluate_actions(
