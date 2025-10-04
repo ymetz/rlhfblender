@@ -15,20 +15,9 @@ long_description = """
 See https://github.com/DLR-RM/rl-baselines3-zoo
 """
 install_requires = [
-    "sb3_contrib>=2.5.0,<3.0",
-    "gymnasium>=1.0.0",
-    "huggingface_sb3>=3.0,<4.0",
-    "tqdm",
-    "rich",
-    "optuna>=3.0",
-    "pyyaml>=5.1",
-    "pytablewriter~=1.2",
 ]
+
 test_requires = [
-    # for MuJoCo envs v4:
-    "mujoco~=2.3",
-    # install parking-env to test HER
-    "highway-env",
 ]
 
 setup(

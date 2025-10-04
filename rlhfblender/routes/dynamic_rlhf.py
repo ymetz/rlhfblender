@@ -613,7 +613,7 @@ async def start_dynamic_rlhf_training(request: Request):
     Only available when SIMULATE_TRAINING=false for actual training.
     """
     # Check if we're in actual training mode (not simulation)
-    simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
+    simulate_training = os.environ.get("SIMULATE_TRAINING", "true").lower() == "true"
     if simulate_training:
         return JSONResponse(
             status_code=403, content={"status": "error", "message": "DynamicRLHF training not available in simulation mode"}
@@ -971,7 +971,7 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Missing experiment_id parameter"})
 
     # Check if we should simulate training
-    simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
+    simulate_training = os.environ.get("SIMULATE_TRAINING", "true").lower() == "true"
 
     if simulate_training:
         # Start simulated training
@@ -1097,7 +1097,7 @@ async def get_training_status(request: Request):
         return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
 
     # Check if we should simulate training
-    simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
+    simulate_training = os.environ.get("SIMULATE_TRAINING", "true").lower() == "true"
 
     if simulate_training:
         simulation_key = f"{session_id}_{phase}"
@@ -1246,7 +1246,7 @@ async def get_training_results(request: Request):
         return JSONResponse(status_code=400, content={"status": "error", "message": "No session id given"})
 
     # Check if we should simulate training
-    simulate_training = os.environ.get("SIMULATE_TRAINING", "false").lower() == "true"
+    simulate_training = os.environ.get("SIMULATE_TRAINING", "true").lower() == "true"
 
     if simulate_training:
         simulation_key = f"{session_id}_{phase}"
