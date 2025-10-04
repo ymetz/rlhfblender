@@ -52,8 +52,6 @@ branch = false
 omit = [
 	"tests/*",
 	"setup.py",
-	"train_baselines/plots/*",
-	"train_baselines/push_to_hub.py",
 	"scripts/*",
 ]
 

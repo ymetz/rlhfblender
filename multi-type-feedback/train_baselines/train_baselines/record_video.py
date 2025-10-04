@@ -4,7 +4,6 @@ import sys
 
 import numpy as np
 import yaml
-from huggingface_sb3 import EnvironmentName
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import VecVideoRecorder
 
@@ -15,6 +14,7 @@ from train_baselines.utils import (
     create_test_env,
     get_model_path,
     get_saved_hyperparams,
+    EnvironmentName
 )
 
 if __name__ == "__main__":

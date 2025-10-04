@@ -5,9 +5,7 @@ import shutil
 import subprocess
 from copy import deepcopy
 
-from huggingface_sb3 import EnvironmentName
-
-from train_baselines.utils import ALGOS, get_latest_run_id
+from train_baselines.utils import ALGOS, get_latest_run_id, EnvironmentName
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
