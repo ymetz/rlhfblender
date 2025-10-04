@@ -15,7 +15,7 @@ import optuna
 import torch as th
 import yaml
 from gymnasium import spaces
-from huggingface_sb3 import EnvironmentName
+from train_baselines.utils import EnvironmentName
 from imitation.rewards.reward_wrapper import RewardVecEnvWrapper
 from multi_type_feedback.utils import RewardFn
 from optuna.pruners import BasePruner, MedianPruner, NopPruner, SuccessiveHalvingPruner

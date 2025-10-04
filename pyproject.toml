@@ -55,7 +55,6 @@ omit = [
 	"tests/*",
 	"setup.py",
 	"rl_zoo3/plots/*",
-	"rl_zoo3/push_to_hub.py",
 	"scripts/*",
 ]
 

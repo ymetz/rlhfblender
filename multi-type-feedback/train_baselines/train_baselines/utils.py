@@ -11,8 +11,6 @@ import torch as th  # noqa: F401
 import yaml
 from gymnasium import spaces
 from gymnasium.wrappers import TimeLimit
-from huggingface_hub import HfApi
-from huggingface_sb3 import EnvironmentName, ModelName
 from sb3_contrib import ARS, QRDQN, TQC, TRPO, RecurrentPPO
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.base_class import BaseAlgorithm
@@ -51,6 +49,57 @@ ALGOS: Dict[str, Type[BaseAlgorithm]] = {
 def flatten_dict_observations(env: gym.Env) -> gym.Env:
     assert isinstance(env.observation_space, spaces.Dict)
     return gym.wrappers.FlattenObservation(env)
+
+
+class EnvironmentName(str):
+    """
+    A name of an environment. Slashes are replaced by dashes so the name can be used
+    for construction file paths and URLs without accidentally introducing hierarchy.
+    """
+
+    def __new__(cls, gym_id: str):
+        normalized_str = gym_id.replace("/", "-")
+        if ":" in normalized_str:
+            split_by_colon = normalized_str.split(":")
+            if len(split_by_colon) == 2:
+                # split by colon and take the first part
+                normalized_str = split_by_colon[1]
+            else:
+                raise ValueError(
+                    f"Environment name {gym_id} contains more than one colon!"
+                )
+        normalized_name = super().__new__(cls, normalized_str)
+        normalized_name._gym_id = gym_id
+        return normalized_name
+
+    @property
+    def gym_id(self):
+        """
+        The gym id corresponding to the environment name.
+
+        This is the value to be passed to `gym.make`
+        """
+        return self._gym_id
+
+
+class ModelName(str):
+    """
+    A name of a model. Derived from the used algorithm and the environment that has been
+    trained on. Since a normalized environment name is used, it is safe to construct
+    file paths and URLs from the model name.
+    """
+
+    def __new__(cls, algo_name: str, environment_name: EnvironmentName):
+        return super().__new__(cls, f"{algo_name}-{environment_name}")
+
+    @property
+    def filename(self):
+        """
+        The filename under which the model is stored
+
+        when saving it using `model.save(model_name)`
+        """
+        return f"{self}.zip"
 
 
 def get_wrapper_class(hyperparams: Dict[str, Any], key: str = "env_wrapper") -> Optional[Callable[[gym.Env], gym.Env]]:
@@ -326,47 +375,6 @@ def get_trained_models(log_folder: str) -> Dict[str, Tuple[str, str]]:
             model_name = ModelName(algo, EnvironmentName(env_id))
             trained_models[model_name] = (algo, env_id)
     return trained_models
-
-
-def get_hf_trained_models(organization: str = "sb3", check_filename: bool = False) -> Dict[str, Tuple[str, str]]:
-    """
-    Get pretrained models,
-    available on the Hugginface hub for a given organization.
-
-    :param organization: Huggingface organization
-        Stable-Baselines (SB3) one is the default.
-    :param check_filename: Perform additional check per model
-        to be sure they match the RL Zoo convention.
-        (this will slow down things as it requires one API call per model)
-    :return: Dict representing the trained agents
-    """
-    api = HfApi()
-    models = api.list_models(author=organization, cardData=True)
-
-    trained_models = {}
-    for model in models:
-        # Try to extract algorithm and environment id from model card
-        try:
-            env_id = model.cardData["model-index"][0]["results"][0]["dataset"]["name"]
-            algo = model.cardData["model-index"][0]["name"].lower()
-            # RecurrentPPO alias is "ppo_lstm" in the rl zoo
-            if algo == "recurrentppo":
-                algo = "ppo_lstm"
-        except (KeyError, IndexError):
-            print(f"Skipping {model.modelId}")
-            continue  # skip model if name env id or algo name could not be found
-
-        env_name = EnvironmentName(env_id)
-        model_name = ModelName(algo, env_name)
-
-        # check if there is a model file in the repo
-        if check_filename and not any(f.rfilename == model_name.filename for f in api.model_info(model.modelId).siblings):
-            continue  # skip model if the repo contains no properly named model file
-
-        trained_models[model_name] = (algo, env_id)
-
-    return trained_models
-
 
 def get_latest_run_id(log_path: str, env_name: EnvironmentName) -> int:
     """
