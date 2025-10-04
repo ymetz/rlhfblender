@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 import gymnasium as gym
 import numpy as np
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
-from rl_zoo3.utils import get_wrapper_class
+from training_baselines.utils import get_wrapper_class
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,

@@ -6,9 +6,6 @@ from setuptools import setup
 with open(os.path.join("train_baselines", "version.txt")) as file_handler:
     __version__ = file_handler.read().strip()
 
-# Copy hyperparams files for packaging
-shutil.copytree("hyperparams", os.path.join("train_baselines", "hyperparams"))
-
 long_description = """
 # RL Baselines3 Zoo: A Training Framework for Stable Baselines3 Reinforcement Learning Agents
 
@@ -22,12 +19,11 @@ test_requires = [
 
 setup(
     name="train_baselines",
-    packages=["train_baselines", "train_baselines.plots"],
+    packages=["train_baselines"],
     package_data={
         "train_baselines": [
             "py.typed",
             "version.txt",
-            "hyperparams/*.yml",
         ]
     },
     entry_points={"console_scripts": ["train_baselines=train_baselines.cli:main"]},
@@ -60,6 +56,3 @@ setup(
         "Programming Language :: Python :: 3.11",
     ],
 )
-
-# Remove copied files after packaging
-shutil.rmtree(os.path.join("train_baselines", "hyperparams"))

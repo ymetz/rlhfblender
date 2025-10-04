@@ -54,7 +54,6 @@ branch = false
 omit = [
 	"tests/*",
 	"setup.py",
-	"rl_zoo3/plots/*",
 	"scripts/*",
 ]
 
