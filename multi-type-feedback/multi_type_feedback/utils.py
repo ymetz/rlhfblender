@@ -12,7 +12,6 @@ import pytorch_lightning
 import torch
 import wandb
 from gymnasium.wrappers import FrameStackObservation, TransformObservation
-from minigrid.wrappers import FlatObsWrapper
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.atari_wrappers import AtariWrapper
 from stable_baselines3.common.vec_env import (
@@ -27,6 +26,7 @@ from train_baselines.wrappers import Gym3ToGymnasium
 
 try:
     import minigrid
+    from minigrid.wrappers import FlatObsWrapper
 except ImportError:
     print("Cannot import minigrid")
 
