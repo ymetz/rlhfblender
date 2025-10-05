@@ -2,8 +2,9 @@ import hashlib
 import json
 import logging
 import os
+from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from databases import Database
@@ -42,6 +43,74 @@ INVERSE_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 # Create directory for caching results
 CACHE_DIR = Path("data/saved_projections")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _build_projection_hash(env_name: str, experiment_id: int, checkpoint_step: int, projection_method: str) -> str:
+    return f"{process_env_name(env_name)}_{experiment_id}_{checkpoint_step}_{projection_method}"
+
+
+def _load_projection_trajectories(
+    env_name: str,
+    experiment_id: int,
+    checkpoint_step: int,
+    projection_method: str,
+) -> Optional[Dict[str, Any]]:
+    """Load cached projection trajectories for a checkpoint if available."""
+
+    projection_hash = _build_projection_hash(env_name, experiment_id, checkpoint_step, projection_method)
+    projection_path = CACHE_DIR / f"{projection_hash}.npz"
+
+    if not projection_path.exists():
+        logger.warning("Projection cache not found for %s", projection_path)
+        return None
+
+    try:
+        with np.load(projection_path, allow_pickle=True) as data:
+            if "projection_array" not in data or "episode_indices" not in data:
+                logger.warning("Projection cache missing required arrays: %s", projection_path)
+                return None
+
+            projection_array = data["projection_array"]
+            episode_indices = data["episode_indices"]
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to load projection cache %s: %s", projection_path, exc)
+        return None
+
+    if projection_array.shape[0] != episode_indices.shape[0]:
+        logger.warning(
+            "Projection cache shape mismatch for %s: points=%s, indices=%s",
+            projection_path,
+            projection_array.shape,
+            episode_indices.shape,
+        )
+        return None
+
+    trajectories: Dict[int, List[List[float]]] = defaultdict(list)
+    total_points = 0
+
+    for point, idx in zip(projection_array, episode_indices):
+        if point is None:
+            continue
+        try:
+            x, y = float(point[0]), float(point[1])
+        except (TypeError, ValueError):  # pragma: no cover - safeguard against malformed points
+            continue
+        episode_id = int(idx)
+        trajectories[episode_id].append([x, y])
+        total_points += 1
+
+    ordered = [
+        {"episode": episode, "points": pts}
+        for episode, pts in sorted(trajectories.items(), key=lambda item: item[0])
+        if pts
+    ]
+
+    return {
+        "episodes": ordered,
+        "episode_count": len(ordered),
+        "point_count": total_points,
+    }
 
 @router.post("/generate_projection", response_model=dict[str, Any], tags=["PROJECTION"])
 async def generate_projection(
@@ -465,6 +534,199 @@ async def load_grid_projection_image(
     ).tolist()
 
     return image_data
+
+class UncertaintyDifferenceRequest(BaseModel):
+    """Request payload for uncertainty difference computation."""
+
+    benchmark_id: int
+    current_checkpoint_step: int
+    previous_checkpoint_step: int
+    projection_method: str = "UMAP"
+
+@router.post("/load_uncertainty_difference", response_model=Dict[str, Any], tags=["PROJECTION"])
+async def load_uncertainty_difference(
+    request: UncertaintyDifferenceRequest,
+):
+    """Compute the uncertainty difference between two checkpoints along with trajectory overlays."""
+
+    benchmark_id = request.benchmark_id
+    current_checkpoint_step = request.current_checkpoint_step
+    previous_checkpoint_step = request.previous_checkpoint_step
+    projection_method = request.projection_method
+
+    cache_filename = (
+        f"{benchmark_id}_{previous_checkpoint_step}_{current_checkpoint_step}_{projection_method}_uncertainty_diff.json"
+    )
+    cache_path = CACHE_DIR / cache_filename
+
+    if cache_path.exists():
+        try:
+            with cache_path.open("r") as cache_file:
+                cached_payload = json.load(cache_file)
+            return cached_payload
+        except Exception as exc:  # pragma: no cover - best effort cache read
+            logger.warning("Failed to load cached uncertainty difference: %s", exc)
+
+    if previous_checkpoint_step is None:
+        raise HTTPException(status_code=400, detail="previous_checkpoint_step is required")
+
+    if previous_checkpoint_step == current_checkpoint_step:
+        raise HTTPException(status_code=400, detail="Checkpoints must be different to compute a difference")
+
+    # Load experiment metadata and cached prediction data
+    db_experiment = await get_single_entry(database, Experiment, benchmark_id)
+    env_name = process_env_name(db_experiment.env_id)
+
+    try:
+        current_prediction = await load_grid_projection_data(
+            benchmark_id=benchmark_id,
+            checkpoint_step=current_checkpoint_step,
+            projection_method=projection_method,
+        )
+        previous_prediction = await load_grid_projection_data(
+            benchmark_id=benchmark_id,
+            checkpoint_step=previous_checkpoint_step,
+            projection_method=projection_method,
+        )
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code, detail=f"Failed to load projection data: {exc.detail}") from exc
+
+    grid_coords_current = np.asarray(current_prediction.get("grid_coordinates", []), dtype=float)
+    grid_coords_prev = np.asarray(previous_prediction.get("grid_coordinates", []), dtype=float)
+
+    grid_unc_current = np.asarray(current_prediction.get("grid_uncertainties", []), dtype=float)
+    grid_unc_prev = np.asarray(previous_prediction.get("grid_uncertainties", []), dtype=float)
+
+    if grid_unc_current.size == 0 or grid_unc_prev.size == 0:
+        raise HTTPException(status_code=404, detail="Missing grid uncertainty data for one of the checkpoints")
+
+    # Align grid coordinates across checkpoints; fall back to shared coordinates if grids differ
+    if (
+        grid_coords_current.shape == grid_coords_prev.shape
+        and grid_coords_current.size == grid_coords_prev.size
+        and np.allclose(grid_coords_current, grid_coords_prev)
+    ):
+        aligned_coords = grid_coords_current
+        aligned_current = grid_unc_current
+        aligned_previous = grid_unc_prev
+    else:
+        current_map = {tuple(coord): val for coord, val in zip(grid_coords_current, grid_unc_current)}
+        previous_map = {tuple(coord): val for coord, val in zip(grid_coords_prev, grid_unc_prev)}
+        shared_keys = sorted(set(current_map.keys()) & set(previous_map.keys()))
+
+        if not shared_keys:
+            raise HTTPException(status_code=500, detail="No overlapping grid coordinates between checkpoints")
+
+        aligned_coords = np.array(shared_keys, dtype=float)
+        aligned_current = np.array([current_map[key] for key in shared_keys], dtype=float)
+        aligned_previous = np.array([previous_map[key] for key in shared_keys], dtype=float)
+
+    grid_difference = aligned_current - aligned_previous
+    max_abs_diff = float(np.max(np.abs(grid_difference))) if grid_difference.size else 0.0
+
+    if max_abs_diff == 0.0:
+        value_range = (-1e-6, 1e-6)
+    else:
+        value_range = (-max_abs_diff, max_abs_diff)
+
+    global_x_range, global_y_range = load_global_bounds(None, db_experiment.env_id, projection_method)
+
+    def extend_bounds(existing_range: Optional[Tuple[float, float]], values: np.ndarray) -> Optional[Tuple[float, float]]:
+        if values.size == 0:
+            return existing_range
+        min_val = float(np.min(values))
+        max_val = float(np.max(values))
+        if existing_range is None:
+            return (min_val, max_val)
+        return (min(existing_range[0], min_val), max(existing_range[1], max_val))
+
+    original_current = np.asarray(current_prediction.get("original_coordinates", []), dtype=float)
+    original_previous = np.asarray(previous_prediction.get("original_coordinates", []), dtype=float)
+
+    combined_original = None
+    if original_current.size and original_previous.size:
+        combined_original = np.vstack((original_previous, original_current))
+    elif original_current.size:
+        combined_original = original_current
+    elif original_previous.size:
+        combined_original = original_previous
+
+    if combined_original is not None and combined_original.size:
+        global_x_range = extend_bounds(global_x_range, combined_original[:, 0])
+        global_y_range = extend_bounds(global_y_range, combined_original[:, 1])
+
+    diff_image_data = InverseProjectionHandler.precompute_interpolated_surface(
+        grid_coords=aligned_coords,
+        grid_values=grid_difference,
+        resolution=500,
+        global_x_range=global_x_range,
+        global_y_range=global_y_range,
+        cmap="RdBu_r",
+        value_range=value_range,
+    )
+
+    projection_bounds = {
+        "x_min": diff_image_data["x_range"][0],
+        "x_max": diff_image_data["x_range"][1],
+        "y_min": diff_image_data["y_range"][0],
+        "y_max": diff_image_data["y_range"][1],
+    }
+
+    statistics_payload = {
+        "grid": {
+            "min": float(np.min(grid_difference)) if grid_difference.size else 0.0,
+            "max": float(np.max(grid_difference)) if grid_difference.size else 0.0,
+            "mean": float(np.mean(grid_difference)) if grid_difference.size else 0.0,
+            "median": float(np.median(grid_difference)) if grid_difference.size else 0.0,
+            "std": float(np.std(grid_difference)) if grid_difference.size else 0.0,
+            "fraction_decrease": float(np.mean(grid_difference < 0)) if grid_difference.size else 0.0,
+        },
+        "current_mean_uncertainty": float(np.mean(aligned_current)) if aligned_current.size else 0.0,
+        "previous_mean_uncertainty": float(np.mean(aligned_previous)) if aligned_previous.size else 0.0,
+    }
+
+    trajectories_current = _load_projection_trajectories(
+        env_name=db_experiment.env_id,
+        experiment_id=db_experiment.id,
+        checkpoint_step=current_checkpoint_step,
+        projection_method=projection_method,
+    )
+    trajectories_previous = _load_projection_trajectories(
+        env_name=db_experiment.env_id,
+        experiment_id=db_experiment.id,
+        checkpoint_step=previous_checkpoint_step,
+        projection_method=projection_method,
+    )
+
+    response_payload = {
+        "current_checkpoint": current_checkpoint_step,
+        "previous_checkpoint": previous_checkpoint_step,
+        "difference_image": diff_image_data["image"],
+        "projection_bounds": projection_bounds,
+        "difference_range": {
+            "min": float(value_range[0]),
+            "max": float(value_range[1]),
+        },
+        "difference_stats": statistics_payload,
+        "grid": {
+            "coordinates": aligned_coords.tolist(),
+            "difference": grid_difference.tolist(),
+            "current_uncertainty": aligned_current.tolist(),
+            "previous_uncertainty": aligned_previous.tolist(),
+        },
+        "trajectories": {
+            "current": trajectories_current,
+            "previous": trajectories_previous,
+        },
+    }
+
+    try:
+        with cache_path.open("w") as cache_file:
+            json.dump(response_payload, cache_file)
+    except Exception as exc:  # pragma: no cover - cache writes are best effort
+        logger.warning("Failed to cache uncertainty difference: %s", exc)
+
+    return response_payload
 
 
 def generate_cache_key(

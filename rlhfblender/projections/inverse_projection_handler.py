@@ -1,4 +1,5 @@
 import base64
+import math
 import os
 from io import BytesIO
 
@@ -430,6 +431,8 @@ class InverseProjectionHandler:
         mask_radius=None,
         global_x_range=None,
         global_y_range=None,
+        cmap="viridis",
+        value_range=None,
     ):
         """
         Creates an interpolated surface prioritizing original data over grid data.
@@ -507,17 +510,32 @@ class InverseProjectionHandler:
         zi_grid = griddata(points, values, (xi_grid, yi_grid), method="linear")
         zi_grid = gaussian_filter(zi_grid, sigma=1.5)
 
+        # Prepare plotting metadata
+        if value_range is not None:
+            vmin, vmax = value_range
+        else:
+            vmin = float(np.min(values))
+            vmax = float(np.max(values))
+
+        # Guard against degenerate ranges (e.g. uniform values)
+        if math.isclose(vmin, vmax):
+            epsilon = abs(vmin) * 1e-6 + 1e-6
+            vmin -= epsilon
+            vmax += epsilon
+
+        colormap = plt.get_cmap(cmap)
+
         # Create visualization with exact pixel control
         fig = plt.figure(figsize=(1, 1), dpi=resolution)
         ax = fig.add_axes([0, 0, 1, 1])
-        norm = Normalize(vmin=min(values), vmax=max(values))
+        norm = Normalize(vmin=vmin, vmax=vmax)
         # Render as image over the exact extent for consistent alignment
         ax.imshow(
             zi_grid,
             origin="lower",
             extent=[x_min - x_buffer, x_max + x_buffer, y_min - y_buffer, y_max + y_buffer],
             interpolation="bilinear",
-            cmap="viridis",
+            cmap=colormap,
             norm=norm,
             aspect="auto",
         )
