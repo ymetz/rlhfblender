@@ -91,8 +91,8 @@ def _find_joint_projection_metadata(
         return max(globs, key=lambda p: p.stat().st_mtime) if globs else None
 
     def _find_meta(method: str) -> Optional[Path]:
-        pattern_state = f"{env_component}_{exp_component}_joint_obs_state_{method}_*_metadata.json"
-        pattern_joint = f"{env_component}_{exp_component}_joint_{method}_*_metadata.json"
+        pattern_state = f"{env_component}_{exp_component}_joint_obs_state_{method}_0_*_metadata.json"
+        pattern_joint = f"{env_component}_{exp_component}_joint_{method}_0_*_metadata.json"
         candidates: list[Path] = []
         if joint_state_dir.exists():
             candidates.extend(joint_state_dir.glob(pattern_state))
