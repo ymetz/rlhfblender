@@ -6,6 +6,7 @@ import time
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
 
 import httpx
 
@@ -62,28 +63,91 @@ def _build_projection_output_dir(environment_id: str, experiment_id: Optional[in
     return output_dir
 
 
-def _find_joint_projection_metadata(environment_id: str, experiment_id: Optional[int], projection_method: str) -> Optional[Path]:
+def _find_joint_projection_metadata(
+    environment_id: str,
+    experiment_id: Optional[int],
+    projection_method: str
+) -> tuple[Optional[Path], Optional[InverseStateProjectionHandler], str, Optional[Path]]:
+    """
+    Find the latest joint projection metadata for the given env/exp and return:
+      (metadata_path, state_handler, effective_method, state_model_path)
+
+    - Searches both saved_projections/joint_obs_state and saved_projections/joint
+    - Falls back to PCA if the requested method is missing
+    - Resolves and loads the inverse state model if available, preferring the path embedded
+      in metadata; if not there, globs for a *_state_model.pkl with matching prefix.
+    """
     if experiment_id is None:
-        return None
+        return None, None, projection_method, None
 
     env_component = _sanitize_component(environment_id)
-    candidates: list[Path] = []
+    exp_component = _sanitize_component(experiment_id)
 
     joint_state_dir = Path("data") / "saved_projections" / "joint_obs_state"
     joint_dir = Path("data") / "saved_projections" / "joint"
 
-    pattern_state = f"{env_component}_{experiment_id}_joint_obs_state_{projection_method}_*_metadata.json"
-    pattern_joint = f"{env_component}_{experiment_id}_joint_{projection_method}_*_metadata.json"
+    def _latest(globs: list[Path]) -> Optional[Path]:
+        globs = [p for p in globs if p.exists()]
+        return max(globs, key=lambda p: p.stat().st_mtime) if globs else None
 
-    if joint_state_dir.exists():
-        candidates.extend(joint_state_dir.glob(pattern_state))
-    if joint_dir.exists():
-        candidates.extend(joint_dir.glob(pattern_joint))
+    def _find_meta(method: str) -> Optional[Path]:
+        pattern_state = f"{env_component}_{exp_component}_joint_obs_state_{method}_*_metadata.json"
+        pattern_joint = f"{env_component}_{exp_component}_joint_{method}_*_metadata.json"
+        candidates: list[Path] = []
+        if joint_state_dir.exists():
+            candidates.extend(joint_state_dir.glob(pattern_state))
+        if joint_dir.exists():
+            candidates.extend(joint_dir.glob(pattern_joint))
+        return _latest(candidates)
 
-    if not candidates:
-        return None
+    # 1) try requested method
+    effective_method = projection_method or "PCA"
+    meta = _find_meta(effective_method)
 
-    return max(candidates, key=lambda path: path.stat().st_mtime)
+    # 2) fallback to PCA if needed
+    if meta is None and effective_method != "PCA":
+        effective_method = "PCA"
+        meta = _find_meta(effective_method)
+
+    # Early out if still nothing
+    if meta is None:
+        return None, None, effective_method, None
+
+    # 3) try to resolve a state model path
+    state_model_path: Optional[Path] = None
+    try:
+        with meta.open("r", encoding="utf-8") as f:
+            md = json.load(f)
+        if "state_model_path" in md and md["state_model_path"]:
+            cand = Path(md["state_model_path"])
+            if cand.exists():
+                state_model_path = cand
+    except Exception:
+        pass
+
+    # 4) if metadata didn't have it (or file is missing), glob a sensible fallback
+    if state_model_path is None:
+        # canonical prefix used across the codebase
+        patt_state_model = (
+            f"{env_component}_{exp_component}_joint_obs_state_{effective_method}_*_state_model.pkl"
+        )
+        candidates: list[Path] = []
+        if joint_state_dir.exists():
+            candidates.extend(joint_state_dir.glob(patt_state_model))
+        state_model_path = _latest(candidates)
+
+    # 5) create handler if we found a model
+    state_handler: Optional[InverseStateProjectionHandler] = None
+    if state_model_path and state_model_path.exists():
+        try:
+            state_handler = InverseStateProjectionHandler()
+            state_handler.load_model(str(state_model_path))
+        except Exception as e:
+            print(f"Warning: failed to load inverse state model: {e}")
+            state_handler = None
+
+    return meta, state_handler, effective_method, state_model_path
+
 
 
 def _load_npz_arrays(npz_path: Path) -> Dict[str, np.ndarray]:
@@ -195,30 +259,24 @@ def _prepare_demo_artifacts(
     )
     projection_props = projection_props_override or track.projection_props
 
-    joint_metadata_path = _find_joint_projection_metadata(track.environment_id, track.experiment_id, projection_method)
+    meta_path, _, projection_method, _ = _find_joint_projection_metadata(
+        track.environment_id, track.experiment_id, projection_method
+    )
+
     joint_metadata: Dict[str, Any] = {}
-
-    if joint_metadata_path is None and projection_method != "PCA":
-        fallback = _find_joint_projection_metadata(track.environment_id, track.experiment_id, "PCA")
-        if fallback:
-            joint_metadata_path = fallback
-            projection_method = "PCA"
-
-    if joint_metadata_path and joint_metadata_path.exists():
-        with joint_metadata_path.open("r", encoding="utf-8") as joint_file:
+    if meta_path and meta_path.exists():
+        with meta_path.open("r", encoding="utf-8") as joint_file:
             joint_metadata = json.load(joint_file)
             if projection_props is None:
                 projection_props = joint_metadata.get("projection_props")
-    else:
-        joint_metadata_path = None
 
     projection_array = np.zeros((0, 2), dtype=np.float32)
-    if joint_metadata_path is not None:
+    if meta_path is not None:
         sequence_length = joint_metadata.get("sequence_length", 1)
         handler = ProjectionHandler(
             projection_method=projection_method,
             projection_props=projection_props,
-            joint_projection_path=str(joint_metadata_path),
+            joint_projection_path=str(meta_path),
         )
         try:
             projection_raw = handler.fit(
@@ -230,9 +288,10 @@ def _prepare_demo_artifacts(
                 suffix=f"user_demo_{track.session_id}",
             )
             projection_array = np.array(projection_raw, dtype=np.float32)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"Failed to project demo {demo_path.name}: {exc}")
             projection_array = np.zeros((0, 2), dtype=np.float32)
+
 
     # Fallback: if we could not load a joint projection, generate a fresh 2D projection directly
     if (projection_array.size == 0 or projection_array.shape[0] != obs_array.shape[0]) and obs_array.size > 0:
@@ -265,7 +324,7 @@ def _prepare_demo_artifacts(
         "metadata_file": str(metadata_path) if metadata_path.exists() else None,
         "projection_file": str(projection_json_path),
         "projection_method": projection_method,
-        "joint_metadata_path": str(joint_metadata_path) if joint_metadata_path else None,
+        "joint_metadata_path": str(meta_path) if meta_path else None,
         "projection": projection_array.tolist(),
         "actions": actions.tolist(),
         "rewards": rewards.tolist(),
@@ -282,6 +341,7 @@ def _prepare_demo_artifacts(
         json.dump(payload, proj_file, indent=2)
 
     return payload
+
 async def create_expiring_turn_credential() -> Dict[str, Any]:
     """
     Create expiring TURN credentials using the Metered API.
@@ -621,26 +681,17 @@ async def gym_offer(request: Request):
         initial_state = None
         if coordinate:
             try:
-                import numpy as np
+                meta_path, state_handler, method, model_path = _find_joint_projection_metadata(
+                    environment_id, experiment_id, projection_method or "PCA"
+                )
+                if not state_handler:
+                    raise HTTPException(404, detail="No inverse state projection model found for this experiment/environment")
 
-                from rlhfblender.projections.inverse_state_projection_handler import InverseStateProjectionHandler
+                print(f"Loading state from coordinate {coordinate} using model {model_path}")
+                predicted_states = state_handler.predict(np.array([coordinate], dtype=np.float32))
 
-                # Construct state model path from experiment info
-                # Use the experiment's checkpoint list to get the min/max checkpoints
-                checkpoint_list = exp.checkpoint_list if hasattr(exp, "checkpoint_list") and exp.checkpoint_list else []
-
-                min_checkpoint = min(checkpoint_list, key=int) if checkpoint_list else None
-                max_checkpoint = max(checkpoint_list, key=int) if checkpoint_list else None
-                state_model_path = f"data/saved_projections/joint_obs_state/{environment_id}_{experiment_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
-
-                print(f"Loading state from coordinate {coordinate} using model {state_model_path}")
-                handler = InverseStateProjectionHandler()
-                handler.load_model(state_model_path)
-
-                # Predict state from coordinate
-                predicted_states = handler.predict(np.array([coordinate]))
                 initial_state = predicted_states[0]
-                print("Successfully predicted initial state from coordinate")
+                print("Successfullxwxy predicted initial state from coordinate")
 
             except Exception as e:
                 print(f"Failed to load initial state from coordinate: {e}")
@@ -886,25 +937,21 @@ async def coordinate_to_render(request: Request):
         if db_env is None:
             raise HTTPException(status_code=404, detail=f"Environment {env_id} not found")
 
-        # Construct paths from experiment info
-        checkpoint_list = exp.checkpoint_list if hasattr(exp, "checkpoint_list") and exp.checkpoint_list else []
-        min_checkpoint = min(checkpoint_list, key=int) if checkpoint_list else None
-        max_checkpoint = max(checkpoint_list, key=int) if checkpoint_list else None
-        state_model_path = f"data/saved_projections/joint_obs_state/{env_id}_{exp_id}_joint_obs_state_PCA_{min_checkpoint}_{max_checkpoint}_state_model.pkl"
+        meta_path, state_handler, method, model_path = _find_joint_projection_metadata(
+            env_id, exp_id, "PCA"
+        )
+        if not state_handler:
+            raise HTTPException(status_code=404, detail="No inverse state projection model found")
 
-
-        # Load inverse state projection model directly
-        state_handler = InverseStateProjectionHandler()
-        state_handler.load_model(state_model_path)
-
-        # Predict states from coordinates
-        predicted_states = state_handler.predict(coordinates)
+        predicted_states = state_handler.predict(coordinates.astype(np.float32))
 
         if not predicted_states:
             raise HTTPException(status_code=500, detail="Failed to predict states from coordinates")
 
         # Use the first predicted state
         target_state = predicted_states[0]
+
+        print(f"Predicted state from coordinates {coordinates.tolist()}: {target_state}")
 
         # Create render from state using helper function
         try:
@@ -976,6 +1023,8 @@ async def initialize_demo_from_coordinate(request: Request):
         state_handler = InverseStateProjectionHandler()
         state_handler.load_model(projection_handler.state_model_path)
         predicted_states = state_handler.predict(coordinates)
+
+        print("PREDICTED STATES:", predicted_states)
 
         if not predicted_states:
             raise HTTPException(status_code=500, detail="Failed to predict states from coordinates")
