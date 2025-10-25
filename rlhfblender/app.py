@@ -326,7 +326,7 @@ async def retrieve_demos():
         for filename in os.listdir(os.path.join("data", "generated_demos")):
             if filename.endswith(".npz"):
                 demos.append(filename)
-        with zipfile.ZipFile("demos.zip", "w") as zip:
+        with zipfile.ZipFile("logs.zip", "w") as zip:
             for log in demos:
                 zip.write(os.path.join("data", "generated_demos", log))
         return FileResponse("demos.zip", media_type="application/zip", filename="demos.zip")

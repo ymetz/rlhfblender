@@ -180,7 +180,6 @@ class DynamicRLHF:
         self.wandb = wandb  # Store reference to wandb module
         self.exp_manager = exp_manager  # Store the experiment manager
         self.pretrained_policy_path = pretrained_policy_path
-        print("SET PRETRAINED POLICY PATH:", self.pretrained_policy_path)
 
         self.reward_model_type = reward_model_type
         self.shared_layer_num = shared_layer_num
@@ -843,7 +842,7 @@ class DynamicRLHF:
             )
 
             # Wrap validation DataLoader with ensemble dataset for proper masksemble batching
-            val_dataset = val_dataloader.dataset
+            """val_dataset = val_dataloader.dataset
             ensemble_val_dataset = EnsembleValidationDataset(val_dataset, self.num_ensemble_models)
             
             # Calculate appropriate batch size for validation
@@ -857,7 +856,7 @@ class DynamicRLHF:
                 shuffle=False,
                 pin_memory=True,
                 drop_last=False,
-            )
+            )"""
 
             # Configure callbacks
             callbacks = [

@@ -257,9 +257,7 @@ def main():
     else:
         sample_path = Path(args.save_folder) / f"random_{args.environment}.pkl"
 
-    environment = TrainingUtils.setup_environment(
-        args.environment, args.seed, env_kwargs=TrainingUtils.parse_env_kwargs(args.environment_kwargs)
-    )
+    environment = TrainingUtils.setup_environment(args.environment, args.seed)
 
     # Load expert models for gamma value
     expert_models = TrainingUtils.load_expert_models(

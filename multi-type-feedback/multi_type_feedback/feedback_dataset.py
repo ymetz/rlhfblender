@@ -1,7 +1,7 @@
 import os
 import pickle
 import random
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import torch
@@ -61,6 +61,117 @@ def discounted_sum_numpy(rewards, gamma):
     return np.sum(rewards * (gamma ** np.arange(len(rewards))))
 
 
+def _chunk_sequence(sequence: List[Tuple], chunk_size: int) -> List[List[Tuple]]:
+    """Split a trajectory into chunks of at most chunk_size elements."""
+    if not sequence or chunk_size <= 0:
+        return [sequence] if sequence else []
+    return [sequence[i : i + chunk_size] for i in range(0, len(sequence), chunk_size)]
+
+
+def _expand_feedback_sequences(
+    feedback_data: Dict,
+    feedback_type: FeedbackType,
+    segment_len: int,
+) -> Dict:
+    """Ensure all trajectory-based feedback operates on segments of length <= segment_len."""
+    if feedback_data is None:
+        return feedback_data
+
+    # Convert to dict copy to avoid mutating callers unexpectedly
+    data = dict(feedback_data)
+
+    if feedback_type == "evaluative":
+        segments = data.get("segments", [])
+        ratings = data.get("ratings", [])
+        opt_gaps = data.get("opt_gaps", [])
+        expanded_segments = []
+        expanded_ratings = []
+        expanded_opt_gaps = []
+
+        for idx, seg in enumerate(segments):
+            chunks = _chunk_sequence(seg, segment_len)
+            rating = ratings[idx] if idx < len(ratings) else 0.0
+            opt_gap = opt_gaps[idx] if idx < len(opt_gaps) else 0.0
+            for chunk in chunks:
+                expanded_segments.append(chunk)
+                expanded_ratings.append(rating)
+                expanded_opt_gaps.append(opt_gap)
+
+        data["segments"] = expanded_segments
+        data["ratings"] = expanded_ratings
+        data["opt_gaps"] = expanded_opt_gaps
+
+    elif feedback_type == "comparative":
+        segments = data.get("segments", [])
+        opt_gaps = data.get("opt_gaps", [])
+        preferences = data.get("preferences", [])
+
+        expanded_segments = []
+        expanded_opt_gaps = []
+        index_mapping: Dict[int, List[int]] = {}
+
+        for idx, seg in enumerate(segments):
+            chunks = _chunk_sequence(seg, segment_len)
+            opt_gap = opt_gaps[idx] if idx < len(opt_gaps) else 0.0
+            new_indices = []
+            for chunk in chunks:
+                new_index = len(expanded_segments)
+                expanded_segments.append(chunk)
+                expanded_opt_gaps.append(opt_gap)
+                new_indices.append(new_index)
+            index_mapping[idx] = new_indices
+
+        expanded_preferences = []
+        for pref_entry in preferences:
+            if len(pref_entry) < 3:
+                continue
+            idx1, idx2, pref_value = pref_entry
+            new_list_1 = index_mapping.get(idx1, [])
+            new_list_2 = index_mapping.get(idx2, [])
+            pair_count = min(len(new_list_1), len(new_list_2))
+            if pair_count == 0:
+                continue
+            if len(new_list_1) != len(new_list_2):
+                print(
+                    f"Warning: Preference segments have mismatched lengths "
+                    f"(idx1={idx1}, idx2={idx2}); truncating to shortest."
+                )
+            for offset in range(pair_count):
+                expanded_preferences.append([new_list_1[offset], new_list_2[offset], pref_value])
+
+        data["segments"] = expanded_segments
+        data["opt_gaps"] = expanded_opt_gaps
+        data["preferences"] = expanded_preferences
+
+    elif feedback_type == "demonstrative":
+        demos = data.get("demos", [])
+        expanded_demos = []
+        for demo in demos:
+            expanded_demos.extend(_chunk_sequence(demo, segment_len))
+        data["demos"] = expanded_demos
+
+    elif feedback_type == "corrective":
+        corrections = data.get("corrections", [])
+        expanded_corrections = []
+
+        for correction in corrections:
+            if not correction or len(correction) < 2:
+                continue
+            ref, corr = correction[0], correction[1]
+            ref_chunks = _chunk_sequence(ref, segment_len)
+            corr_chunks = _chunk_sequence(corr, segment_len)
+            pair_count = min(len(ref_chunks), len(corr_chunks))
+            if pair_count == 0:
+                continue
+            if len(ref_chunks) != len(corr_chunks):
+                print("Warning: Correction segments have different lengths; truncating to shortest.")
+            for offset in range(pair_count):
+                expanded_corrections.append([ref_chunks[offset], corr_chunks[offset]])
+        data["corrections"] = expanded_corrections
+
+    return data
+
+
 class FeedbackDataset(Dataset):
     """PyTorch Dataset for loading the feedback data."""
 
@@ -90,6 +201,8 @@ class FeedbackDataset(Dataset):
         self.preds: List[int] = []
         self.ranks: List[float] = []  # For RT-rank loss
         self.partition_ids: List[int] = []  # For stratification
+
+        feedback_data = _expand_feedback_sequences(feedback_data, feedback_type, segment_len)
 
         if not feedback_data:
             self.targets = torch.empty((0, segment_len if segment_len else 1))
@@ -220,7 +333,7 @@ class FeedbackDataset(Dataset):
                 self.partition_ids = [0] * len(self.targets)
 
         elif feedback_type == "demonstrative":
-            with open(os.path.join("samples", f"random_{env_name}.pkl"), "rb") as random_file:
+            with open(os.path.join("multi-type-feedback", "samples", f"random_{env_name}.pkl"), "rb") as random_file:
                 random_data = pickle.load(random_file)
 
             for demo in feedback_data["demos"]:

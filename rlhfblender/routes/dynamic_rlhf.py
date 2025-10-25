@@ -67,6 +67,7 @@ def save_trajectories_to_data_dir(
         "states": [],
         "probs": [],
         "renders": [],
+        "env_states": [],
         "uncertainty": [],  # Add uncertainty buffer
     }
     episode_rewards = []
@@ -79,7 +80,7 @@ def save_trajectories_to_data_dir(
 
         # Extract components from trajectory
         for step_idx, step_data in enumerate(trajectory):
-            if len(step_data) == 6:
+            if len(step_data) == 7:
                 obs, action, reward, done, uncertainty, render, save_state = step_data
             else:
                 # Fallback for trajectory without render data
@@ -486,7 +487,7 @@ async def initialize_dynamic_rlhf_session(
     # Create ExperimentManager for proper hyperparameter loading
     exp_manager = ExperimentManager(
         args=SimpleNamespace(), algo=exp.algorithm.lower(), env_id=exp.env_id, log_folder=f"dynamic_rlhf_models/{session_id}",
-        trained_agent="data/pretrained_policies/rl_model_50000_steps.zip" # optional: path to pretrained policy
+        #trained_agent="data/pretrained_policies/rl_model_50000_steps.zip" # optional: path to pretrained policy
     )
 
     # Get hyperparameters and total timesteps from ExperimentManager
@@ -512,7 +513,7 @@ async def initialize_dynamic_rlhf_session(
         rl_steps_per_iteration=rl_steps_per_iteration,
         reward_training_epochs=10,
         device="cpu",
-        num_ensemble_models=2,
+        num_ensemble_models=4,
         initial_feedback_count=10,
         seed=42,
         exp_manager=exp_manager

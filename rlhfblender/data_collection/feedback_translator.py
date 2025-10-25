@@ -1,7 +1,6 @@
 # feedback_translator.py
 from typing import Dict, List, Optional
 
-from rlhfblender.data_collection.feedback_dataset_adapter import UnifiedFeedbackDataset
 from rlhfblender.data_models.feedback_models import (
     ClusterRating,
     Correction,
@@ -127,8 +126,6 @@ class FeedbackTranslator:
         # Map to new feedback type
         new_feedback_type = self._map_feedback_type(feedback.feedback_type)
 
-        print("FEEDBACK:", feedback)
-
         # Handle each feedback type
         if feedback.feedback_type == FeedbackType.rating:
             targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
@@ -224,39 +221,3 @@ class FeedbackTranslator:
         self.feedback_buffer = []
 
         return processed_feedback
-
-    def get_unified_dataset(self, n_feedback: int = -1, **dataset_kwargs) -> "UnifiedFeedbackDataset":
-        """
-        Create a UnifiedFeedbackDataset from the current feedback buffer.
-
-        Args:
-            n_feedback: Number of feedback samples to use (-1 for all)
-            **dataset_kwargs: Additional arguments for the dataset
-
-        Returns:
-            UnifiedFeedbackDataset ready for training
-        """
-        # Process the buffer to get final feedback list
-        processed_feedback = self.process()
-
-        return UnifiedFeedbackDataset(
-            feedbacks=processed_feedback, n_feedback=n_feedback, env_name=str(self.env) if self.env else "", **dataset_kwargs
-        )
-
-    @staticmethod
-    def create_unified_dataset_from_processed(
-        processed_feedback: list["StandardizedFeedback"], n_feedback: int = -1, env_name: str = "", **dataset_kwargs
-    ) -> "UnifiedFeedbackDataset":
-        """
-        Create a UnifiedFeedbackDataset from already processed feedback.
-
-        Args:
-            processed_feedback: List of StandardizedFeedback objects
-            n_feedback: Number of feedback samples to use (-1 for all)
-            env_name: Environment name
-            **dataset_kwargs: Additional arguments for the dataset
-
-        Returns:
-            UnifiedFeedbackDataset ready for training
-        """
-        return UnifiedFeedbackDataset(feedbacks=processed_feedback, n_feedback=n_feedback, env_name=env_name, **dataset_kwargs)
