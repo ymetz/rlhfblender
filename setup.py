@@ -33,7 +33,7 @@ setup(
     install_requires=[
         #"gymnasium==1.1.0",
         "stable-baselines3==2.6.0",
-        "mujoco==3.2.3",
+        "mujoco==3.2.6",
         "metaworld==3.0.0",
         "sb3-contrib==2.6.0",
         "fastapi",
@@ -44,7 +44,7 @@ setup(
         "umap-learn",
         f"multi-type-feedback @ {get_abs_path('multi-type-feedback')}",
         "aiortc==1.12.0",
-        "av",
+        "av",  # Note: For macOS, install with: pip install --no-binary av av
         "httpx"
     ],
     extras_require={

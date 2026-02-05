@@ -23,6 +23,9 @@ max-complexity = 15
 [tool.black]
 line-length = 127
 
+[tool.uv.pip]
+only-binary = ["av"]
+
 [tool.mypy]
 ignore_missing_imports = true
 follow_imports = "silent"
