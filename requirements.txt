@@ -11,3 +11,8 @@ matplotlib
 seaborn
 opencv-python-headless
 minigrid
+gspread
+umap-learn
+aiortc
+av
+playwright

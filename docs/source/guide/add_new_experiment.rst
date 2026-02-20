@@ -9,6 +9,7 @@ Generate Data
 ----------------------
 
 To generate data for your experiments and environments, you can use the ``generate_data.py`` script. This script handles both the registration of environments and experiments (if they are not already registered) and the data generation process.
+From the repository root, the equivalent module command is ``python -m rlhfblender.generate_data``.
 
 Usage:
 
@@ -109,6 +110,21 @@ After running the script, the generated data will be available in the data direc
     - ``data/thumbnails``: Contains thumbnail images for each episode.
 
 This data is used by the RLHF-Blender UI to display episode information, rewards, and visualizations.
+
+Dash-driving example
+----------------------
+
+The Dash-driving environment can be registered as a custom Gym environment and benchmarked with:
+
+.. code-block:: bash
+
+    python -m rlhfblender.generate_data \
+        --env dash-driving-v0 \
+        --env-gym-entrypoint rlhfblender.data_collection.dash_driving_gym_env:DashDrivingGymEnv \
+        --random \
+        --num-episodes 10
+
+For active-learning demos/corrections in the UI, ``dash-driving*`` environments use the Dash iframe demo path instead of the WebRTC demo component.
 
 
 Example with All Arguments:
@@ -218,4 +234,3 @@ Running live training and inference
 
 
 Comming soon
-

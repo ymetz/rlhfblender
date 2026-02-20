@@ -4,6 +4,8 @@ Test the API endpoints.
 
 import os
 
+os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,9 +17,6 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
-
-# Set DB environment variable
-os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
 
 
 # wait for app startup
@@ -121,11 +120,11 @@ def test_save_ui_config(client):
     assert response.status_code == 200
 
 
-def test_retreive_logs(client):
-    response = client.get("/retreive_logs")
+def test_retrieve_logs(client):
+    response = client.get("/retrieve_logs")
     assert response.status_code == 200
 
 
-def test_retreive_demos(client):
-    response = client.get("/retreive_demos")
+def test_retrieve_demos(client):
+    response = client.get("/retrieve_demos")
     assert response.status_code == 200

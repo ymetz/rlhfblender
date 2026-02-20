@@ -17,7 +17,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate data for RLHFBlender")
     parser.add_argument("--exp", type=str, help="The experiment name.", default="")
     parser.add_argument("--env", type=str, help="The environment id.", default="", required=True)
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        help="The algorithm used for training. Defaults to None (e.g. when benchmarking with a random model).",
+        default=None,
+    )
     parser.add_argument("--num-episodes", type=int, help="The number of episodes to run.", default=10)
+    parser.add_argument(
+        "--max-steps-per-episode",
+        type=int,
+        help="Maximum number of environment steps per episode during benchmark recording.",
+        default=200,
+    )
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random", action="store_true", help="Use random agent")
@@ -26,7 +38,13 @@ if __name__ == "__main__":
         "--model-base-path", type=str, default="rlhfblender_model", help="Base path to the trained model checkpoints"
     )
 
-    parser.add_argument("--checkpoints", type=str, nargs="+", default=["-1"], help="The checkpoint steps to use.")
+    parser.add_argument(
+        "--checkpoints",
+        type=str,
+        nargs="+",
+        default=["-1"],
+        help="The checkpoint steps to use. Include 0 to also record a random baseline.",
+    )
 
     parser.add_argument(
         "--project",
@@ -87,6 +105,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Only register the environment and experiment, do not generate data.",
     )
+    parser.add_argument(
+        "--consistent-start-state",
+        action="store_true",
+        help="Use the same start state across all checkpoints for consistent comparison.",
+    )
 
     args = parser.parse_args()
 
@@ -102,8 +125,12 @@ if __name__ == "__main__":
             sys.exit(1)
         # turn into dict
         for kwarg in args.env_kwargs:
-            key, value = kwarg.split(":")
-            env_kwargs[key] = value
+            try:
+                key, value = kwarg.split(":")
+                env_kwargs[key] = value
+            except ValueError:
+                print(f"Invalid env_kwargs format: {kwarg}. Expected format is key:value.")
+                sys.exit(1)
 
     # Initialize database
     asyncio.run(init_db())
@@ -115,6 +142,7 @@ if __name__ == "__main__":
             entry_point=args.env_gym_entrypoint,
             display_name=args.env_display_name,
             additional_gym_packages=args.additional_gym_packages,
+            env_kwargs=env_kwargs,
             env_description=args.env_description,
             project=args.project,
             action_names=args.action_names,
@@ -142,25 +170,30 @@ if __name__ == "__main__":
                 env_id=args.env,
                 env_kwargs=env_kwargs,
                 path=model_path,
+                algorithm=args.algorithm.lower() if args.algorithm else None,
                 framework="random" if args.random else args.framework,
                 project=args.project,
             )
         )
 
-    benchmark_dicts = [
-        {
-            "env": args.env,
-            "benchmark_type": "random" if args.random else "trained",
-            "exp": args.exp,
-            "checkpoint_step": checkpoint,
-            "n_episodes": args.num_episodes,
-            "path": model_path,
-            "env_kwargs": env_kwargs,
-            "project": args.project,
-            "framework": "random" if args.random else args.framework,
-        }
-        for checkpoint in checkpoints
-    ]
+    benchmark_dicts = []
+    for checkpoint in checkpoints:
+        use_random_policy = args.random or checkpoint == "0"
+        benchmark_dicts.append(
+            {
+                "env": args.env,
+                "benchmark_type": "random" if use_random_policy else "trained",
+                "exp": args.exp,
+                "checkpoint_step": checkpoint,
+                "n_episodes": args.num_episodes,
+                "path": model_path,
+                "env_kwargs": env_kwargs,
+                "project": args.project,
+                "framework": "random" if use_random_policy else args.framework,
+                "consistent_start_state": args.consistent_start_state,
+                "max_steps": args.max_steps_per_episode,
+            }
+        )
 
     if args.register_only:
         print("Registered environment and experiment. Did not generate data.")

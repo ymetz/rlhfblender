@@ -1,0 +1,38 @@
+{
+  "experiment_name": "Metaworld-With-States",
+  "experiment_id": 1,
+  "env_name": "metaworld-sweep-into-v3",
+  "checkpoints": [
+    0,
+    100000,
+    200000,
+    300000,
+    400000,
+    500000,
+    600000,
+    700000,
+    800000,
+    900000,
+    1000000
+  ],
+  "projection_method": "PCA",
+  "projection_props": {
+    "n_components": 2
+  },
+  "sequence_length": 1,
+  "step_range": "[]",
+  "reproject": false,
+  "append_time": false,
+  "transition_embedding": true,
+  "feature_embedding": true,
+  "handler_path": "data/saved_projections/joint/metaworld-sweep-into-v3_1_joint_PCA_0_1000000_handler.pkl",
+  "results_path": "data/saved_projections/joint/metaworld-sweep-into-v3_1_joint_PCA_0_1000000_results.npz",
+  "global_x_range": [
+    -0.8841402287169327,
+    1.0243403752829279
+  ],
+  "global_y_range": [
+    -1.1009336630796867,
+    0.9094318106976114
+  ]
+}

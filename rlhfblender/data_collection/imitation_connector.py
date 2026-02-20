@@ -8,8 +8,8 @@ from typing import Any
 import gymnasium as gym
 import numpy as np
 import torch as th
-from rl_zoo3.exp_manager import ExperimentManager as exp_manager
 from stable_baselines3.common.utils import set_random_seed
+from train_baselines.exp_manager import ExperimentManager as exp_manager
 
 from rlhfblender.data_handling.database_handler import get_single_entry
 from rlhfblender.data_models import connector

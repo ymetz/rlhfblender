@@ -1,28 +1,24 @@
-"""
-This module translates incoming feedback of different types into a common format.
-"""
+# feedback_translator.py
 
 from rlhfblender.data_models.feedback_models import (
-    AbsoluteFeedback,
-    Actuality,
-    Content,
-    Description,
-    Evaluation,
+    ClusterRating,
+    Correction,
+    Demonstration,
+    Entire,
+    Episode,
+    FeatureSelection,
     FeedbackType,
-    Granularity,
-    Instruction,
-    Intention,
-    Relation,
-    RelativeDescription,
-    RelativeEvaluation,
-    RelativeFeedback,
-    RelativeInstruction,
+    MetaFeedback,
+    Origin,
+    Ranking,
+    Rating,
+    Segment,
+    SimplifiedFeedbackType,
     StandardizedFeedback,
-    StandardizedFeedbackType,
-    Text,
+    State,
+    Target,
+    TextFeedback,
     UnprocessedFeedback,
-    get_granularity,
-    get_target,
 )
 from rlhfblender.data_models.global_models import Environment, Experiment
 from rlhfblender.logger.logger import Logger
@@ -30,192 +26,197 @@ from rlhfblender.logger.logger import Logger
 
 class FeedbackTranslator:
     """
-    This class translates incoming feedback of different types into a common format (StandardizedFeedback).
-
-    : param experiment: The experiment object
-    : param env: The environment object
+    Translates UnprocessedFeedback into the simplified Feedback format.
     """
 
     def __init__(self, experiment: Experiment, env: Environment, logger: Logger = None):
         self.experiment = experiment
         self.env = env
-
-        self.feedback_id = 0
-
         self.logger = logger
-        self.feedback_buffer = []
+        self.feedback_id = 0
+        self.feedback_buffer: list[StandardizedFeedback] = []
 
     def set_translator(self, experiment: Experiment, env: Environment, logger: Logger) -> str:
-        """
-        Sets the experiment and environment for the translator
-        :param experiment: The experiment object
-        :param env: The environment object
-        :return: The logger ID
-        """
+        """Sets the experiment and environment for the translator"""
         self.experiment = experiment
         self.env = env
         self.logger = logger
         self.reset()
+        return "translator_set"
 
     def reset(self) -> None:
-        """
-        Resets the feedback translator
-        :return:
-        """
+        """Resets the feedback translator"""
         self.feedback_id = 0
         self.feedback_buffer = []
 
-    def give_feedback(self, session_id: str, feedback: UnprocessedFeedback) -> StandardizedFeedback:
-        """
-        We get either a single number or a list of numbers as feedback. We need to translate this into a common format
-        called StandardizedFeedback
-        :param session_id: The session ID
-        :param feedback: (UnprocessedFeedback) The feedback
-        :return: (StandardizedFeedback) The standardized feedback
-        """
-        return_feedback = None
+    def _create_target(self, target_dict: dict, granularity: str) -> Target | None:
+        """Create appropriate Target object from dictionary"""
+        if not target_dict:
+            return None
 
+        print("TARGET DICT:", target_dict)
+
+        # Extract reference information (nested dict)
+        reference = target_dict.get("reference", {})
+        if isinstance(reference, dict):
+            # New nested structure
+            ref_kwargs = {
+                "env_name": reference.get("env_name", ""),
+                "benchmark_type": reference.get("benchmark_type", ""),
+                "benchmark_id": reference.get("benchmark_id", -1),
+                "checkpoint_step": reference.get("checkpoint_step", -1),
+                "episode_num": reference.get("episode_num", -1),
+            }
+        else:
+            # Fallback for old string format (if any)
+            ref_kwargs = {
+                "env_name": "",
+                "benchmark_type": "",
+                "benchmark_id": -1,
+                "checkpoint_step": -1,
+                "episode_num": -1,
+            }
+
+        base_kwargs = {
+            "target_id": target_dict.get("target_id", ""),
+            "origin": Origin[target_dict.get("origin", "offline")],
+            "timestamp": target_dict.get("timestamp", -1),
+            "data": target_dict.get("data", None),  # Store actual trajectory data
+            **ref_kwargs,
+        }
+
+        if granularity == "episode":
+            return Episode(**base_kwargs)
+        elif granularity == "state":
+            return State(**base_kwargs, step=target_dict.get("step", -1))
+        elif granularity == "segment":
+            return Segment(**base_kwargs, start=target_dict.get("start", -1), end=target_dict.get("end", -1))
+        elif granularity == "entire":
+            return Entire(**base_kwargs)
+
+        return None
+
+    def _map_feedback_type(self, old_type: FeedbackType) -> SimplifiedFeedbackType:
+        """Map old feedback type to new simplified type"""
+        mapping = {
+            FeedbackType.rating: SimplifiedFeedbackType.rating,
+            FeedbackType.ranking: SimplifiedFeedbackType.ranking,
+            FeedbackType.comparison: SimplifiedFeedbackType.comparison,
+            FeedbackType.correction: SimplifiedFeedbackType.correction,
+            FeedbackType.demonstration: SimplifiedFeedbackType.demonstration,
+            FeedbackType.clusterRating: SimplifiedFeedbackType.cluster_rating,
+            FeedbackType.featureSelection: SimplifiedFeedbackType.feature_selection,
+            FeedbackType.text: SimplifiedFeedbackType.text,
+            FeedbackType.meta: SimplifiedFeedbackType.meta,
+        }
+        return mapping.get(old_type, SimplifiedFeedbackType.text)
+
+    def give_feedback(self, session_id: str, feedback: UnprocessedFeedback) -> StandardizedFeedback:
+        """Convert UnprocessedFeedback to simplified Feedback format"""
+
+        # Base kwargs for all feedback types
+        base_kwargs = {
+            "feedback_id": self.feedback_id,
+            "timestamp": feedback.timestamp,
+            "session_id": session_id,
+            "granularity": feedback.granularity,
+        }
+
+        # Map to new feedback type
+        new_feedback_type = self._map_feedback_type(feedback.feedback_type)
+
+        # Handle each feedback type
         if feedback.feedback_type == FeedbackType.rating:
-            return_feedback = AbsoluteFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.evaluate,
-                    actuality=Actuality.observed,
-                    relation=Relation.absolute,
-                    content=Content.instance,
-                    granularity=get_granularity(feedback.granularity),
-                ),
-                target=get_target(feedback.targets[0], feedback.granularity),
-                content=Evaluation(score=feedback.score),
-            )
-        elif feedback.feedback_type == FeedbackType.ranking:
-            return_feedback = RelativeFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.evaluate,
-                    actuality=Actuality.observed,
-                    relation=Relation.relative,
-                    content=Content.instance,
-                    granularity=Granularity.episode,
-                ),
-                target=[get_target(target, feedback.granularity) for target in feedback.targets],  # is a list in this case
-                content=RelativeEvaluation(preferences=feedback.preferences),
-            )
+            targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
+            content = Rating(score=feedback.score or 0.0)
+
+        elif feedback.feedback_type in [FeedbackType.ranking, FeedbackType.comparison]:
+            targets = [self._create_target(t, feedback.granularity) for t in feedback.targets]
+            content = Ranking(preferences=feedback.preferences or [])
+
         elif feedback.feedback_type == FeedbackType.correction:
-            return_feedback = RelativeFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.instruct,
-                    actuality=Actuality.observed,
-                    relation=Relation.relative,
-                    content=Content.instance,
-                    granularity=Granularity.state,
-                ),
-                target=[get_target(target, feedback.granularity) for target in feedback.targets],  # is a list in this case
-                content=RelativeInstruction(action_preferences=feedback.action_preferences),
-            )
+            targets = [self._create_target(t, feedback.granularity) for t in feedback.targets]
+            content = Correction(action_preferences=feedback.action_preferences or [], path=feedback.correction_path)
+
         elif feedback.feedback_type == FeedbackType.demonstration:
-            return_feedback = AbsoluteFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.instruct,
-                    actuality=Actuality.hypothetical,
-                    relation=Relation.absolute,
-                    content=Content.instance,
-                    granularity=Granularity.state,
-                ),
-                target=get_target(feedback.targets[0], feedback.granularity),
-                content=Instruction(action=[]),  # Content is already in the target (i.e. states and actions)
-            )
+            targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
+            # For demonstrations, the actions are stored in the target data
+            content = Demonstration(actions=[], path=feedback.demonstration_path)
+
         elif feedback.feedback_type == FeedbackType.featureSelection:
-            return_feedback = AbsoluteFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.describe,
-                    actuality=Actuality.observed,
-                    relation=Relation.absolute,
-                    content=Content.instance,
-                    granularity=Granularity.entire,
-                ),
-                target=get_target(feedback.targets[0], feedback.granularity),
-                content=Description(feature_selection=feedback.feature_selection),
-            )
-        elif feedback.feedback_type == FeedbackType.descriptivePreferences:
-            return_feedback = RelativeFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.describe,
-                    actuality=Actuality.observed,
-                    relation=Relation.relative,
-                    content=Content.instance,
-                    granularity=Granularity.entire,
-                ),
-                target=[get_target(target, feedback.granularity) for target in feedback.targets],  # is a list in this case
-                content=RelativeDescription(
-                    feature_selections_preferences=feedback.feature_selections_preferences,
-                    feature_importance_preferences=feedback.feature_importance_preferences,
-                ),
-            )
+            targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
+            content = FeatureSelection(features=feedback.feature_selection or [], importance=feedback.feature_importance)
+
+        elif feedback.feedback_type == FeedbackType.clusterRating:
+            targets = [self._create_target(t, feedback.granularity) for t in feedback.targets]
+            content = ClusterRating(cluster_label=feedback.cluster_label or "Unknown", score=feedback.score or 0.0)
+
         elif feedback.feedback_type == FeedbackType.text:
-            # More comprenhesive logic will follow
-            return_feedback = AbsoluteFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.describe,
-                    actuality=Actuality.observed,
-                    relation=Relation.absolute,
-                    content=Content.instance,
-                    granularity=Granularity.entire,
-                ),
-                target=get_target(feedback.targets[0], feedback.granularity),
-                content=Text(text=feedback.text_feedback),
-            )
+            targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
+            content = TextFeedback(text=feedback.text_feedback or "")
+
         elif feedback.feedback_type == FeedbackType.meta:
-            # Meta Actions such as submit, skip, etc. can also be interpreted as (implicit) feedback
-            return_feedback = AbsoluteFeedback(
-                feedback_id=self.feedback_id,
-                feedback_timestamp=feedback.timestamp,
-                feedback_type=StandardizedFeedbackType(
-                    intention=Intention.none,
-                    actuality=Actuality.observed,
-                    relation=Relation.absolute,
-                    content=Content.meta,
-                    granularity=Granularity.entire,
-                ),
-            )
+            targets = []  # Meta feedback doesn't need targets
+            content = MetaFeedback(action=feedback.meta_action or "")
+
+        else:
+            # Default to text feedback
+            targets = [self._create_target(feedback.targets[0], feedback.granularity)] if feedback.targets else []
+            content = TextFeedback(text=feedback.text_feedback or "")
+
+        # Create the unified feedback object
+        unified_feedback = StandardizedFeedback(
+            **base_kwargs,
+            feedback_type=new_feedback_type,
+            targets=[t for t in targets if t is not None],  # Filter out None targets
+            content=content
+        )
 
         self.feedback_id += 1
 
-        self.logger.log_raw(feedback)
+        # Log the original feedback
+        if self.logger:
+            self.logger.log_raw(feedback)
 
-        self.feedback_buffer.append(return_feedback)
+        # Add to buffer
+        self.feedback_buffer.append(unified_feedback)
 
-    def process(self, session_id: str) -> None:
+        return unified_feedback
+
+    def process(self) -> list[StandardizedFeedback]:
         """
-        Submits the content of the current feedback buffer to the feedback dataset
-        :param session_id: The session ID
-        :return: None
+        Process and deduplicate feedback buffer.
+        Returns the processed feedback list.
         """
-        # De-duplicate feedback in the feedback buffer
-        # If feedback.episode_id and feedback.feedback_type are the same, we can assume that the feedback is the same,
-        # we just want to keep the latest one
-        feedback_dict = {}
+        # De-duplicate feedback in the buffer
+        feedback_dict: dict[tuple, StandardizedFeedback] = {}
+
         for feedback in self.feedback_buffer:
-            if isinstance(feedback, AbsoluteFeedback):
-                feedback_dict[(feedback.target.target_id, feedback.feedback_type)] = feedback
+            # Skip meta feedback from deduplication
+            if feedback.feedback_type == SimplifiedFeedbackType.meta:
+                if self.logger:
+                    self.logger.log(feedback)
+                continue
+
+            # Create deduplication key
+            if feedback.targets:
+                # Use first target's ID and feedback type as key
+                key = (feedback.targets[0].target_id, feedback.feedback_type)
+                feedback_dict[key] = feedback
             else:
-                feedback_dict[(feedback.target[0].target_id, feedback.feedback_type)] = feedback
+                # No targets, use timestamp and type
+                key = (feedback.timestamp, feedback.feedback_type)
+                feedback_dict[key] = feedback
 
-        self.feedback_buffer = list(feedback_dict.values())
+        # Get deduplicated feedback
+        processed_feedback = list(feedback_dict.values())
 
-        for feedback in self.feedback_buffer:
-            self.logger.log(feedback)
+        # Log all processed feedback
+        if self.logger:
+            for feedback in processed_feedback:
+                self.logger.log(feedback)
 
+        # Clear buffer and return processed feedback
         self.feedback_buffer = []
+
+        return processed_feedback

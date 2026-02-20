@@ -16,6 +16,9 @@ from rlhfblender.utils import process_env_name
 # Initialize database
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
+DATA_ROOT_DIR = "data"
+BENCHMARK_DIR = "saved_benchmarks"
+
 
 async def init_db():
     # Make sure all database tables exist
@@ -112,6 +115,7 @@ async def register_env(
 async def register_experiment(
     exp_name: str,
     env_id: str,
+    algorithm: str | None = None,
     env_kwargs: dict | None = None,
     path: str | None = "",
     framework: str = "StableBaselines3",
@@ -128,7 +132,8 @@ async def register_experiment(
             exp_name=exp_name,
             env_id=env_id,
             path=path,
-            environment_config=env_kwargs,
+            algorithm=algorithm.lower() if algorithm else "",
+            environment_config={"env_kwargs": env_kwargs},
             framework=framework,
             **exp_kwargs,
         )
@@ -170,6 +175,7 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
                 exp_name=exp_name,
                 env_id=benchmark_run["env"],
                 path=benchmark_run["path"],
+                algorithm=benchmark_run.get("algorithm", None),
                 framework=benchmark_run.get("framework", "random"),
                 env_kwargs=benchmark_run.get("env_kwargs", {}),
             )
@@ -179,6 +185,8 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
         existing_checkpoints = exp.checkpoint_list if exp.checkpoint_list else []
         if benchmark_run["checkpoint_step"] not in existing_checkpoints:
             existing_checkpoints.append(benchmark_run["checkpoint_step"])
+            # sort the checkpoints
+            existing_checkpoints.sort(key=lambda x: int(x))
             exp.checkpoint_list = existing_checkpoints
             await db_handler.update_entry(
                 database,
@@ -217,17 +225,25 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
             process_env_name(exp.env_id), f"{process_env_name(exp.env_id)}_{exp.id}_{benchmark_run['checkpoint_step']}"
         )
 
+        # Create persistent initial state path if consistent start state is enabled
+        persistent_state_path = None
+        if benchmark_run.get("consistent_start_state", False):
+            persistent_state_path = os.path.join(
+                "data", "initial_states", f"{process_env_name(exp.env_id)}_{exp.id}_initial_state.pkl"
+            )
+
         # Create an instance of EpisodeRecorder with the required parameters
         recorder = EpisodeRecorder(
             agent=agent,
             env=benchmark_env,
             n_eval_episodes=benchmark_run["n_episodes"],
-            max_steps=int(2e4),
+            max_steps=benchmark_run.get("max_steps", int(2e4)),
             save_path=os.path.join("data", "saved_benchmarks", save_file_name),
             overwrite=True,
             render=True,
             deterministic=False,
-            reset_to_initial_state=False,
+            reset_to_initial_state=True,
+            persistent_initial_state_path=persistent_state_path,
         )
 
         # Call the record_episodes method to start recording
@@ -281,9 +297,6 @@ def encode_video(renders: np.ndarray, path: str) -> None:
 
 async def generate_data(benchmark_dicts: list[dict]):
     """Main async method to generate data."""
-    DATA_ROOT_DIR = "data"
-    BENCHMARK_DIR = "saved_benchmarks"
-
     requests = []
     skipped = 0
     for item in benchmark_dicts:
@@ -308,6 +321,14 @@ async def generate_data(benchmark_dicts: list[dict]):
 
     benchmarked_experiments = await run_benchmark(requests)
 
+    if len(benchmarked_experiments) > 0:
+        print(f"Processing benchmark data for {len(benchmarked_experiments)} experiments.")
+        await _process_benchmark_data(requests, benchmarked_experiments)
+
+
+async def _process_benchmark_data(requests: list[dict], benchmarked_experiments: list[str]):
+    """Process the benchmark data and create videos, thumbnails, and rewards."""
+
     # Now create the video/thumbnail/reward data etc.
     for benchmark_run, exp_id in zip(requests, benchmarked_experiments, strict=False):
         # Path to benchmark file
@@ -315,14 +336,14 @@ async def generate_data(benchmark_dicts: list[dict]):
             process_env_name(benchmark_run["env"]),
             f"{process_env_name(benchmark_run['env'])}_{exp_id}_{benchmark_run['checkpoint_step']}.npz",
         )
-        data = np.load(f"data/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
+        data = np.load(f"{DATA_ROOT_DIR}/{BENCHMARK_DIR}/{save_file_name}", allow_pickle=True)
         episode_data = split_data(data)
 
         for episode_idx, _ in enumerate(episode_data["dones"]):
             dir_name = f"data/episodes/{os.path.splitext(save_file_name)[0]}"
             save_episode = {}
             for name, _ in episode_data.items():
-                if name == "additional_metrics" or name == "renders":
+                if name == "additional_metrics" or name == "renders" or name == "env_states":
                     continue
                 save_episode[name] = episode_data[name][episode_idx]
             os.makedirs(dir_name, exist_ok=True)
@@ -333,11 +354,30 @@ async def generate_data(benchmark_dicts: list[dict]):
             )
             np.save(
                 f"data/rewards/{os.path.splitext(save_file_name)[0]}/rewards_{episode_idx}.npy",
-                np.cumsum(episode_data["rewards"][episode_idx]),
+                np.array([rew for rew in episode_data["rewards"][episode_idx]]),
             )
 
-            # Save uncertainty data if available
-            if "infos" in episode_data:
+            # Save env_states if they exist
+            if "env_states" in episode_data and episode_data["env_states"] is not None:
+                os.makedirs(
+                    f"data/env_states/{os.path.splitext(save_file_name)[0]}",
+                    exist_ok=True,
+                )
+                np.save(
+                    f"data/env_states/{os.path.splitext(save_file_name)[0]}/env_states_{episode_idx}.npy",
+                    episode_data["env_states"][episode_idx],
+                )
+
+            if "uncertainty" in episode_data:
+                os.makedirs(
+                    f"data/uncertainty/{os.path.splitext(save_file_name)[0]}",
+                    exist_ok=True,
+                )
+                np.save(
+                    f"data/uncertainty/{os.path.splitext(save_file_name)[0]}/uncertainty_{episode_idx}.npy",
+                    np.array([unc for unc in episode_data["uncertainty"][episode_idx]]),
+                )
+            elif "infos" in episode_data:
                 os.makedirs(
                     f"data/uncertainty/{os.path.splitext(save_file_name)[0]}",
                     exist_ok=True,
@@ -368,8 +408,8 @@ async def generate_data(benchmark_dicts: list[dict]):
                     episode_data["actions"][episode_idx],
                 )
             else:
-                if renders is not None and len(renders.shape) == 4 and renders.shape[0] > 0:
-                    save_image = renders[0]
+                if renders is not None and len(renders.shape) == 4 and renders.shape[0] > 1:
+                    save_image = renders[-2]  # Use the second-to-last frame of the episode
                 else:
                     save_image = np.zeros((128, 128, 3), dtype=np.uint8)  # Placeholder image
                 # Save first frame of the episode

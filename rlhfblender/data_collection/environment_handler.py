@@ -1,10 +1,10 @@
 import importlib
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
-from rl_zoo3.utils import get_wrapper_class
+from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -12,6 +12,7 @@ from stable_baselines3.common.vec_env import (
     VecFrameStack,
     VecNormalize,
 )
+from train_baselines.utils import get_wrapper_class
 
 from rlhfblender.data_models.global_models import Environment
 
@@ -66,10 +67,10 @@ def numpy_to_python(obj):
 
 
 def get_metaworld_env(
-    env_name: str = "pick-place-v2",
+    env_name: str = "pick-place-v3",
     n_envs: int = 1,
-    environment_config: Optional[Dict[str, Any]] = None,
-    seed: Optional[int] = None,
+    environment_config: dict[str, Any] | None = None,
+    seed: int | None = None,
 ) -> VecEnv:
     """
     Create a MetaWorld environment wrapped to match the Gymnasium interface.
@@ -78,54 +79,18 @@ def get_metaworld_env(
         raise ValueError("MetaWorld environments currently only support n_envs=1")
 
     try:
-        from metaworld import MT1
+        import metaworld
 
     except ImportError:
         raise ImportError("Please install MetaWorld to use MetaWorld environments")
 
     # Initialize MT1 benchmark
-    mt1 = MT1(env_name, seed=seed)
-
-    # Create environment
-    env = mt1.train_classes[env_name]()
-    env.set_task(mt1.train_tasks[0])
-
-    # Wrap in a class that converts to Gymnasium interface
-    wrapped_env = MetaWorldGymWrapper(env)
+    mt1 = gym.make("Meta-World/MT1", env_name=env_name, seed=seed)
 
     # Create vectorized environment
-    vec_env = DummyVecEnv([lambda: wrapped_env])
+    vec_env = DummyVecEnv([lambda: mt1])
 
     return vec_env
-
-
-class MetaWorldGymWrapper(gym.Env):
-    """
-    Wraps MetaWorld environments to follow the Gymnasium interface.
-    """
-
-    def __init__(self, env):
-        self.env = env
-        self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=self.env.observation_space.shape, dtype=np.float32
-        )
-        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=self.env.action_space.shape, dtype=np.float32)
-
-    def reset(self, seed=None):
-        if seed is not None:
-            self.env.seed(seed)
-        obs = self.env.reset()
-        return obs, {}
-
-    def step(self, action):
-        obs, reward, terminated, info = self.env.step(action)
-        return obs, reward, terminated, False, info
-
-    def render(self):
-        return self.env.render()
-
-    def close(self):
-        self.env.close()
 
 
 def get_environment(
@@ -153,8 +118,17 @@ def get_environment(
 
     env_wrapper = get_wrapper_class(environment_config)
 
+    # Create a wrapper function that applies both the original wrapper and SaveResetEnvWrapper
+    def combined_wrapper(env):
+        if env_wrapper is not None:
+            env = env_wrapper(env)
+        # Always wrap with SaveResetEnvWrapper for env_state functionality
+        env = SaveResetEnvWrapper(env)
+        return env
+
     vec_env_cls = DummyVecEnv
 
+    print(f"Creating environment {env_name} with config: {environment_config}")
     env_kwargs = environment_config.get("env_kwargs", None)
     # add render_mode = 'rgb_array' to env_kwargs
     if env_kwargs is None:
@@ -164,17 +138,30 @@ def get_environment(
 
     if gym_entry_point:
         # Register the environment with the given entry point to gym for the current session
-        print("ENTRY POINT", gym_entry_point)
         gym.register(id=env_name, entry_point=gym_entry_point)
 
-    env = make_vec_env(
-        env_name,
-        n_envs=n_envs,
-        wrapper_class=env_wrapper,
-        env_kwargs=env_kwargs,
-        vec_env_cls=vec_env_cls,
-        vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
-    )
+    print(f"Creating environment {env_name}")
+    if "metaworld" in env_name.lower():
+        from train_baselines.utils import make_vec_metaworld_env
+
+        environment_name = env_name.replace("metaworld-", "")
+        env = make_vec_metaworld_env(
+            env_id=environment_name,
+            n_envs=n_envs,
+            wrapper_class=combined_wrapper,
+            env_kwargs=env_kwargs,
+            vec_env_cls=vec_env_cls,
+            vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
+        )
+    else:
+        env = make_vec_env(
+            env_name,
+            n_envs=n_envs,
+            wrapper_class=combined_wrapper,
+            env_kwargs=env_kwargs,
+            vec_env_cls=vec_env_cls,
+            vec_env_kwargs=environment_config.get("vec_env_kwargs", None),
+        )
 
     if "vec_env_wrapper" in environment_config.keys():
         vec_env_wrapper = get_wrapper_class(environment_config, "vec_env_wrapper")
@@ -259,10 +246,11 @@ def initial_registration(
             importlib.import_module(env_module)
 
     # Check if this is a MetaWorld environment
-    is_metaworld = any(name in env_id.lower() for name in ["pick-place", "button-press", "door-open", "drawer-close", "sweep"])
+    is_metaworld = "metaworld" in env_id.lower()
+    environment_id = env_id.replace("metaworld-", "")
 
     if is_metaworld:
-        env = get_metaworld_env(env_id).envs[0]
+        env = get_metaworld_env(environment_id).envs[0]
     else:
         if entry_point:
             gym.register(id=env_id, entry_point=entry_point)

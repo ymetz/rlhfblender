@@ -1,5 +1,7 @@
 import os
 
+os.environ["RLHFBLENDER_DB_HOST"] = "sqlite:///test_api.db"
+
 import gymnasium as gym
 import numpy as np
 import pytest

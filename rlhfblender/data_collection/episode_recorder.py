@@ -1,7 +1,7 @@
 import os
+import pickle
 import random
 from collections.abc import Callable
-from copy import deepcopy
 from typing import Any
 
 import gymnasium as gym
@@ -33,6 +33,7 @@ class EpisodeRecorder:
         deterministic: bool = False,
         render: bool = True,
         reset_to_initial_state: bool = True,
+        persistent_initial_state_path: str | None = None,
         additional_out_attributes: dict[str, Any] | None = None,
         callback: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
     ):
@@ -45,6 +46,7 @@ class EpisodeRecorder:
         self.deterministic = deterministic
         self.render = render
         self.reset_to_initial_state = reset_to_initial_state
+        self.persistent_initial_state_path = persistent_initial_state_path
         self.additional_out_attributes = additional_out_attributes
         self.callback = callback
 
@@ -58,6 +60,7 @@ class EpisodeRecorder:
             "features": [],
             "probs": [],
             "renders": [],
+            "env_states": [],
         }
         self.episode_rewards = []
         self.episode_lengths = []
@@ -74,6 +77,7 @@ class EpisodeRecorder:
         self.initial_states = None
         self.reset_obs = None
         self.reset_info = None
+        self.skip_next_step = False
 
     def check_monitor_wrapped(self):
         # Avoid circular import
@@ -89,7 +93,7 @@ class EpisodeRecorder:
         """Runs the agent in the environment and records episodes."""
         self.initialize_environment()
 
-        while (self.episode_counts < self.episode_count_targets).any() and self.total_steps <= self.max_steps:
+        while (self.episode_counts < self.episode_count_targets).any():
             actions = self.agent.act(self.observations)
             additional_outputs = self.collect_agent_outputs(actions)
             self.handle_resets()
@@ -126,10 +130,36 @@ class EpisodeRecorder:
                     self.infos[i]["mission"] = self.observations[i]["mission"]
                     self.infos[i]["seed"] = seed
         if self.reset_to_initial_state:
-            if isinstance(self.env, VecEnv):
-                self.initial_states = tuple(deepcopy(e) for e in self.env.envs)
+            # Try to load persistent initial state
+            if self.persistent_initial_state_path and os.path.exists(self.persistent_initial_state_path):
+                with open(self.persistent_initial_state_path, "rb") as f:
+                    self.initial_states = pickle.load(f)
+                # Load state into environment
+                if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
+                    for i, env in enumerate(self.env.envs):
+                        if i < len(self.initial_states):
+                            obs = env.load_state(self.initial_states[i])
+                            if obs is not None:
+                                self.observations[i] = obs
+                else:
+                    obs = self.env.load_state(self.initial_states)
+                    if obs is not None:
+                        self.observations[0] = obs
             else:
-                self.initial_states = deepcopy(self.env)
+                # Generate and save new initial state
+                if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
+                    self.initial_states = []
+                    for i, env in enumerate(self.env.envs):
+                        obs_for_env = self.observations[i] if i < len(self.observations) else self.observations[0]
+                        self.initial_states.append(env.save_state(obs_for_env))
+                else:
+                    self.initial_states = self.env.save_state(self.observations[0])
+
+                # Save for future checkpoints
+                if self.persistent_initial_state_path:
+                    os.makedirs(os.path.dirname(self.persistent_initial_state_path), exist_ok=True)
+                    with open(self.persistent_initial_state_path, "wb") as f:
+                        pickle.dump(self.initial_states, f)
         self.reset_obs = self.observations.copy()
 
     def collect_agent_outputs(self, actions):
@@ -158,6 +188,23 @@ class EpisodeRecorder:
             self.buffers["probs"].append(additional_outputs["log_probs"])
         self.buffers["infos"].append(self.process_infos(additional_outputs))
 
+        # Save environment state if the environment supports it
+        if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
+            # For VecEnv, check individual environments for save_state support
+            env_states = []
+            for i in range(self.n_envs):
+                if hasattr(self.env.envs[i], "save_state"):
+                    env_states.append(self.env.envs[i].save_state())
+                else:
+                    env_states.append(None)
+            self.buffers["env_states"].append(env_states)
+        else:
+            # For single environment
+            if hasattr(self.env, "save_state"):
+                self.buffers["env_states"].append(self.env.save_state())
+            else:
+                self.buffers["env_states"].append(None)
+
     def process_infos(self, additional_outputs):
         infos = []
         for i in range(self.n_envs):
@@ -183,9 +230,53 @@ class EpisodeRecorder:
 
                 self.total_steps += 1
 
+                self.truncate_episode_if_needed(i)
+
                 if self.dones[i]:
                     self.handle_episode_end(i)
                     self.reset_environment(i)
+                    if not isinstance(self.env, VecEnv):
+                        self.skip_next_step = True
+
+    def truncate_episode_if_needed(self, i: int):
+        if self.max_steps is None:
+            return
+
+        if self.current_lengths[i] < self.max_steps:
+            return
+
+        if self.dones[i]:
+            return
+
+        self.dones[i] = True
+        self._update_last_done_flag(i)
+
+    def _update_last_done_flag(self, i: int):
+        if not self.buffers["dones"]:
+            return
+
+        last_done = self.buffers["dones"][-1]
+
+        if np.isscalar(last_done):
+            self.buffers["dones"][-1] = True
+            return
+
+        if isinstance(last_done, np.ndarray):
+            if last_done.ndim == 0:
+                self.buffers["dones"][-1] = True
+                return
+            updated = last_done.copy()
+            updated[i] = True
+            self.buffers["dones"][-1] = updated
+            return
+
+        if isinstance(last_done, list):
+            updated = list(last_done)
+            updated[i] = True
+            self.buffers["dones"][-1] = updated
+            return
+
+        self.buffers["dones"][-1] = True
 
     def handle_episode_end(self, i):
         if self.is_monitor_wrapped and "episode" in self.infos[i]:
@@ -204,19 +295,65 @@ class EpisodeRecorder:
 
     def reset_environment(self, i):
         if self.reset_to_initial_state:
-            if isinstance(self.env, VecEnv):
-                self.env.envs[i] = deepcopy(self.initial_states[i])
+            if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
+                # Use load_state method to reset to initial state for VecEnv
+                if hasattr(self.env.envs[i], "load_state"):
+                    obs = self.env.envs[i].load_state(self.initial_states[i])
+                    if obs is not None:
+                        self.observations[i] = obs
+                    else:
+                        self.observations[i] = self.reset_obs[i]
+                else:
+                    raise RuntimeError(f"Environment {self.env.envs[i]} does not support load_state method.")
             else:
-                self.env = deepcopy(self.initial_states)
-            self.observations[i] = self.reset_obs[i]
+                # Use load_state method to reset to initial state for single environment
+                if hasattr(self.env, "load_state"):
+                    obs = self.env.load_state(self.initial_states)
+                    if obs is not None:
+                        self.observations[0] = obs
+                    else:
+                        self.observations[0] = self.reset_obs[0]
+                else:
+                    raise RuntimeError("Environment does not support load_state method.")
 
     def handle_rendering(self):
         if self.render:
             render_frame = self.env.render()
+
+            # very special case for metaworld (which has a bug in the rendering) - check if the env is a metaworld env
+            # and has a camera name starting with "corner"
+            # TODO: Remove this special case when the bug is fixed in metaworld/mujoco
+            try:
+                if (
+                    isinstance(self.env, VecEnv)
+                    and hasattr(self.env, "envs")
+                    and hasattr(self.env.envs[0].unwrapped, "camera_name")
+                    and self.env.envs[0].unwrapped.camera_name.startswith("corner")
+                ):
+                    # Rotate 180 degrees (2 times 90 degrees clockwise)
+                    render_frame = np.rot90(render_frame, k=2)
+            except AttributeError:
+                # If the environment does not have a camera_name attribute, we can skip this check
+                pass
+
             self.buffers["renders"].append(np.squeeze(render_frame))
 
     def environment_step(self, actions):
         if not isinstance(self.env, VecEnv):
+            if self.skip_next_step:
+                self.skip_next_step = False
+                self.rewards = np.zeros(1)
+                self.dones = np.zeros(1, dtype=bool)
+                info = {}
+                if self.reset_info is not None:
+                    if isinstance(self.reset_info, dict):
+                        if "mission" in self.reset_info:
+                            info["mission"] = self.reset_info["mission"]
+                        if "seed" in self.reset_info:
+                            info["seed"] = self.reset_info["seed"]
+                    self.reset_info = None
+                self.infos = [info]
+                return
             # squeeze for now, as we are not expecting vectorized/batched environments
             self.observations, self.rewards, terminated, truncated, self.infos = self.env.step(actions)
             self.dones = terminated or truncated
@@ -232,6 +369,7 @@ class EpisodeRecorder:
             self.observations, self.rewards, self.dones, self.infos = self.env.step(actions)
 
     def finalize_buffers(self):
+        print(len(self.buffers["obs"]), len(self.buffers["actions"]), len(self.buffers["rewards"]))
         if self.render:
             self.buffers["renders"] = np.array(self.buffers["renders"])
         else:
@@ -248,11 +386,19 @@ class EpisodeRecorder:
         self.buffers["infos"] = np.array(self.buffers["infos"])
         self.buffers["probs"] = np.array(self.buffers["probs"])
 
+        # Handle env_states - keep as object array to handle None values and varying structures
+        if len(self.buffers["env_states"]) > 0:
+            self.buffers["env_states"] = np.array(self.buffers["env_states"], dtype=object)
+        else:
+            self.buffers["env_states"] = np.array([], dtype=object)
+
     def save_episodes(self):
         if not self.overwrite and os.path.isfile(self.save_path + ".npz"):
             previous_data = np.load(self.save_path + ".npz", allow_pickle=True)
             for key in self.buffers.keys():
-                self.buffers[key] = np.concatenate((previous_data[key], self.buffers[key]), axis=0)
+                if key in previous_data:
+                    self.buffers[key] = np.concatenate((previous_data[key], self.buffers[key]), axis=0)
+                # If env_states wasn't in previous data, just keep the new data
             self.episode_rewards = np.concatenate((previous_data["episode_rewards"], self.episode_rewards), axis=0)
             self.episode_lengths = np.concatenate((previous_data["episode_lengths"], self.episode_lengths), axis=0)
 
@@ -269,11 +415,13 @@ class EpisodeRecorder:
                 infos=self.buffers["infos"],
                 probs=self.buffers["probs"],
                 renders=self.buffers["renders"],
+                env_states=self.buffers["env_states"],
                 additional_metrics={},
             )
         )
 
         os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
+        print("[INFO] Saving episodes to", self.save_path + ".npz")
         with open(os.path.join(self.save_path + ".npz"), "wb") as f:
             np.savez(
                 f,
@@ -285,6 +433,7 @@ class EpisodeRecorder:
                 infos=self.buffers["infos"],
                 features=self.buffers["features"],
                 probs=self.buffers["probs"],
+                env_states=self.buffers["env_states"],
                 episode_rewards=self.episode_rewards,
                 episode_lengths=self.episode_lengths,
                 additional_metrics=additional_metrics,
@@ -306,6 +455,7 @@ class EpisodeRecorder:
             renders=data["renders"],
             features=data["features"],
             probs=data["probs"],
+            env_states=data.get("env_states", np.array([], dtype=object)),  # Handle backward compatibility
             episode_rewards=data["episode_rewards"],
             episode_lengths=data["episode_lengths"],
             additional_metrics=data["additional_metrics"].item(),

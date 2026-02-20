@@ -7,9 +7,9 @@ import gymnasium as gym
 import numpy as np
 import stable_baselines3.common.policies
 import torch as th
-from rl_zoo3.exp_manager import ExperimentManager
-from rl_zoo3.utils import ALGOS
 from stable_baselines3.common.utils import set_random_seed
+from train_baselines.exp_manager import ExperimentManager
+from train_baselines.utils import ALGOS
 
 import rlhfblender.data_models.connector as connector
 
@@ -51,7 +51,7 @@ class StableBaselines3Agent(TrainedAgent):
             algo = config["algo"]
         except Exception:
             print("Could not read an algorithm from the config file, defaulting to PPO")
-            algo = "ppo"
+            algo = exp.algorithm.lower() if exp.algorithm else "ppo"
 
         # for some models, we use schedules for training, but we don't need them here for inference, we set it to 0
         self.model = ALGOS[algo].load(path, device=device, custom_objects={"learning_rate": 0.0, "clip_range": 0.0})
@@ -84,7 +84,7 @@ class StableBaselines3Agent(TrainedAgent):
 
         out_dict = {}
         obs_to_tensor = self.model.policy.obs_to_tensor(observation)[0]
-        if "log_probs" in output_list:
+        """if "log_probs" in output_list:
             if isinstance(self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy) and isinstance(
                 self.model.policy.action_dist,
                 stable_baselines3.common.distributions.CategoricalDistribution,
@@ -94,8 +94,9 @@ class StableBaselines3Agent(TrainedAgent):
                 )
             else:
                 out_dict["log_prob"] = np.array([0.0])
-        if "feature_extractor_output" in output_list:
-            out_dict["feature_extractor_output"] = self.model.policy.extract_features(obs_to_tensor).detach().cpu().numpy()
+        """
+        # if "feature_extractor_output" in output_list:
+        #    out_dict["feature_extractor_output"] = self.model.policy.extract_features(obs_to_tensor).detach().cpu().numpy()
         if any(v in ["value", "entropy"] for v in output_list):
             if isinstance(self.model.policy, stable_baselines3.common.policies.ActorCriticPolicy):
                 value, _, entropy = self.model.policy.evaluate_actions(

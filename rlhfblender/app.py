@@ -25,8 +25,8 @@ from rlhfblender.data_models.global_models import (
     Project,
     TrackingItem,
 )
-from rlhfblender.logger import CSVLogger, JSONLogger, SQLLogger
-from rlhfblender.routes import data
+from rlhfblender.logger import CSVLogger, GoogleSheetsLogger, JSONLogger, SQLLogger
+from rlhfblender.routes import data, demo_generation, dynamic_rlhf, projection
 
 # from fastapi_sessions.backends.implementations import InMemoryBackend
 # from fastapi_sessions.frontends.implementations import SessionCookie, CookieParameters
@@ -43,13 +43,17 @@ app = FastAPI(
     title="Test Python Backend",
     description="""This is a template for a Python backend.
                    It provides access via REST API.""",
-    version="0.3.2",
+    version="0.5.0",
 )
 app.include_router(data.router)
+app.include_router(projection.router)
+app.include_router(dynamic_rlhf.router)
+app.include_router(demo_generation.router)
 
 app.mount("/files", StaticFiles(directory=os.path.join("rlhfblender", "static_files")), name="files")
 app.mount("/action_labels", StaticFiles(directory=os.path.join("data", "action_labels")), name="action_labels")
 app.mount("/logs", StaticFiles(directory="logs"), name="logs")
+app.mount("/datafiles", StaticFiles(directory="data"), name="datafiles")
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -70,20 +74,27 @@ async def startup():
     elif logger_type == "json":
         app.state.logger = JSONLogger(None, None, os.path.join("logs"))
     else:
-        app.state.logger = CSVLogger(None, None, os.path.join("logs"))
+        # check if credentials file is provided, if so use Google Sheets logger
+        credentials_file = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "google-service-account.json")
+        if os.path.isfile(credentials_file):
+            print("Using Google Sheets logger.")
+            app.state.logger = GoogleSheetsLogger(None, None, os.path.join("logs"), credentials_file)
+        else:
+            print("[INFO] You can provide a Google service account file to use Google Sheets logger. Defaulting to CSV.")
+            app.state.logger = CSVLogger(None, None, os.path.join("logs"))
 
     # add sampler and feedback model to app state
     app.state.sampler = Sampler(None, None, os.path.join("data", "renders"), logger=app.state.logger)
     app.state.feedback_translator = FeedbackTranslator(None, None, logger=app.state.logger)
 
     # Run the startup script as a separate process
-    startup_script_path = os.path.join("rlhfblender", "startup_script.py")
-    if os.path.isfile(startup_script_path):
-        print("Running startup script...")
-        os.system(f"python3 {startup_script_path}")
-    else:
-        print("No startup script found. Skipping...")
-    print("Startup script finished.")
+    # startup_script_path = os.path.join("rlhfblender", "startup_script.py")
+    # if os.path.isfile(startup_script_path):
+    #    print("Running startup script...")
+    #    os.system(f"python {startup_script_path}")
+    # else:
+    #    print("No startup script found. Skipping...")
+    # print("Startup script finished.")
 
 
 @app.on_event("shutdown")
@@ -248,6 +259,7 @@ async def delete_backend_config(req: DeleteBackendConfigRequest):
 class SaveSetupRequest(BaseModel):
     project: dict
     experiment: dict
+    checkpoint: int
     ui_config: dict
     backend_config: dict
 
@@ -263,6 +275,7 @@ async def save_setup(req: SaveSetupRequest):
         "id": setup_id,
         "project": req.project,
         "experiment": req.experiment,
+        "checkpoint": req.checkpoint,
         "ui_config": req.ui_config,
         "backend_config": req.backend_config,
     }
@@ -289,8 +302,8 @@ async def load_setup(req: LoadSetupRequest):
         return {"message": "Setup not found."}, 404
 
 
-@app.get("/retreive_logs", tags=["LOGS"])
-async def retreive_logs():
+@app.get("/retrieve_logs", tags=["LOGS"])
+async def retrieve_logs():
     # Return list of CSV files from logs directory, zip them and proide download link
     logs = []
     try:
@@ -305,24 +318,28 @@ async def retreive_logs():
         return {"message": "No logs found."}
 
 
-@app.get("/retreive_demos", tags=["LOGS"])
-async def retreive_demos():
-    # Return list of CSV files from logs directory, zip them and proide download link
+@app.get("/retrieve_demos", tags=["LOGS"])
+async def retrieve_demos():
     demos = []
+    zip_path = "demos.zip"
+
     try:
-        for filename in os.listdir(os.path.join("logs", "generated_demos")):
+        for filename in os.listdir(os.path.join("data", "generated_demos")):
             if filename.endswith(".npz"):
                 demos.append(filename)
-        with zipfile.ZipFile("logs.zip", "w") as zip:
+
+        with zipfile.ZipFile(zip_path, "w") as zipf:
             for log in demos:
-                zip.write(os.path.join("logs", "generated_demos", log))
-        return FileResponse("demos.zip", media_type="application/zip", filename="demos.zip")
+                zipf.write(os.path.join("data", "generated_demos", log))
+
+        return FileResponse(zip_path, media_type="application/zip", filename="demos.zip")
+
     except FileNotFoundError:
         return {"message": "No demos found."}
 
 
-@app.get("/retreive_feature_feedback", tags=["LOGS"])
-async def retreive_feature_feedback():
+@app.get("/retrieve_feature_feedback", tags=["LOGS"])
+async def retrieve_feature_feedback():
     # Return list of CSV files from logs directory, zip them and proide download link
     feedbacks = []
     try:

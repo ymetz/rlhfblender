@@ -50,7 +50,6 @@ The application can be served in two modes: `config` and `experiment`.
 In `config` mode, the application provides you with full access to configurations and the data.
 Use this mode to try out different options and configure the application according to your needs.
 
-You can access the configuration by calling `url:port?StudyMode=configure`.
 
 .. figure:: ../images/option_selection.png
     :width: 90 %
@@ -70,7 +69,7 @@ Finally, you can export the results of the experiment.
 The application will export the results as a CSV file containing the actions of the participants and the results of the experiment.
 
 Log files and generated data are stored on the local file system in the `data` and `logs` directories.
-You can also download them from a remote server by calling `url:port/retreive_logs`, url:port/retreive_demos` and `url:port/retreive_feedback`.
+You can also download them from a remote server by calling `url:port/retrieve_logs`, url:port/retrieve_demos` and `url:port/retrieve_feedback`.
 
 Train models
 ------------

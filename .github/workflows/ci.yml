@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v3
@@ -34,7 +34,8 @@ jobs:
         # cpu version of pytorch
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-        pip install .[tests,docs]
+        # av must use a binary wheel (bundles ffmpeg internally); building from source requires ffmpeg 7 dev headers not available in apt
+        pip install --only-binary=av .[tests,docs]
         # Use headless version
         pip install opencv-python-headless
     - name: Lint with ruff

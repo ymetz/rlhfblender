@@ -42,6 +42,7 @@ docker-compose up
 
 ```bash
 pip install -e .
+python -m playwright install chromium
 python rlhfblender/app.py
 ```
 
@@ -68,6 +69,37 @@ RLHF-Blender allows to configure experimental setups for RLHF-experiments based 
 RLHF-Blender allows to quickly setup experiments for experimenting with different types of feedback and reward models across different environments. 
 The following example shows how to setup an experiment for the CartPole environment with a reward model ensemble and a textual feedback interface.
 
+## Environment Registration and Benchmark Collection
+
+You can register an environment and collect benchmark episodes with `rlhfblender.generate_data`.
+This populates the benchmark/episode artifacts used by the UI (`data/saved_benchmarks`, `data/episodes`, `data/renders`, `data/rewards`, ...).
+
+```bash
+# Register only
+python -m rlhfblender.generate_data \
+  --env MyEnv-v0 \
+  --env-gym-entrypoint my_package.envs:MyEnv \
+  --register-only
+
+# Register + collect random benchmark episodes
+python -m rlhfblender.generate_data \
+  --env MyEnv-v0 \
+  --env-gym-entrypoint my_package.envs:MyEnv \
+  --random \
+  --num-episodes 10
+```
+
+Dash-driving integration can be registered similarly:
+
+```bash
+python -m rlhfblender.generate_data \
+  --env dash-driving-v0 \
+  --env-gym-entrypoint rlhfblender.data_collection.dash_driving_gym_env:DashDrivingGymEnv \
+  --random \
+  --num-episodes 10
+```
+
+For active-learning demo/correction UI, `dash-driving*` environments use the Dash iframe flow (instead of WebRTC).
 
 
 ## 🎯 What's next

@@ -46,6 +46,7 @@ class Experiment(BaseModel):
     status: list[str] = []
     env_id: str = "Cartpole-v1"
     environment_config: dict = {}
+    demo_gen_environment_config: dict = {}
     framework: str = ""
     path: str = ""
     algorithm: str = ""
@@ -62,13 +63,14 @@ class Experiment(BaseModel):
     wandb_tracking: bool = False
     device: str = "auto"
     trained_agent_path: str = ""
-    seed: int = -1
+    seed: int = 0
 
     @field_validator(
         "status",
         "checkpoint_list",
         "exp_tags",
         "environment_config",
+        "demo_gen_environment_config",
         "hyperparams",
         mode="before",
     )

@@ -33,6 +33,8 @@ Local Installation
 
     cd rlhfblender
     pip install -r requirements.txt
+    # required for dash-driving environment integration
+    python -m playwright install chromium
     python rlhfblender/app.py
 
 and
