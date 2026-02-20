@@ -132,10 +132,10 @@ class EpisodeRecorder:
         if self.reset_to_initial_state:
             # Try to load persistent initial state
             if self.persistent_initial_state_path and os.path.exists(self.persistent_initial_state_path):
-                with open(self.persistent_initial_state_path, 'rb') as f:
+                with open(self.persistent_initial_state_path, "rb") as f:
                     self.initial_states = pickle.load(f)
                 # Load state into environment
-                if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
+                if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
                     for i, env in enumerate(self.env.envs):
                         if i < len(self.initial_states):
                             obs = env.load_state(self.initial_states[i])
@@ -147,18 +147,18 @@ class EpisodeRecorder:
                         self.observations[0] = obs
             else:
                 # Generate and save new initial state
-                if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
+                if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
                     self.initial_states = []
                     for i, env in enumerate(self.env.envs):
                         obs_for_env = self.observations[i] if i < len(self.observations) else self.observations[0]
                         self.initial_states.append(env.save_state(obs_for_env))
                 else:
                     self.initial_states = self.env.save_state(self.observations[0])
-                
+
                 # Save for future checkpoints
                 if self.persistent_initial_state_path:
                     os.makedirs(os.path.dirname(self.persistent_initial_state_path), exist_ok=True)
-                    with open(self.persistent_initial_state_path, 'wb') as f:
+                    with open(self.persistent_initial_state_path, "wb") as f:
                         pickle.dump(self.initial_states, f)
         self.reset_obs = self.observations.copy()
 
@@ -189,7 +189,7 @@ class EpisodeRecorder:
         self.buffers["infos"].append(self.process_infos(additional_outputs))
 
         # Save environment state if the environment supports it
-        if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
+        if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
             # For VecEnv, check individual environments for save_state support
             env_states = []
             for i in range(self.n_envs):
@@ -295,9 +295,9 @@ class EpisodeRecorder:
 
     def reset_environment(self, i):
         if self.reset_to_initial_state:
-            if isinstance(self.env, VecEnv) and hasattr(self.env, 'envs'):
+            if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
                 # Use load_state method to reset to initial state for VecEnv
-                if hasattr(self.env.envs[i], 'load_state'):
+                if hasattr(self.env.envs[i], "load_state"):
                     obs = self.env.envs[i].load_state(self.initial_states[i])
                     if obs is not None:
                         self.observations[i] = obs
@@ -307,7 +307,7 @@ class EpisodeRecorder:
                     raise RuntimeError(f"Environment {self.env.envs[i]} does not support load_state method.")
             else:
                 # Use load_state method to reset to initial state for single environment
-                if hasattr(self.env, 'load_state'):
+                if hasattr(self.env, "load_state"):
                     obs = self.env.load_state(self.initial_states)
                     if obs is not None:
                         self.observations[0] = obs
@@ -324,9 +324,12 @@ class EpisodeRecorder:
             # and has a camera name starting with "corner"
             # TODO: Remove this special case when the bug is fixed in metaworld/mujoco
             try:
-                if (isinstance(self.env, VecEnv) and hasattr(self.env, 'envs') and 
-                    hasattr(self.env.envs[0].unwrapped, "camera_name") and 
-                    self.env.envs[0].unwrapped.camera_name.startswith("corner")):
+                if (
+                    isinstance(self.env, VecEnv)
+                    and hasattr(self.env, "envs")
+                    and hasattr(self.env.envs[0].unwrapped, "camera_name")
+                    and self.env.envs[0].unwrapped.camera_name.startswith("corner")
+                ):
                     # Rotate 180 degrees (2 times 90 degrees clockwise)
                     render_frame = np.rot90(render_frame, k=2)
             except AttributeError:

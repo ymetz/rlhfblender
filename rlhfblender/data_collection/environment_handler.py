@@ -1,11 +1,10 @@
 import importlib
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
 from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
-from train_baselines.utils import get_wrapper_class
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -13,6 +12,7 @@ from stable_baselines3.common.vec_env import (
     VecFrameStack,
     VecNormalize,
 )
+from train_baselines.utils import get_wrapper_class
 
 from rlhfblender.data_models.global_models import Environment
 
@@ -69,8 +69,8 @@ def numpy_to_python(obj):
 def get_metaworld_env(
     env_name: str = "pick-place-v3",
     n_envs: int = 1,
-    environment_config: Optional[Dict[str, Any]] = None,
-    seed: Optional[int] = None,
+    environment_config: dict[str, Any] | None = None,
+    seed: int | None = None,
 ) -> VecEnv:
     """
     Create a MetaWorld environment wrapped to match the Gymnasium interface.

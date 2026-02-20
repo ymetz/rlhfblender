@@ -1,6 +1,5 @@
 import asyncio
 import os
-from typing import Optional
 
 import gspread
 from gspread.exceptions import SpreadsheetNotFound
@@ -30,7 +29,7 @@ class GoogleSheetsLogger(Logger):
         env: Environment,
         suffix,
         credentials_file: str = "google-service-account.json",
-        spreadsheet_name: Optional[str] = None,
+        spreadsheet_name: str | None = None,
     ):
         super().__init__(exp, env, suffix)
         self.raw_feedback: list[UnprocessedFeedback] = []

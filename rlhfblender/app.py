@@ -88,13 +88,13 @@ async def startup():
     app.state.feedback_translator = FeedbackTranslator(None, None, logger=app.state.logger)
 
     # Run the startup script as a separate process
-    #startup_script_path = os.path.join("rlhfblender", "startup_script.py")
-    #if os.path.isfile(startup_script_path):
+    # startup_script_path = os.path.join("rlhfblender", "startup_script.py")
+    # if os.path.isfile(startup_script_path):
     #    print("Running startup script...")
     #    os.system(f"python {startup_script_path}")
-    #else:
+    # else:
     #    print("No startup script found. Skipping...")
-    #print("Startup script finished.")
+    # print("Startup script finished.")
 
 
 @app.on_event("shutdown")
@@ -320,16 +320,20 @@ async def retrieve_logs():
 
 @app.get("/retrieve_demos", tags=["LOGS"])
 async def retrieve_demos():
-    # Return list of CSV files from logs directory, zip them and proide download link
     demos = []
+    zip_path = "demos.zip"
+
     try:
         for filename in os.listdir(os.path.join("data", "generated_demos")):
             if filename.endswith(".npz"):
                 demos.append(filename)
-        with zipfile.ZipFile("logs.zip", "w") as zip:
+
+        with zipfile.ZipFile(zip_path, "w") as zipf:
             for log in demos:
-                zip.write(os.path.join("data", "generated_demos", log))
-        return FileResponse("demos.zip", media_type="application/zip", filename="demos.zip")
+                zipf.write(os.path.join("data", "generated_demos", log))
+
+        return FileResponse(zip_path, media_type="application/zip", filename="demos.zip")
+
     except FileNotFoundError:
         return {"message": "No demos found."}
 

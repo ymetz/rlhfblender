@@ -4,7 +4,7 @@ from torchvision.models import ResNet18_Weights, resnet18
 from torchvision.transforms import transforms
 
 
-class RemoveFirstChannel(object):
+class RemoveFirstChannel:
     def __init__(self):
         pass
 

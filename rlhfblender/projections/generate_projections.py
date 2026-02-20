@@ -13,7 +13,7 @@ import os
 import sys
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import networkx as nx
 import numpy as np
@@ -65,8 +65,8 @@ class InverseProjectionOptions(BaseModel):
     validation_split: float = 0.1
     grid_resolution: int = 20
     auto_grid_range: bool = True
-    x_range: Tuple[float, float] = (-5.0, 5.0)
-    y_range: Tuple[float, float] = (-5.0, 5.0)
+    x_range: tuple[float, float] = (-5.0, 5.0)
+    y_range: tuple[float, float] = (-5.0, 5.0)
     grid_margin: float = 1.5
     force_retrain: bool = False
 
@@ -78,7 +78,7 @@ def process_env_name(env_name: str) -> str:
 
 
 # Function to get available episodes for a given configuration
-def get_available_episodes(experiment: Experiment, checkpoint_step: int) -> List[int]:
+def get_available_episodes(experiment: Experiment, checkpoint_step: int) -> list[int]:
     """
     Find all available episode numbers for a given configuration.
 
@@ -152,7 +152,7 @@ def get_episode_file_path(episode_id: EpisodeID, data_type: str = "episodes") ->
 
 
 # Function to load episode data
-async def load_episode_data(episodes: List[EpisodeID]) -> Dict[str, np.ndarray]:
+async def load_episode_data(episodes: list[EpisodeID]) -> dict[str, np.ndarray]:
     """
     Load episode data for a list of episode IDs.
 
@@ -285,15 +285,15 @@ async def reproject_observations(obs: np.ndarray, env_name: str) -> np.ndarray:
 
 # Function to preprocess input data for projection
 def preprocess_input_data(
-    episode_data: Dict[str, np.ndarray],
+    episode_data: dict[str, np.ndarray],
     sequence_length: int,
-    step_range: Optional[List[int]],
+    step_range: list[int] | None,
     append_time: bool,
     reproject: bool,
     env_name: str,
     transition_embedding: bool = True,
     feature_embedding: bool = True,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
     """
     Preprocess the input data for projection.
 
@@ -376,16 +376,16 @@ def compute_projections_and_clusters(
     embedding_input: np.ndarray,
     feature_input: np.ndarray,
     transition_input: np.ndarray,
-    episode_indices: Optional[np.ndarray],
+    episode_indices: np.ndarray | None,
     sequence_length: int,
-    step_range: Optional[List[int]],
+    step_range: list[int] | None,
     projection_method: str,
     use_one_d_projection: bool,
     actions: np.ndarray,
-    projection_props: Dict[str, Any],
+    projection_props: dict[str, Any],
     suffix: str,
-    joint_projection_path: Optional[str] = None,
-) -> Dict[str, Any]:
+    joint_projection_path: str | None = None,
+) -> dict[str, Any]:
     """
     Compute projections and cluster the projected data.
 
@@ -435,7 +435,7 @@ def compute_projections_and_clusters(
     )
 
     print("Computing feature projection")
-    feature_input = None # we don't use it right now
+    feature_input = None  # we don't use it right now
     if feature_input is not None and feature_input.shape[0] > 0:
         feature_projection = handler.fit(
             feature_input,
@@ -492,7 +492,7 @@ def compute_projections_and_clusters(
 
 
 # Function to cluster and compute point merging
-def compute_clusters_and_merging(projection_array: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def compute_clusters_and_merging(projection_array: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute clusters and merged points for the projection.
 
@@ -584,20 +584,20 @@ def compute_clusters_and_merging(projection_array: np.ndarray) -> Tuple[np.ndarr
 
 # Function to compute projection
 async def compute_projection(
-    episode_data: Dict[str, np.ndarray],
+    episode_data: dict[str, np.ndarray],
     projection_method: str = "UMAP",
     sequence_length: int = 1,
     step_range: str = "[]",
     reproject: bool = False,
     use_one_d_projection: bool = False,
     append_time: bool = False,
-    projection_props: Dict[str, Any] = {},
-    projection_hash: Optional[str] = None,
+    projection_props: dict[str, Any] = {},
+    projection_hash: str | None = None,
     env_name: str = "",
     transition_embedding: bool = True,
     feature_embedding: bool = True,
-    joint_projection_path: Optional[str] = None,
-) -> Dict[str, Any]:
+    joint_projection_path: str | None = None,
+) -> dict[str, Any]:
     """
     Compute projection for the provided episode data.
 
@@ -738,7 +738,7 @@ async def compute_projection(
 # Function to compute inverse projection
 def compute_inverse_projection(
     original_data: np.ndarray, coords_2d: np.ndarray, inverse_options: InverseProjectionOptions, cache_key: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compute inverse projection and grid of samples.
 
@@ -758,7 +758,7 @@ def compute_inverse_projection(
         # Check if we can use cached results
         if not inverse_options.force_retrain and cache_file.exists() and model_file.exists():
             print(f"Loading cached inverse projection from {cache_file}")
-            with open(cache_file, "r") as f:
+            with open(cache_file) as f:
                 return json.load(f)
 
         print("Computing inverse projection")
@@ -868,13 +868,13 @@ async def generate_projections(
     reproject: bool = False,
     use_one_d_projection: bool = False,
     append_time: bool = False,
-    projection_props: Dict[str, Any] = {},
+    projection_props: dict[str, Any] = {},
     transition_embedding: bool = True,
     feature_embedding: bool = True,
     compute_inverse: bool = False,
     inverse_options: InverseProjectionOptions = InverseProjectionOptions(),
-    joint_projection_path: Optional[str] = None,
-) -> Dict[str, Any]:
+    joint_projection_path: str | None = None,
+) -> dict[str, Any]:
     """
     Generate projections for episodes matching the given parameters.
 
@@ -973,15 +973,17 @@ async def generate_projections(
         if joint_projection_path and inverse_options.auto_grid_range:
             try:
                 print(f"Loading global bounds from joint projection: {joint_projection_path}")
-                with open(joint_projection_path, "r") as f:
+                with open(joint_projection_path) as f:
                     joint_metadata = json.load(f)
-                
+
                 if "global_x_range" in joint_metadata and "global_y_range" in joint_metadata:
                     # Use global bounds from joint projection
                     inverse_options.x_range = tuple(joint_metadata["global_x_range"])
                     inverse_options.y_range = tuple(joint_metadata["global_y_range"])
                     inverse_options.auto_grid_range = False  # Use explicit ranges instead of auto
-                    print(f"Using global bounds from joint projection: x_range={inverse_options.x_range}, y_range={inverse_options.y_range}")
+                    print(
+                        f"Using global bounds from joint projection: x_range={inverse_options.x_range}, y_range={inverse_options.y_range}"
+                    )
                 else:
                     print("Warning: Global bounds not found in joint projection metadata, using auto-computed bounds")
             except Exception as e:

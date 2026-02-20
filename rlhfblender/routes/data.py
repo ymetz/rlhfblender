@@ -1,6 +1,5 @@
 import base64
 import os
-from enum import Enum
 from typing import Any
 
 import cv2
@@ -15,7 +14,7 @@ from rlhfblender.data_collection.episode_recorder import (
     BenchmarkSummary,
 )
 from rlhfblender.data_handling import database_handler as db_handler
-from rlhfblender.data_models.feedback_models import UnprocessedFeedback, FeedbackType
+from rlhfblender.data_models.feedback_models import FeedbackType, UnprocessedFeedback
 from rlhfblender.data_models.global_models import (
     Environment,
     EpisodeID,
@@ -336,7 +335,7 @@ async def get_cluster_frames(request: ClusterFrameRequest):
         return frame_images
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error extracting frames: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error extracting frames: {e!s}")
 
 
 def extract_frame_from_video(video_path: str, frame_index: int) -> str | None:

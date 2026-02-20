@@ -4,7 +4,7 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from databases import Database
@@ -54,7 +54,7 @@ def _load_projection_trajectories(
     experiment_id: int,
     checkpoint_step: int,
     projection_method: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Load cached projection trajectories for a checkpoint if available."""
 
     projection_hash = _build_projection_hash(env_name, experiment_id, checkpoint_step, projection_method)
@@ -86,7 +86,7 @@ def _load_projection_trajectories(
         )
         return None
 
-    trajectories: Dict[int, List[List[float]]] = defaultdict(list)
+    trajectories: dict[int, list[list[float]]] = defaultdict(list)
     total_points = 0
 
     for point, idx in zip(projection_array, episode_indices):
@@ -101,9 +101,7 @@ def _load_projection_trajectories(
         total_points += 1
 
     ordered = [
-        {"episode": episode, "points": pts}
-        for episode, pts in sorted(trajectories.items(), key=lambda item: item[0])
-        if pts
+        {"episode": episode, "points": pts} for episode, pts in sorted(trajectories.items(), key=lambda item: item[0]) if pts
     ]
 
     return {
@@ -111,6 +109,7 @@ def _load_projection_trajectories(
         "episode_count": len(ordered),
         "point_count": total_points,
     }
+
 
 @router.post("/generate_projection", response_model=dict[str, Any], tags=["PROJECTION"])
 async def generate_projection(
@@ -122,7 +121,7 @@ async def generate_projection(
     reproject: bool = False,
     use_one_d_projection: bool = False,
     append_time: bool = False,
-    projection_props: Dict[str, Any] = {},
+    projection_props: dict[str, Any] = {},
 ):
     """
     Compute projection for all episodes matching the given parameters.
@@ -204,11 +203,14 @@ async def generate_projection(
     joint_metadata_path = None
     try:
         import glob
+
         # Prefer joint obs-state metadata, then fall back to observation-only
         joint_metadata_pattern = f"data/saved_projections/joint_obs_state/{db_experiment.env_id}_*_joint_obs_state_{projection_method}_*_metadata.json"
         metadata_files = glob.glob(joint_metadata_pattern)
         if not metadata_files:
-            joint_metadata_pattern = f"data/saved_projections/joint/{db_experiment.env_id}_*_joint_{projection_method}_*_metadata.json"
+            joint_metadata_pattern = (
+                f"data/saved_projections/joint/{db_experiment.env_id}_*_joint_{projection_method}_*_metadata.json"
+            )
             metadata_files = glob.glob(joint_metadata_pattern)
         if metadata_files:
             joint_metadata_path = max(metadata_files, key=os.path.getctime)
@@ -229,6 +231,7 @@ async def generate_projection(
     )
 
     return forward_projection
+
 
 @router.get("/get_projection_methods", response_model=list[str], tags=["PROJECTION"])
 async def get_projection_methods():
@@ -254,7 +257,7 @@ async def get_projection_method_params(projection_method: str = "UMAP"):
     return params.get(projection_method, {})
 
 
-@router.post("/load_grid_projection_data", response_model=Dict[str, Any], tags=["PROJECTION"])
+@router.post("/load_grid_projection_data", response_model=dict[str, Any], tags=["PROJECTION"])
 async def load_grid_projection_data(
     benchmark_id: int,
     checkpoint_step: int,
@@ -289,7 +292,7 @@ async def load_grid_projection_data(
 
         # Check if prediction file exists
         if prediction_file.exists():
-            with open(prediction_file, "r") as f:
+            with open(prediction_file) as f:
                 prediction_data = json.load(f)
                 return prediction_data
 
@@ -304,14 +307,14 @@ async def load_grid_projection_data(
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=f"Error loading grid projection data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error loading grid projection data: {e!s}")
 
 
-def load_global_bounds(benchmark_id: Optional[int] = None, env_id: Optional[str] = None, projection_method: str = "UMAP"):
+def load_global_bounds(benchmark_id: int | None = None, env_id: str | None = None, projection_method: str = "UMAP"):
     """
     Load global bounds from joint projection metadata if available.
     Benchmark_id takes priority over env_id.
-    
+
     Returns:
         tuple: (global_x_range, global_y_range) or (None, None) if not found
     """
@@ -322,42 +325,49 @@ def load_global_bounds(benchmark_id: Optional[int] = None, env_id: Optional[str]
     try:
         # Look for joint projection metadata files
         if benchmark_id is not None:
-            joint_metadata_pattern = f"data/saved_projections/joint_obs_state/*_{benchmark_id}_joint_obs_state_{projection_method}_*_metadata.json"
+            joint_metadata_pattern = (
+                f"data/saved_projections/joint_obs_state/*_{benchmark_id}_joint_obs_state_{projection_method}_*_metadata.json"
+            )
         else:
-            joint_metadata_pattern = f"data/saved_projections/joint_obs_state/{env_id}_*_joint_obs_state_{projection_method}_*_metadata.json"
+            joint_metadata_pattern = (
+                f"data/saved_projections/joint_obs_state/{env_id}_*_joint_obs_state_{projection_method}_*_metadata.json"
+            )
         import glob
+
         metadata_files = glob.glob(joint_metadata_pattern)
 
         print("SEARCH PATTERN:", joint_metadata_pattern)
         print("FOUND FILES:", metadata_files)
-        
+
         if not metadata_files:
             # Try the simpler joint projection pattern
             if benchmark_id is not None:
-                joint_metadata_pattern = f"data/saved_projections/joint/*_{benchmark_id}_joint_{projection_method}_*_metadata.json"
+                joint_metadata_pattern = (
+                    f"data/saved_projections/joint/*_{benchmark_id}_joint_{projection_method}_*_metadata.json"
+                )
             else:
                 joint_metadata_pattern = f"data/saved_projections/joint/{env_id}_*_joint_{projection_method}_*_metadata.json"
             metadata_files = glob.glob(joint_metadata_pattern)
-        
+
         if metadata_files:
             # Use the most recent metadata file
             latest_file = max(metadata_files, key=os.path.getctime)
 
             print("[INFO] Load global bounds from:", latest_file)
 
-            with open(latest_file, "r") as f:
+            with open(latest_file) as f:
                 joint_metadata = json.load(f)
-                
+
             if "global_x_range" in joint_metadata and "global_y_range" in joint_metadata:
                 return tuple(joint_metadata["global_x_range"]), tuple(joint_metadata["global_y_range"])
-            
-                
+
     except Exception as e:
         logger.warning(f"Failed to load global bounds: {e}")
-    
+
     return None, None
 
-@router.post("/load_grid_projection_image", response_model=Dict[str, Any], tags=["PROJECTION"])
+
+@router.post("/load_grid_projection_image", response_model=dict[str, Any], tags=["PROJECTION"])
 async def load_grid_projection_image(
     benchmark_id: int,
     checkpoint_step: int,
@@ -379,7 +389,7 @@ async def load_grid_projection_image(
 
     # load experiment from benchmark_id
     db_experiment = await get_single_entry(database, Experiment, benchmark_id)
-    
+
     # Load global bounds for consistent scaling across checkpoints
     global_x_range, global_y_range = load_global_bounds(None, db_experiment.env_id, projection_method)
     print(f"Global bounds: {global_x_range}, {global_y_range}")
@@ -535,6 +545,7 @@ async def load_grid_projection_image(
 
     return image_data
 
+
 class UncertaintyDifferenceRequest(BaseModel):
     """Request payload for uncertainty difference computation."""
 
@@ -543,7 +554,8 @@ class UncertaintyDifferenceRequest(BaseModel):
     previous_checkpoint_step: int
     projection_method: str = "UMAP"
 
-@router.post("/load_uncertainty_difference", response_model=Dict[str, Any], tags=["PROJECTION"])
+
+@router.post("/load_uncertainty_difference", response_model=dict[str, Any], tags=["PROJECTION"])
 async def load_uncertainty_difference(
     request: UncertaintyDifferenceRequest,
 ):
@@ -631,7 +643,7 @@ async def load_uncertainty_difference(
 
     global_x_range, global_y_range = load_global_bounds(None, db_experiment.env_id, projection_method)
 
-    def extend_bounds(existing_range: Optional[Tuple[float, float]], values: np.ndarray) -> Optional[Tuple[float, float]]:
+    def extend_bounds(existing_range: tuple[float, float] | None, values: np.ndarray) -> tuple[float, float] | None:
         if values.size == 0:
             return existing_range
         min_val = float(np.min(values))
@@ -778,7 +790,7 @@ def generate_cache_key(
 class CoordinateToStateRequest(BaseModel):
     """Request to map coordinates to environment states."""
 
-    coordinates: List[List[float]]  # List of [x, y] coordinates
+    coordinates: list[list[float]]  # List of [x, y] coordinates
     model_path: str  # Path to trained inverse state projection model
 
 
@@ -821,4 +833,4 @@ async def coordinates_to_states(request: CoordinateToStateRequest):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Model not found: {request.model_path}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error predicting states: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error predicting states: {e!s}")

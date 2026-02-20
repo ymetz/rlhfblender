@@ -2,13 +2,13 @@ import json
 import os
 import pickle
 import random
-import time
 import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-import uuid
 
 import numpy as np
 from databases import Database
@@ -17,13 +17,11 @@ from fastapi.responses import JSONResponse
 from multi_type_feedback.dynamic_rlhf_human import DynamicRLHF
 from pydantic import BaseModel
 from train_baselines.exp_manager import ExperimentManager
-from rlhfblender.data_models.global_models import Experiment
-from rlhfblender.utils.data_generation import register_experiment
 
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.global_models import Experiment
 from rlhfblender.utils import process_env_name
-from rlhfblender.utils.data_generation import _process_benchmark_data
+from rlhfblender.utils.data_generation import _process_benchmark_data, register_experiment
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -239,8 +237,7 @@ def update_session_saved_paths(session: dict[str, Any], checkpoint_base_path: st
     session["last_saved_state"] = state_path
 
     print(
-        f"Updated session saved paths: models={list(saved_models.keys())}, "
-        f"agent={'present' if saved_agent else 'missing'}"
+        f"Updated session saved paths: models={list(saved_models.keys())}, " f"agent={'present' if saved_agent else 'missing'}"
     )
 
 
@@ -396,7 +393,7 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
                     reward_model_path = list(saved_models.values())[0]
                     reward_model_type = "separate"
 
-                print(f"Checking required files for prediction:")
+                print("Checking required files for prediction:")
                 print(
                     f"  Reward model: {reward_model_path} (exists: {os.path.exists(reward_model_path) if reward_model_path else False})"
                 )
@@ -444,7 +441,6 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
                     print("STDOUT:\n", prediction_result.stdout)
                     print("STDERR:\n", prediction_result.stderr)
 
-
                     if prediction_result.returncode != 0:
                         print(f"Reward/uncertainty prediction failed: {prediction_result.stderr}")
                         return True  # Still consider successful since projections were generated
@@ -452,7 +448,7 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
                     print("Reward/uncertainty prediction completed successfully")
                     return True
                 else:
-                    print(f"Some required files not found - skipping reward/uncertainty prediction")
+                    print("Some required files not found - skipping reward/uncertainty prediction")
                     return True
             else:
                 print("No saved models found for reward/uncertainty prediction")
@@ -486,8 +482,11 @@ async def initialize_dynamic_rlhf_session(
 
     # Create ExperimentManager for proper hyperparameter loading
     exp_manager = ExperimentManager(
-        args=SimpleNamespace(), algo=exp.algorithm.lower(), env_id=exp.env_id, log_folder=f"dynamic_rlhf_models/{session_id}",
-        #trained_agent="data/pretrained_policies/rl_model_50000_steps.zip" # optional: path to pretrained policy
+        args=SimpleNamespace(),
+        algo=exp.algorithm.lower(),
+        env_id=exp.env_id,
+        log_folder=f"dynamic_rlhf_models/{session_id}",
+        # trained_agent="data/pretrained_policies/rl_model_50000_steps.zip" # optional: path to pretrained policy
     )
 
     # Get hyperparameters and total timesteps from ExperimentManager
@@ -516,7 +515,7 @@ async def initialize_dynamic_rlhf_session(
         num_ensemble_models=4,
         initial_feedback_count=10,
         seed=42,
-        exp_manager=exp_manager
+        exp_manager=exp_manager,
     )
 
     # Load existing models if resuming from a checkpoint
@@ -728,11 +727,11 @@ async def start_dynamic_rlhf_training(request: Request):
     except Exception as e:
         import traceback
 
-        error_msg = f"Error starting DynamicRLHF training: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Error starting DynamicRLHF training: {e!s}\n{traceback.format_exc()}"
         print(error_msg)
 
         return JSONResponse(
-            status_code=500, content={"status": "error", "message": f"Failed to start DynamicRLHF training: {str(e)}"}
+            status_code=500, content={"status": "error", "message": f"Failed to start DynamicRLHF training: {e!s}"}
         )
 
 
@@ -773,7 +772,7 @@ async def run_training_iteration_background(
         if phase == 0:
             # Initial data collection with untrained models
             session["status"] = "collecting_initial_data"
-            print(f"Initial data collection: Collecting trajectories with untrained models...")
+            print("Initial data collection: Collecting trajectories with untrained models...")
             trajectories, initial_states = drlhf.collect_trajectories(
                 n_trajectories=drlhf.initial_feedback_count,
                 render=True,
@@ -817,7 +816,7 @@ async def run_training_iteration_background(
             dynamic_rlhf_file_prefix = os.path.join(dynamic_rlhf_dir, "dynamic_rlhf_feedback_")
             dynamic_rlhf_files = [f for f in os.listdir(dynamic_rlhf_dir) if f.startswith("dynamic_rlhf_feedback_")]
             if not dynamic_rlhf_files:
-                print(f"No DynamicRLHF format feedback files found.")
+                print("No DynamicRLHF format feedback files found.")
                 session["status"] = "error"
                 session["error"] = "No feedback files found"
                 return
@@ -945,7 +944,7 @@ async def run_training_iteration_background(
         session["error"] = str(e)
         import traceback
 
-        error_msg = f"Error in background training iteration: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Error in background training iteration: {e!s}\n{traceback.format_exc()}"
         print(error_msg)
 
 
@@ -1022,7 +1021,7 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
             except Exception as init_error:
                 return JSONResponse(
                     status_code=404,
-                    content={"status": "error", "message": f"Failed to initialize DynamicRLHF session: {str(init_error)}"},
+                    content={"status": "error", "message": f"Failed to initialize DynamicRLHF session: {init_error!s}"},
                 )
         else:
             print(f"Found existing session for {session_id}")
@@ -1062,14 +1061,14 @@ async def train_iteration(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         import traceback
 
-        error_msg = f"Error starting DynamicRLHF training iteration: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Error starting DynamicRLHF training iteration: {e!s}\n{traceback.format_exc()}"
         print(error_msg)
 
         return JSONResponse(
             status_code=500,
             content={
                 "phaseStatus": "error",
-                "message": f"Failed to start training: {str(e)}",
+                "message": f"Failed to start training: {e!s}",
                 "phaseTrainingStep": 0,
                 "phaseUncertainty": 0.0,
                 "phaseReward": 0.0,
@@ -1149,7 +1148,7 @@ async def get_training_status(request: Request):
     feedback_status_file = Path(f"sessions/{session_id}/feedback_status.json")
     if feedback_status_file.exists():
         try:
-            with open(feedback_status_file, "r") as f:
+            with open(feedback_status_file) as f:
                 feedback_status = json.load(f)
 
             if feedback_status.get("status") == "candidates_ready":
@@ -1328,7 +1327,7 @@ async def get_training_results(request: Request):
 
     if feedback_status_file.exists():
         try:
-            with open(feedback_status_file, "r") as f:
+            with open(feedback_status_file) as f:
                 feedback_status = json.load(f)
 
             # Extract actual predicted rewards and uncertainties from the feedback status

@@ -421,7 +421,7 @@ class ParametricUMAP(UMAP):
             landmark_positions = check_array(landmark_positions, dtype=np.float32, ensure_all_finite="allow-nan")
 
         # get dataset of edges
-        (dataloader, n_edges, head, tail, self.edge_weight) = self._construct_edge_dataset(
+        dataloader, n_edges, head, tail, self.edge_weight = self._construct_edge_dataset(
             X, self.graph_, self.n_epochs, self.batch_size, landmark_positions=landmark_positions
         )
 

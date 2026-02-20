@@ -1,6 +1,6 @@
 # feedback_models.py
 from enum import Enum
-from typing import List, Literal, Optional, Union
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -89,7 +89,7 @@ class Target(BaseModel):
     origin: Origin = Origin.offline
     timestamp: int = -1
     # Store the actual trajectory data
-    data: Optional[List[tuple]] = None  # List of (obs, action, reward) tuples
+    data: list[tuple] | None = None  # List of (obs, action, reward) tuples
 
     # Episode reference information (replaces string reference)
     env_name: str = ""
@@ -130,26 +130,27 @@ class Rating(FeedbackContent):
 
 
 class Ranking(FeedbackContent):
-    preferences: List[float]
+    preferences: list[float]
 
 
 class Correction(FeedbackContent):
-    action_preferences: List[int]
-    path: Optional[str] = None  # Optional path to the corrected trajectory
+    action_preferences: list[int]
+    path: str | None = None  # Optional path to the corrected trajectory
 
 
 class Demonstration(FeedbackContent):
-    actions: List[Union[int, List[float]]] = Field(default_factory=list)
-    path : Optional[str] = None  # Optional path to the demonstration trajectory
+    actions: list[int | list[float]] = Field(default_factory=list)
+    path: str | None = None  # Optional path to the demonstration trajectory
 
 
 class FeatureSelection(FeedbackContent):
-    features: Union[List[dict], str]
-    importance: Optional[Union[float, List[float], str]] = None
+    features: list[dict] | str
+    importance: float | list[float] | str | None = None
+
 
 class ClusterRating(FeedbackContent):
     cluster_label: str | None = None
-    score: Union[int, float]
+    score: int | float
 
 
 class TextFeedback(FeedbackContent):
@@ -183,10 +184,10 @@ class StandardizedFeedback(BaseModel):
     feedback_type: SimplifiedFeedbackType
 
     # Single or multiple targets based on feedback type
-    targets: List[Target]
+    targets: list[Target]
 
     # Content is a discriminated union
-    content: Union[Rating, Ranking, Correction, Demonstration, FeatureSelection, ClusterRating, TextFeedback, MetaFeedback]
+    content: Rating | Ranking | Correction | Demonstration | FeatureSelection | ClusterRating | TextFeedback | MetaFeedback
 
     # Optional metadata that can be inferred or specified
     granularity: Literal["state", "segment", "episode", "entire"] = "episode"

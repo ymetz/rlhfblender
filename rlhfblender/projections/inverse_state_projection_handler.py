@@ -9,7 +9,7 @@ import glob
 import logging
 import os
 import pickle
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class InverseStateProjectionNetwork(nn.Module):
     """Neural network that maps 2D coordinates to environment states."""
 
-    def __init__(self, input_dim: int = 2, output_dim: int = None, hidden_dims: List[int] = None):
+    def __init__(self, input_dim: int = 2, output_dim: int = None, hidden_dims: list[int] = None):
         super().__init__()
 
         if hidden_dims is None:
@@ -62,7 +62,7 @@ class InverseStateProjectionHandler:
 
     def __init__(
         self,
-        hidden_dims: List[int] = None,
+        hidden_dims: list[int] = None,
         learning_rate: float = 0.001,
         num_epochs: int = 100,
         batch_size: int = 64,
@@ -88,7 +88,7 @@ class InverseStateProjectionHandler:
 
         logger.info(f"Using device: {self.device}")
 
-    def _flatten_state(self, state: Union[np.ndarray, Dict[str, np.ndarray]]) -> np.ndarray:
+    def _flatten_state(self, state: np.ndarray | dict[str, np.ndarray]) -> np.ndarray:
         """
         Flatten structured state dictionary to vector.
         Handles various state structures including nested dictionaries and different data types.
@@ -168,7 +168,7 @@ class InverseStateProjectionHandler:
 
             return np.array(flat_state, dtype=np.float64)
 
-    def _unflatten_state(self, flat_state: np.ndarray) -> Dict[str, np.ndarray]:
+    def _unflatten_state(self, flat_state: np.ndarray) -> dict[str, np.ndarray]:
         """Reconstruct structured state dictionary from flat vector."""
         if self.state_structure is None:
             raise ValueError("State structure not learned. Call fit() first.")
@@ -194,8 +194,8 @@ class InverseStateProjectionHandler:
         return state
 
     def fit(
-        self, coords: np.ndarray, states: List[Dict[str, np.ndarray]], validation_split: float = 0.2
-    ) -> Dict[str, List[float]]:
+        self, coords: np.ndarray, states: list[dict[str, np.ndarray]], validation_split: float = 0.2
+    ) -> dict[str, list[float]]:
         """
         Train the inverse state projection model.
 
@@ -289,7 +289,7 @@ class InverseStateProjectionHandler:
 
         return history
 
-    def predict(self, coords: np.ndarray) -> List[Dict[str, np.ndarray]]:
+    def predict(self, coords: np.ndarray) -> list[dict[str, np.ndarray]]:
         """
         Map 2D coordinates to environment states.
 
@@ -367,7 +367,7 @@ class InverseStateProjectionHandler:
         logger.info(f"Model loaded from {filepath}")
 
 
-def load_env_states_from_file(env_states_file_path: str) -> List[Dict[str, np.ndarray]]:
+def load_env_states_from_file(env_states_file_path: str) -> list[dict[str, np.ndarray]]:
     """
     Load environment states from a saved .npy file in the env_states directory.
 
@@ -398,7 +398,7 @@ def load_env_states_from_file(env_states_file_path: str) -> List[Dict[str, np.nd
         return []
 
 
-def collect_trajectory_states_from_episode(episode_data: Dict[str, np.ndarray], env_wrapper) -> List[Dict[str, np.ndarray]]:
+def collect_trajectory_states_from_episode(episode_data: dict[str, np.ndarray], env_wrapper) -> list[dict[str, np.ndarray]]:
     """
     DEPRECATED: Collect environment states from a trajectory using SaveResetWrapper.
     This function incorrectly assumes passing obs to save_state works properly.
@@ -435,13 +435,13 @@ def collect_trajectory_states_from_episode(episode_data: Dict[str, np.ndarray], 
 
 def collect_states_from_multiple_checkpoints(
     db_experiment: str,
-    checkpoints: List[int],
+    checkpoints: list[int],
     environment_name: str,
-    environment_config: Dict[str, Any] = None,
+    environment_config: dict[str, Any] = None,
     max_trajectories_per_checkpoint: int = 50,
     max_steps_per_trajectory: int = 500,
-    additional_gym_packages: List[str] = [],
-) -> Tuple[List[Dict[str, np.ndarray]], np.ndarray, List[int]]:
+    additional_gym_packages: list[str] = [],
+) -> tuple[list[dict[str, np.ndarray]], np.ndarray, list[int]]:
     """
     Collect environment states from multiple checkpoints for joint training.
     Now loads pre-saved env_states from the data/env_states directory.

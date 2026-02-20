@@ -1,5 +1,4 @@
 # feedback_translator.py
-from typing import Dict, List, Optional
 
 from rlhfblender.data_models.feedback_models import (
     ClusterRating,
@@ -35,7 +34,7 @@ class FeedbackTranslator:
         self.env = env
         self.logger = logger
         self.feedback_id = 0
-        self.feedback_buffer: List[StandardizedFeedback] = []
+        self.feedback_buffer: list[StandardizedFeedback] = []
 
     def set_translator(self, experiment: Experiment, env: Environment, logger: Logger) -> str:
         """Sets the experiment and environment for the translator"""
@@ -50,7 +49,7 @@ class FeedbackTranslator:
         self.feedback_id = 0
         self.feedback_buffer = []
 
-    def _create_target(self, target_dict: dict, granularity: str) -> Optional[Target]:
+    def _create_target(self, target_dict: dict, granularity: str) -> Target | None:
         """Create appropriate Target object from dictionary"""
         if not target_dict:
             return None
@@ -184,13 +183,13 @@ class FeedbackTranslator:
 
         return unified_feedback
 
-    def process(self) -> List[StandardizedFeedback]:
+    def process(self) -> list[StandardizedFeedback]:
         """
         Process and deduplicate feedback buffer.
         Returns the processed feedback list.
         """
         # De-duplicate feedback in the buffer
-        feedback_dict: Dict[tuple, StandardizedFeedback] = {}
+        feedback_dict: dict[tuple, StandardizedFeedback] = {}
 
         for feedback in self.feedback_buffer:
             # Skip meta feedback from deduplication

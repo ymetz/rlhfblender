@@ -3,13 +3,12 @@ import base64
 import json
 import os
 import time
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
+from typing import Any
 
 import httpx
-
 import numpy as np
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from aiortc.rtcconfiguration import RTCIceServer
@@ -35,24 +34,20 @@ database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender
 router = APIRouter(prefix="/demo_generation")
 
 # Global cache for ICE server credentials
-_ice_server_cache: Dict[str, Any] = {
-    "servers": None,
-    "credential": None,
-    "expires_at": 0
-}
+_ice_server_cache: dict[str, Any] = {"servers": None, "credential": None, "expires_at": 0}
 
 
 @dataclass
 class DemoArtifactsContext:
     session_id: str
-    experiment_id: Optional[int]
+    experiment_id: int | None
     environment_id: str
-    current_checkpoint: Optional[int] = None
-    projection_method: Optional[str] = None
-    projection_props: Optional[dict] = None
+    current_checkpoint: int | None = None
+    projection_method: str | None = None
+    projection_props: dict | None = None
 
 
-def _sanitize_component(value: Optional[Any]) -> str:
+def _sanitize_component(value: Any | None) -> str:
     """Create a filesystem-friendly identifier component."""
     if value is None:
         return "unknown"
@@ -64,7 +59,7 @@ def _sanitize_component(value: Optional[Any]) -> str:
     return text
 
 
-def _build_projection_output_dir(environment_id: str, experiment_id: Optional[int], checkpoint: Optional[int]) -> Path:
+def _build_projection_output_dir(environment_id: str, experiment_id: int | None, checkpoint: int | None) -> Path:
     env_component = _sanitize_component(environment_id)
     exp_component = f"exp-{experiment_id}" if experiment_id is not None else "exp-unknown"
     checkpoint_component = f"checkpoint-{checkpoint}" if checkpoint is not None else "checkpoint-unset"
@@ -74,10 +69,8 @@ def _build_projection_output_dir(environment_id: str, experiment_id: Optional[in
 
 
 def _find_joint_projection_metadata(
-    environment_id: str,
-    experiment_id: Optional[int],
-    projection_method: str
-) -> tuple[Optional[Path], Optional[InverseStateProjectionHandler], str, Optional[Path]]:
+    environment_id: str, experiment_id: int | None, projection_method: str
+) -> tuple[Path | None, InverseStateProjectionHandler | None, str, Path | None]:
     """
     Find the latest joint projection metadata for the given env/exp and return:
       (metadata_path, state_handler, effective_method, state_model_path)
@@ -96,11 +89,11 @@ def _find_joint_projection_metadata(
     joint_state_dir = Path("data") / "saved_projections" / "joint_obs_state"
     joint_dir = Path("data") / "saved_projections" / "joint"
 
-    def _latest(globs: list[Path]) -> Optional[Path]:
+    def _latest(globs: list[Path]) -> Path | None:
         globs = [p for p in globs if p.exists()]
         return max(globs, key=lambda p: p.stat().st_mtime) if globs else None
 
-    def _find_meta(method: str) -> Optional[Path]:
+    def _find_meta(method: str) -> Path | None:
         pattern_state = f"{env_component}_{exp_component}_joint_obs_state_{method}_0_*_metadata.json"
         pattern_joint = f"{env_component}_{exp_component}_joint_{method}_0_*_metadata.json"
         candidates: list[Path] = []
@@ -124,11 +117,11 @@ def _find_joint_projection_metadata(
         return None, None, effective_method, None
 
     # 3) try to resolve a state model path
-    state_model_path: Optional[Path] = None
+    state_model_path: Path | None = None
     try:
         with meta.open("r", encoding="utf-8") as f:
             md = json.load(f)
-        if "state_model_path" in md and md["state_model_path"]:
+        if md.get("state_model_path"):
             cand = Path(md["state_model_path"])
             if cand.exists():
                 state_model_path = cand
@@ -138,16 +131,14 @@ def _find_joint_projection_metadata(
     # 4) if metadata didn't have it (or file is missing), glob a sensible fallback
     if state_model_path is None:
         # canonical prefix used across the codebase
-        patt_state_model = (
-            f"{env_component}_{exp_component}_joint_obs_state_{effective_method}_*_state_model.pkl"
-        )
+        patt_state_model = f"{env_component}_{exp_component}_joint_obs_state_{effective_method}_*_state_model.pkl"
         candidates: list[Path] = []
         if joint_state_dir.exists():
             candidates.extend(joint_state_dir.glob(patt_state_model))
         state_model_path = _latest(candidates)
 
     # 5) create handler if we found a model
-    state_handler: Optional[InverseStateProjectionHandler] = None
+    state_handler: InverseStateProjectionHandler | None = None
     if state_model_path and state_model_path.exists():
         try:
             state_handler = InverseStateProjectionHandler()
@@ -159,14 +150,13 @@ def _find_joint_projection_metadata(
     return meta, state_handler, effective_method, state_model_path
 
 
-
-def _load_npz_arrays(npz_path: Path) -> Dict[str, np.ndarray]:
+def _load_npz_arrays(npz_path: Path) -> dict[str, np.ndarray]:
     with np.load(npz_path, allow_pickle=True) as data:
         return {key: data[key] for key in data.files}
 
 
-def _compute_episode_indices(dones: np.ndarray) -> List[int]:
-    episode_indices: List[int] = []
+def _compute_episode_indices(dones: np.ndarray) -> list[int]:
+    episode_indices: list[int] = []
     current_episode = 0
     for flag in dones:
         episode_indices.append(current_episode)
@@ -179,14 +169,14 @@ def _prepare_demo_artifacts(
     track: GymEnvironmentTrack,
     demo_path: Path,
     *,
-    projection_method_override: Optional[str] = None,
-    projection_props_override: Optional[dict] = None,
-) -> Dict[str, Any]:
+    projection_method_override: str | None = None,
+    projection_props_override: dict | None = None,
+) -> dict[str, Any]:
     if not demo_path.exists():
         raise FileNotFoundError(f"Demo file not found: {demo_path}")
 
     metadata_path = demo_path.with_suffix(".json")
-    metadata_dict: Dict[str, Any] = {}
+    metadata_dict: dict[str, Any] = {}
     if metadata_path.exists():
         with metadata_path.open("r", encoding="utf-8") as meta_file:
             metadata_dict = json.load(meta_file)
@@ -246,7 +236,7 @@ def _prepare_demo_artifacts(
         obs_array = obs_array.reshape(-1, 1)
 
     # Prepare renders and encode video if available
-    video_path: Optional[Path] = None
+    video_path: Path | None = None
     renders = demo_arrays.get("renders")
     if isinstance(renders, np.ndarray) and renders.ndim == 4 and renders.shape[0] > 0:
         video_base = demo_path.with_suffix("")
@@ -262,10 +252,7 @@ def _prepare_demo_artifacts(
         video_path = candidate_path
 
     projection_method = (
-        projection_method_override
-        or track.projection_method
-        or metadata_dict.get("projection_method")
-        or "PCA"
+        projection_method_override or track.projection_method or metadata_dict.get("projection_method") or "PCA"
     )
     projection_props = projection_props_override or track.projection_props
 
@@ -273,7 +260,7 @@ def _prepare_demo_artifacts(
         track.environment_id, track.experiment_id, projection_method
     )
 
-    joint_metadata: Dict[str, Any] = {}
+    joint_metadata: dict[str, Any] = {}
     if meta_path and meta_path.exists():
         with meta_path.open("r", encoding="utf-8") as joint_file:
             joint_metadata = json.load(joint_file)
@@ -302,7 +289,6 @@ def _prepare_demo_artifacts(
             print(f"Failed to project demo {demo_path.name}: {exc}")
             projection_array = np.zeros((0, 2), dtype=np.float32)
 
-
     # Fallback: if we could not load a joint projection, generate a fresh 2D projection directly
     if (projection_array.size == 0 or projection_array.shape[0] != obs_array.shape[0]) and obs_array.size > 0:
         try:
@@ -321,7 +307,7 @@ def _prepare_demo_artifacts(
                 suffix=f"user_demo_{track.session_id}_local",
             )
             projection_array = np.array(projection_raw, dtype=np.float32)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"Fallback projection failed for demo {demo_path.name}: {exc}")
             projection_array = np.zeros((0, 2), dtype=np.float32)
 
@@ -329,7 +315,7 @@ def _prepare_demo_artifacts(
     projection_output_dir = _build_projection_output_dir(track.environment_id, track.experiment_id, track.current_checkpoint)
     projection_json_path = projection_output_dir / f"{demo_path.stem}.json"
 
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "demo_file": str(demo_path),
         "metadata_file": str(metadata_path) if metadata_path.exists() else None,
         "projection_file": str(projection_json_path),
@@ -385,14 +371,14 @@ def _normalize_dash_sequence(data: Any, fallback: list, target_len: int) -> list
 def _save_dash_demo_payload(
     *,
     session_id: str,
-    experiment_id: Optional[int],
+    experiment_id: int | None,
     environment_id: str,
-    checkpoint: Optional[int],
-    projection_method: Optional[str],
-    projection_props: Optional[dict],
-    demo_number: Optional[int],
+    checkpoint: int | None,
+    projection_method: str | None,
+    projection_props: dict | None,
+    demo_number: int | None,
     dash_demo: dict,
-) -> tuple[int, Path, Dict[str, Any]]:
+) -> tuple[int, Path, dict[str, Any]]:
     if not isinstance(dash_demo, dict):
         raise ValueError("dash_demo payload must be an object")
 
@@ -475,7 +461,8 @@ def _save_dash_demo_payload(
     )
     return int(demo_number), demo_path, artifacts
 
-async def create_expiring_turn_credential() -> Dict[str, Any]:
+
+async def create_expiring_turn_credential() -> dict[str, Any]:
     """
     Create expiring TURN credentials using the Metered API.
     Returns the credential info including username, password, and apiKey.
@@ -486,54 +473,48 @@ async def create_expiring_turn_credential() -> Dict[str, Any]:
         raise HTTPException(500, detail="METERED_SECRET_KEY not configured")
     if not application_name:
         raise HTTPException(500, detail="METERED_APP_NAME not configured")
-    
+
     # Create credential that expires in 4 hours (1800 seconds)
     url = f"https://{application_name}.metered.live/api/v1/turn/credential?secretKey={secret_key}"
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             url,
-            headers={'Content-Type': 'application/json'},
-            json={
-                "expiryInSeconds": 1800,  # 30 mins
-                "label": "rlhfblender-session"
-            }
+            headers={"Content-Type": "application/json"},
+            json={"expiryInSeconds": 1800, "label": "rlhfblender-session"},  # 30 mins
         )
-        
+
         if response.status_code != 200:
             raise HTTPException(500, detail=f"Failed to create TURN credential: {response.text}")
-        
+
         return response.json()
 
 
-async def get_cached_ice_servers() -> tuple[list[dict[str, Any]], Optional[dict[str, Any]]]:
+async def get_cached_ice_servers() -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """
     Get cached ICE servers or create new ones if cache is expired.
     Returns (ice_servers_data, credential) tuple.
     """
     current_time = time.time()
-    
+
     # Check if cache is still valid (with 5min safety margin)
-    if (_ice_server_cache["expires_at"] > current_time and 
-        _ice_server_cache["servers"] is not None):
+    if _ice_server_cache["expires_at"] > current_time and _ice_server_cache["servers"] is not None:
         print("Using cached ICE servers")
         return _ice_server_cache["servers"], _ice_server_cache["credential"]
-    
+
     try:
         print("Creating new ICE server credentials")
         # Create new credentials
         credential = await create_expiring_turn_credential()
         ice_servers_data = await get_ice_servers_from_credential(credential["apiKey"])
-        
+
         # Cache with expiry (25min to be safe, original is 30min)
-        _ice_server_cache.update({
-            "servers": ice_servers_data,
-            "credential": credential,
-            "expires_at": current_time + 1500  # 25 minutes
-        })
-        
+        _ice_server_cache.update(
+            {"servers": ice_servers_data, "credential": credential, "expires_at": current_time + 1500}  # 25 minutes
+        )
+
         return ice_servers_data, credential
-        
+
     except Exception as e:
         print(f"Failed to get ICE servers: {e}")
         # Return fallback
@@ -550,13 +531,13 @@ async def get_ice_servers_from_credential(api_key: str) -> list[dict[str, Any]]:
         raise HTTPException(500, detail="METERED_APP_NAME not configured")
 
     url = f"https://{application_name}.metered.live/api/v1/turn/credentials?apiKey={api_key}"
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
-        
+
         if response.status_code != 200:
             raise HTTPException(500, detail=f"Failed to fetch ICE servers: {response.text}")
-        
+
         return response.json()
 
 
@@ -568,18 +549,15 @@ async def ice_servers():
     """
     try:
         ice_servers_data, credential = await get_cached_ice_servers()
-        return JSONResponse({
-            "iceServers": ice_servers_data,
-            "credentialExpiry": credential.get("expiryInSeconds", 1800) if credential else 1800
-        })
+        return JSONResponse(
+            {
+                "iceServers": ice_servers_data,
+                "credentialExpiry": credential.get("expiryInSeconds", 1800) if credential else 1800,
+            }
+        )
     except Exception as e:
         # Fallback to public STUN to avoid total failure
-        return JSONResponse({
-            "iceServers": [{"urls": "stun:stun.l.google.com:19302"}],
-            "error": str(e)
-        })
-
-
+        return JSONResponse({"iceServers": [{"urls": "stun:stun.l.google.com:19302"}], "error": str(e)})
 
 
 @router.post("/initialize_demo_session")
@@ -681,7 +659,7 @@ async def stop_webrtc_demo_session(session_id: str) -> bool:
                     print(f"No demo data recorded for session {session_id}")
             except Exception as e:
                 print(f"Error saving WebRTC demo data: {e}")
-            
+
             # Clean up the gym session
             track.stop()
             del webrtc_demo_session.gym_sessions[session_id]
@@ -743,7 +721,7 @@ async def save_webrtc_demo(request: Request):
                 }
 
             return {"success": False, "message": "Session not found"}
-            
+
         track = webrtc_demo_session.gym_sessions[session_id]
 
         if checkpoint is not None:
@@ -786,7 +764,7 @@ async def save_webrtc_demo(request: Request):
         }
 
     except Exception as e:
-        return {"success": False, "message": f"Error: {str(e)}"}
+        return {"success": False, "message": f"Error: {e!s}"}
 
 
 @router.post("/gym_offer")
@@ -829,16 +807,14 @@ async def gym_offer(request: Request):
 
     # Get ICE servers using caching
     ice_servers_data, credential = await get_cached_ice_servers()
-    
+
     # Convert to RTCIceServer objects for WebRTC peer connection
     ice_servers = []
     for server in ice_servers_data:
-        ice_servers.append(RTCIceServer(
-            urls=[server["urls"]],
-            username=server.get("username"),
-            credential=server.get("credential")
-        ))
-    
+        ice_servers.append(
+            RTCIceServer(urls=[server["urls"]], username=server.get("username"), credential=server.get("credential"))
+        )
+
     print(f"Using {len(ice_servers)} ICE servers for WebRTC connection")
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
@@ -874,9 +850,7 @@ async def gym_offer(request: Request):
                 import numpy as np
 
                 # Construct the episode file path
-                episode_file_path = (
-                    f"data/env_states/{environment_id}/{environment_id}_{experiment_id}_{checkpoint}/env_states_{episode_num}.npy"
-                )
+                episode_file_path = f"data/env_states/{environment_id}/{environment_id}_{experiment_id}_{checkpoint}/env_states_{episode_num}.npy"
 
                 # Load the episode data
                 env_states = np.load(episode_file_path, allow_pickle=True)
@@ -910,10 +884,10 @@ async def gym_offer(request: Request):
         try:
             to_delete = []
             for sid, t in list(webrtc_demo_session.gym_sessions.items()):
-                if getattr(t, 'stopped', False):
+                if getattr(t, "stopped", False):
                     to_delete.append(sid)
                     continue
-                last_access = getattr(t, 'last_access', 0)
+                last_access = getattr(t, "last_access", 0)
                 if last_access and (_time.time() - last_access) > SESSION_TTL_SECONDS:
                     try:
                         t.stop()
@@ -970,15 +944,16 @@ async def gym_offer(request: Request):
         # Prefer H264 when available (often hardware-accelerated in browsers)
         try:
             from aiortc.rtcrtpsender import RTCRtpSender
+
             caps = RTCRtpSender.getCapabilities("video")
-            preferred = [c for c in caps.codecs if getattr(c, 'mimeType', '').lower() == 'video/h264']
-            fallback = [c for c in caps.codecs if getattr(c, 'mimeType', '').lower() != 'video/h264']
+            preferred = [c for c in caps.codecs if getattr(c, "mimeType", "").lower() == "video/h264"]
+            fallback = [c for c in caps.codecs if getattr(c, "mimeType", "").lower() != "video/h264"]
             for transceiver in pc.getTransceivers():
-                if transceiver.kind == 'video' and hasattr(transceiver, 'setCodecPreferences'):
+                if transceiver.kind == "video" and hasattr(transceiver, "setCodecPreferences"):
                     transceiver.setCodecPreferences(preferred + fallback)
         except Exception as e:
             print(f"Codec preference setup skipped: {e}")
-        print(f"Track created successfully")
+        print("Track created successfully")
 
         # Store data channel handler mapping
         print(f"Session {session_id} ready")
@@ -1064,13 +1039,15 @@ async def gym_offer(request: Request):
 
     await pc.setLocalDescription(answer)
 
-    return JSONResponse({
-        "sdp": pc.localDescription.sdp, 
-        "type": pc.localDescription.type, 
-        "session_id": session_id,
-        "iceServers": ice_servers_data,
-        "credentialExpiry": credential.get("expiryInSeconds", 1800) if credential else 1800
-    })
+    return JSONResponse(
+        {
+            "sdp": pc.localDescription.sdp,
+            "type": pc.localDescription.type,
+            "session_id": session_id,
+            "iceServers": ice_servers_data,
+            "credentialExpiry": credential.get("expiryInSeconds", 1800) if credential else 1800,
+        }
+    )
 
 
 @router.post("/coordinate_to_render")
@@ -1109,9 +1086,7 @@ async def coordinate_to_render(request: Request):
         if db_env is None:
             raise HTTPException(status_code=404, detail=f"Environment {env_id} not found")
 
-        meta_path, state_handler, method, model_path = _find_joint_projection_metadata(
-            env_id, exp_id, "PCA"
-        )
+        meta_path, state_handler, method, model_path = _find_joint_projection_metadata(env_id, exp_id, "PCA")
         if not state_handler:
             raise HTTPException(status_code=404, detail="No inverse state projection model found")
 
@@ -1154,12 +1129,12 @@ async def coordinate_to_render(request: Request):
                 raise HTTPException(status_code=500, detail="Environment rendering failed")
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to load state or render: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to load state or render: {e!s}")
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
 @router.post("/initialize_demo_from_coordinate")
@@ -1222,7 +1197,7 @@ async def initialize_demo_from_coordinate(request: Request):
             success = True
             demo_number = 0  # WebRTC sessions don't use demo numbers the same way
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to create demo session: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to create demo session: {e!s}")
 
         return JSONResponse(
             {
@@ -1239,7 +1214,7 @@ async def initialize_demo_from_coordinate(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
 
 
 @router.on_event("shutdown")

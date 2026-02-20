@@ -90,7 +90,7 @@ class ProjectionHandler:
 
         if joint_projection_path.endswith(".json"):
             # Load from metadata file
-            with open(joint_projection_path, "r") as f:
+            with open(joint_projection_path) as f:
                 metadata = json.load(f)
 
             # Handle joint observation-state projection format
@@ -268,7 +268,7 @@ class ProjectionHandler:
             Dictionary with checkpoint coordinates and metadata
         """
         if joint_projection_path.endswith(".json"):
-            with open(joint_projection_path, "r") as f:
+            with open(joint_projection_path) as f:
                 metadata = json.load(f)
 
             results_path = metadata["results_path"]

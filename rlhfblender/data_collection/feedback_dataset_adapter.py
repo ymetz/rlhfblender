@@ -1,8 +1,9 @@
 import os
-from typing import Any, Tuple
 import pickle
+from typing import Any
 
 import numpy as np
+
 from rlhfblender.data_models.feedback_models import Segment, StandardizedFeedback, State, Target
 from rlhfblender.utils import process_env_name
 
@@ -12,7 +13,7 @@ DATA_BASE_PATH = "data"  # Base path for data files
 class FeedbackDatasetAdapter:
 
     @staticmethod
-    def _load_npz_trajectory(file_path: str) -> list[Tuple[np.ndarray, np.ndarray, float]]:
+    def _load_npz_trajectory(file_path: str) -> list[tuple[np.ndarray, np.ndarray, float]]:
         """Load a trajectory stored as an NPZ file with obs/actions[/rewards] arrays."""
         if not file_path:
             return []
@@ -48,7 +49,7 @@ class FeedbackDatasetAdapter:
                 if rewards is None or len(rewards) < obs_len:
                     rewards = np.zeros(obs_len, dtype=float)
 
-                trajectory: list[Tuple[np.ndarray, np.ndarray, float]] = []
+                trajectory: list[tuple[np.ndarray, np.ndarray, float]] = []
                 for idx in range(obs_len):
                     reward = float(rewards[idx]) if idx < len(rewards) else 0.0
                     trajectory.append((np.asarray(obs[idx]), np.asarray(actions[idx]), reward))
@@ -60,9 +61,9 @@ class FeedbackDatasetAdapter:
             return []
 
     @staticmethod
-    def _gather_target_steps(targets: list[Target]) -> list[Tuple[np.ndarray, np.ndarray, float]]:
+    def _gather_target_steps(targets: list[Target]) -> list[tuple[np.ndarray, np.ndarray, float]]:
         """Collect all step tuples (obs, action, reward) from the provided targets."""
-        gathered: list[Tuple[np.ndarray, np.ndarray, float]] = []
+        gathered: list[tuple[np.ndarray, np.ndarray, float]] = []
         for target in targets:
             segment = FeedbackDatasetAdapter._extract_segment(target)
             if segment:
@@ -70,7 +71,7 @@ class FeedbackDatasetAdapter:
         return gathered
 
     @staticmethod
-    def _compute_cluster_representative(targets: list[Target]) -> Tuple[np.ndarray, np.ndarray] | None:
+    def _compute_cluster_representative(targets: list[Target]) -> tuple[np.ndarray, np.ndarray] | None:
         """Compute a representative state-action pair for a cluster of targets."""
         steps = FeedbackDatasetAdapter._gather_target_steps(targets)
         if not steps:
@@ -112,7 +113,9 @@ class FeedbackDatasetAdapter:
 
         print("Converting feedbacks to DynamicRLHF format:")
         for fb in feedbacks:
-            print(f"  Feedback ID: {fb.feedback_id}, Type: {fb.feedback_type}, Granularity: {fb.granularity}, Targets: {len(fb.targets)}")
+            print(
+                f"  Feedback ID: {fb.feedback_id}, Type: {fb.feedback_type}, Granularity: {fb.granularity}, Targets: {len(fb.targets)}"
+            )
         print("Grouped feedback types:", {k: len(v) for k, v in grouped.items()})
 
         # Process evaluative feedback (ratings)
@@ -162,7 +165,7 @@ class FeedbackDatasetAdapter:
         if "demonstration" in grouped:
             data = empty_feedback_dict()
             for fb in grouped["demonstration"]:
-                demo_segments: list[Tuple[np.ndarray, np.ndarray, float]] = []
+                demo_segments: list[tuple[np.ndarray, np.ndarray, float]] = []
 
                 demo_path = getattr(fb.content, "path", None)
                 if demo_path:
@@ -185,8 +188,8 @@ class FeedbackDatasetAdapter:
         if "correction" in grouped:
             data = empty_feedback_dict()
             for fb in grouped["correction"]:
-                corrected_segment: list[Tuple[np.ndarray, np.ndarray, float]] = []
-                reference_segment: list[Tuple[np.ndarray, np.ndarray, float]] = []
+                corrected_segment: list[tuple[np.ndarray, np.ndarray, float]] = []
+                reference_segment: list[tuple[np.ndarray, np.ndarray, float]] = []
 
                 # Load corrected trajectory from recorded file if available
                 correction_path = getattr(fb.content, "path", None)
@@ -198,11 +201,7 @@ class FeedbackDatasetAdapter:
                     reference_segment = FeedbackDatasetAdapter._gather_target_steps([fb.targets[0]])
                     # If only a specific step was selected, trim the original trajectory accordingly
                     step_idx = getattr(fb.targets[0], "step", None)
-                    if (
-                        isinstance(step_idx, int)
-                        and step_idx >= 0
-                        and step_idx < len(reference_segment)
-                    ):
+                    if isinstance(step_idx, int) and step_idx >= 0 and step_idx < len(reference_segment):
                         reference_segment = reference_segment[step_idx:]
 
                 if not reference_segment and len(fb.targets) > 1:
@@ -319,7 +318,7 @@ class FeedbackDatasetAdapter:
             return False
 
     @staticmethod
-    def _extract_segment(target: Target) -> list[Tuple[np.ndarray, np.ndarray, float]]:
+    def _extract_segment(target: Target) -> list[tuple[np.ndarray, np.ndarray, float]]:
         """Extract segment data from target using episode reference information"""
 
         # If target already has data loaded, use it

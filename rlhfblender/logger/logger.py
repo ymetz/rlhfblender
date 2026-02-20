@@ -4,8 +4,8 @@ Logging component for feedback logging with async support
 
 import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable
 from datetime import datetime
-from typing import Awaitable, Union
 
 from rlhfblender.data_models.feedback_models import (
     StandardizedFeedback,
@@ -104,7 +104,7 @@ class Logger(ABC):
         pass
 
     @abstractmethod
-    def read(self) -> Union[list[StandardizedFeedback], Awaitable[list[StandardizedFeedback]]]:
+    def read(self) -> list[StandardizedFeedback] | Awaitable[list[StandardizedFeedback]]:
         """
         Reads all feedback from the logger
 
@@ -113,7 +113,7 @@ class Logger(ABC):
         pass
 
     @abstractmethod
-    def read_raw(self) -> Union[list[UnprocessedFeedback], Awaitable[list[UnprocessedFeedback]]]:
+    def read_raw(self) -> list[UnprocessedFeedback] | Awaitable[list[UnprocessedFeedback]]:
         """
         Reads all feedback from the logger
 

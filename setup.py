@@ -1,4 +1,5 @@
 import os
+
 from setuptools import find_packages, setup
 
 with open(os.path.join("rlhfblender", "version.txt")) as file_handler:
@@ -7,8 +8,10 @@ with open(os.path.join("rlhfblender", "version.txt")) as file_handler:
 # Get absolute paths to dependencies
 base_dir = os.path.abspath(os.path.dirname(__file__))
 
+
 def get_abs_path(rel_path):
     return f"file://{os.path.join(base_dir, rel_path)}"
+
 
 long_description = """
 # RLHF-Blender
@@ -31,7 +34,7 @@ setup(
     packages=[package for package in find_packages() if package.startswith("rlhfblender")],
     package_data={"rlhfblender": ["py.typed", "version.txt"]},
     install_requires=[
-        #"gymnasium==1.1.0",
+        # "gymnasium==1.1.0",
         "stable-baselines3==2.6.0",
         "mujoco==3.2.6",
         "metaworld==3.0.0",
@@ -45,7 +48,7 @@ setup(
         f"multi-type-feedback @ {get_abs_path('multi-type-feedback')}",
         "aiortc==1.12.0",
         "av",  # Note: For macOS, install with: pip install --no-binary av av
-        "httpx"
+        "httpx",
     ],
     extras_require={
         "tests": [

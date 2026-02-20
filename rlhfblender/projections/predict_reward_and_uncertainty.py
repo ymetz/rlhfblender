@@ -15,7 +15,6 @@ import os
 import pickle
 import time as import_time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -33,7 +32,7 @@ from rlhfblender.data_models.global_models import Experiment
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 
-def compute_grouped(tensor: torch.Tensor, k: int) -> Tuple[torch.Tensor, torch.Tensor]:
+def compute_grouped(tensor: torch.Tensor, k: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Group tensor entries spaced ``k`` apart and return their mean/std."""
 
     if tensor.dim() > 1:
@@ -68,11 +67,11 @@ class RewardUncertaintyPredictor:
     def __init__(
         self,
         reward_model_path: str,
-        policy_model_path: Optional[str] = None,
-        policy_algorithm: Optional[str] = "ppo",
+        policy_model_path: str | None = None,
+        policy_algorithm: str | None = "ppo",
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         reward_model_type: str = "separate",
-        state_file: Optional[str] = None,
+        state_file: str | None = None,
     ):
         self.reward_model_path = reward_model_path
         self.policy_model_path = policy_model_path
@@ -82,9 +81,9 @@ class RewardUncertaintyPredictor:
         self.policy_algorithm = policy_algorithm
 
         self.reward_model_type = reward_model_type
-        self.feedback_types: List[str] = []
-        self.feedback_buffers: Dict[str, list] = {}
-        self.reward_stats_by_type: Dict[str, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+        self.feedback_types: list[str] = []
+        self.feedback_buffers: dict[str, list] = {}
+        self.reward_stats_by_type: dict[str, tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = {}
 
         if state_file:
             self._load_session_state(state_file)
@@ -119,7 +118,8 @@ class RewardUncertaintyPredictor:
 
         self.reward_model.eval()
         if not self.feedback_types:
-            self.feedback_types = [ "evaluative",
+            self.feedback_types = [
+                "evaluative",
                 "comparative",
                 "demonstrative",
                 "descriptive",
@@ -237,7 +237,7 @@ class RewardUncertaintyPredictor:
 
     def predict_rewards_and_uncertainty(
         self, observations: np.ndarray, actions: np.ndarray, action_space_size: int = None
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Predict rewards and uncertainty for given observations and actions
 
@@ -307,7 +307,7 @@ class RewardUncertaintyPredictor:
 
             return mean_rewards.cpu().numpy(), uncertainties.cpu().numpy()
 
-    def _predict_unified(self, obs_tensor: torch.Tensor, action_tensor: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
+    def _predict_unified(self, obs_tensor: torch.Tensor, action_tensor: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         """Aggregate unified-model predictions across feedback types."""
 
         uni_model = self.reward_model
@@ -328,9 +328,9 @@ class RewardUncertaintyPredictor:
             zeros = torch.zeros(batch_size, device=self.device)
             return zeros.cpu().numpy(), zeros.cpu().numpy()
 
-        model_rewards: List[torch.Tensor] = []
-        model_uncertainties: List[torch.Tensor] = []
-        stats_meta: List[Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = []
+        model_rewards: list[torch.Tensor] = []
+        model_uncertainties: list[torch.Tensor] = []
+        stats_meta: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None] = []
 
         for fb_type in available_types:
             if ensemble_count > 1:
@@ -385,16 +385,16 @@ class RewardUncertaintyPredictor:
 
         return final_rewards.cpu().numpy(), avg_uncert.cpu().numpy()
 
-    def _predict_multi_head(self, obs_tensor: torch.Tensor, action_tensor: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
+    def _predict_multi_head(self, obs_tensor: torch.Tensor, action_tensor: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         """Aggregate multi-head model predictions across feedback types."""
 
         multi_model = self.reward_model
         ensemble_count = getattr(multi_model, "ensemble_count", 1)
         batch_size = obs_tensor.shape[0]
 
-        model_rewards: List[torch.Tensor] = []
-        model_uncertainties: List[torch.Tensor] = []
-        stats_meta: List[Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = []
+        model_rewards: list[torch.Tensor] = []
+        model_uncertainties: list[torch.Tensor] = []
+        stats_meta: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None] = []
 
         if ensemble_count > 1:
             obs_repeat = obs_tensor.repeat(ensemble_count, *[1] * (len(obs_tensor.shape) - 1))
@@ -464,7 +464,7 @@ class RewardUncertaintyPredictor:
     def _standardize_rewards(
         self,
         rewards: torch.Tensor,
-        stats_meta: List[Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]],
+        stats_meta: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None],
     ) -> torch.Tensor:
         """Standardize rewards using stored running statistics when available."""
 
@@ -480,7 +480,9 @@ class RewardUncertaintyPredictor:
             if count_val <= 1:
                 continue
             variance_tensor = sq / torch.clamp(count - 1, min=1.0)
-            variance_val = float(variance_tensor.item()) if isinstance(variance_tensor, torch.Tensor) else float(variance_tensor)
+            variance_val = (
+                float(variance_tensor.item()) if isinstance(variance_tensor, torch.Tensor) else float(variance_tensor)
+            )
             if variance_val <= 0:
                 continue
             std = torch.sqrt(torch.as_tensor(variance_val, device=rewards.device, dtype=rewards.dtype))
@@ -488,8 +490,8 @@ class RewardUncertaintyPredictor:
         return standardized
 
     def predict_for_states(
-        self, observations: np.ndarray, actions: Optional[np.ndarray] = None, action_space_size: int = None
-    ) -> Dict[str, np.ndarray]:
+        self, observations: np.ndarray, actions: np.ndarray | None = None, action_space_size: int = None
+    ) -> dict[str, np.ndarray]:
         """
         Predict rewards and uncertainty for given states
 
@@ -517,7 +519,7 @@ class RewardUncertaintyPredictor:
         original_obs: np.ndarray,
         original_actions: np.ndarray,
         action_space_size: int = None,
-    ) -> Dict[str, any]:
+    ) -> dict[str, any]:
         """
         Load inverse projections and predict rewards and uncertainty
         for both original data points and grid reconstructions
@@ -531,7 +533,7 @@ class RewardUncertaintyPredictor:
         """
         # Load inverse projection data
         print(f"Loading inverse projection data from {inverse_projection_file}")
-        with open(inverse_projection_file, "r") as f:
+        with open(inverse_projection_file) as f:
             projection_data = json.load(f)
 
         if "inverse_results" not in projection_data or not projection_data["inverse_results"]:
@@ -621,7 +623,7 @@ class RewardUncertaintyPredictor:
         return results
 
     def save_predictions(
-        self, predictions: Dict[str, any], output_dir: str, filename_prefix: str = "predictions", source_file: str = None
+        self, predictions: dict[str, any], output_dir: str, filename_prefix: str = "predictions", source_file: str = None
     ) -> str:
         """
         Save predictions to output directory in JSON format
@@ -706,7 +708,7 @@ class RewardUncertaintyPredictor:
         return output_json_path
 
 
-def load_episodes(episode_path: str) -> Dict[str, np.ndarray]:
+def load_episodes(episode_path: str) -> dict[str, np.ndarray]:
     """
     Load episode data from an NPZ file
 

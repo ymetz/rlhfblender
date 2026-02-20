@@ -4,7 +4,6 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
 
 import cv2
 import numpy as np
@@ -17,17 +16,11 @@ from rlhfblender.data_collection.environment_handler import get_environment
 from rlhfblender.data_models.global_models import Environment, Experiment
 
 
-def _sanitize_component(value: Optional[str]) -> str:
+def _sanitize_component(value: str | None) -> str:
     """Return a filesystem-friendly identifier component."""
     if not value:
         return "unknown"
-    return (
-        str(value)
-        .strip()
-        .replace("/", "_")
-        .replace(" ", "-")
-        .replace(":", "-")
-    )
+    return str(value).strip().replace("/", "_").replace(" ", "-").replace(":", "-")
 
 
 @dataclass
@@ -36,16 +29,17 @@ class DemoMetadata:
 
     session_id: str
     demo_number: int
-    experiment_id: Optional[int]
+    experiment_id: int | None
     experiment_name: str
     environment_id: str
-    checkpoint: Optional[int]
-    projection_method: Optional[str]
+    checkpoint: int | None
+    projection_method: str | None
     created_at: str
     total_steps: int
     total_reward: float
     episode_rewards: list[float]
     episode_lengths: list[int]
+
 
 ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("pc")
@@ -56,8 +50,8 @@ logger = logging.getLogger("pc")
 
 pcs: set[RTCPeerConnection] = set()
 relay = MediaRelay()
-gym_sessions: Dict[str, "GymEnvironmentTrack"] = {}
-data_channels: Dict[str, object] = {}
+gym_sessions: dict[str, "GymEnvironmentTrack"] = {}
+data_channels: dict[str, object] = {}
 
 
 class GymEnvironmentTrack(VideoStreamTrack):
@@ -71,7 +65,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
         exp: Experiment,
         db_env: Environment,
         seed: int = 42,
-        initial_state: Optional[dict] = None,
+        initial_state: dict | None = None,
         target_width: int = 480,
         target_height: int = 360,
         target_fps: int = 15,
@@ -139,6 +133,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
         # Session lifecycle tracking
         import time as _time
+
         self.created_at = _time.time()
         self.last_access = self.created_at
         self.stopped = False
@@ -147,15 +142,16 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self.experiment_id = getattr(exp, "id", None)
         self.experiment_name = getattr(exp, "exp_name", "")
         self.environment_id = getattr(db_env, "registration_id", "")
-        self.current_checkpoint: Optional[int] = None
-        self.projection_method: Optional[str] = None
+        self.current_checkpoint: int | None = None
+        self.projection_method: str | None = None
         self.projection_props: dict | None = None
-        self.last_saved_path: Optional[Path] = None
-        self.last_saved_metadata_path: Optional[Path] = None
+        self.last_saved_path: Path | None = None
+        self.last_saved_metadata_path: Path | None = None
 
     def touch(self):
         """Update last access time for session TTL handling."""
         import time as _time
+
         self.last_access = _time.time()
 
     def _get_key_mappings(self):
@@ -180,7 +176,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
                 "shift": [0.0, 0.0, 1.0, 0.0],  # Up (positive dz)
                 "control": [0.0, 0.0, -1.0, 0.0],  # Down (negative dz)
             }
-        
+
         else:
             return {
                 "w": 0,
@@ -244,7 +240,9 @@ class GymEnvironmentTrack(VideoStreamTrack):
             logger.error(f"Failed to initialize environment: {e}")
             self.initialization_done = True  # Mark as done even if failed
 
-    def _resize_frame(self, frame: np.ndarray, target_width: Optional[int] = None, target_height: Optional[int] = None) -> np.ndarray:
+    def _resize_frame(
+        self, frame: np.ndarray, target_width: int | None = None, target_height: int | None = None
+    ) -> np.ndarray:
         """Resize and pad frame to target dimensions while maintaining aspect ratio."""
         if target_width is None:
             target_width = self.target_width
@@ -303,7 +301,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self.buffers["rewards"].append(float(reward) if reward is not None else 0.0)
         self.buffers["dones"].append(bool(done))
         self.buffers["infos"].append(info if info is not None else {})
-        
+
         # Log render frame if available
         if render_frame is not None:
             self.buffers["renders"].append(render_frame.copy())
@@ -321,7 +319,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
                 self.buffers["env_states"].append(None)
         else:
             self.buffers["env_states"].append(None)
-            
+
         # Update episode tracking
         self.current_episode_reward += float(reward) if reward is not None else 0.0
         self.current_episode_length += 1
@@ -330,23 +328,23 @@ class GymEnvironmentTrack(VideoStreamTrack):
         # capture it synchronously (e.g., due to async scheduling).
         if self.obs is not None:
             self.prev_obs = np.array(self.obs)
-        
+
         # If episode is done, record episode stats
         if done:
             self.episode_rewards.append(self.current_episode_reward)
             self.episode_lengths.append(self.current_episode_length)
             logger.info(f"Episode completed: reward={self.current_episode_reward}, length={self.current_episode_length}")
-            
+
             # Reset for potential next episode
             self.current_episode_reward = 0.0
             self.current_episode_length = 0
-            
+
             # Log the reset observation for next episode
             if self.obs is not None:
                 # Ensure the next step will record starting observation
                 self.prev_obs = np.array(self.obs)
 
-    def save_demo_data(self, demo_number: int = 0) -> Optional[Path]:
+    def save_demo_data(self, demo_number: int = 0) -> Path | None:
         """Save the recorded demo data in episode_recorder format.
 
         Returns the path to the saved `.npz` file on success, otherwise ``None``.
@@ -376,7 +374,9 @@ class GymEnvironmentTrack(VideoStreamTrack):
                     episode_steps_buffer = episode_steps_buffer[:total_steps]
                 else:
                     start_idx = episode_steps_buffer[-1] + 1 if episode_steps_buffer else 0
-                    episode_steps_buffer = episode_steps_buffer + list(range(start_idx, start_idx + (total_steps - len(episode_steps_buffer))))
+                    episode_steps_buffer = episode_steps_buffer + list(
+                        range(start_idx, start_idx + (total_steps - len(episode_steps_buffer)))
+                    )
 
             # Handle observations
             if len(obs_buffer) > 0:
@@ -394,19 +394,21 @@ class GymEnvironmentTrack(VideoStreamTrack):
             final_buffers["infos"] = np.array(self.buffers["infos"], dtype=object)
             final_buffers["renders"] = np.array(self.buffers["renders"]) if len(self.buffers["renders"]) > 0 else np.zeros(1)
             final_buffers["env_states"] = np.array(self.buffers["env_states"], dtype=object)
-            
+
             # Include episode summary data
-            episode_rewards = np.array(self.episode_rewards) if self.episode_rewards else np.array([self.current_episode_reward])
-            episode_lengths = np.array(self.episode_lengths) if self.episode_lengths else np.array([self.current_episode_length])
+            episode_rewards = (
+                np.array(self.episode_rewards) if self.episode_rewards else np.array([self.current_episode_reward])
+            )
+            episode_lengths = (
+                np.array(self.episode_lengths) if self.episode_lengths else np.array([self.current_episode_length])
+            )
 
             # Construct save path with metadata-rich naming
             timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
             env_component = _sanitize_component(self.environment_id)
             exp_component = f"exp-{self.experiment_id}" if self.experiment_id is not None else "exp-unknown"
             checkpoint_component = (
-                f"checkpoint-{self.current_checkpoint}"
-                if self.current_checkpoint is not None
-                else "checkpoint-unset"
+                f"checkpoint-{self.current_checkpoint}" if self.current_checkpoint is not None else "checkpoint-unset"
             )
             base_dir = Path("data") / "generated_demos" / env_component / exp_component / checkpoint_component
             base_dir.mkdir(parents=True, exist_ok=True)
@@ -428,7 +430,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
                     episode_steps=np.array(episode_steps_buffer),
                     episode_rewards=episode_rewards,
                     episode_lengths=episode_lengths,
-                    additional_metrics={}  # Empty dict for compatibility
+                    additional_metrics={},  # Empty dict for compatibility
                 )
 
             metadata = DemoMetadata(
@@ -461,6 +463,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
         except Exception as e:
             logger.error(f"Failed to save demo data: {e}")
             import traceback
+
             traceback.print_exc()
             return None
 
@@ -548,7 +551,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
                         self.step_count += 1
                         action_taken = True
-                        
+
                         # Get render frame for logging (before any transformations)
                         log_frame = self.env.render()
 
