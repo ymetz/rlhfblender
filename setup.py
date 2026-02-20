@@ -82,7 +82,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     version=__version__,
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     project_urls={
         "Code": "https://github.com/ymetz/rlhfblender",
         "Documentation": "https://rlhfblender.readthedocs.io",
@@ -91,7 +91,6 @@ setup(
         "RLHF-Blender Models": "https://github.com/ymetz/rlhfblender_model",
     },
     classifiers=[
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
