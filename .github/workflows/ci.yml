@@ -28,13 +28,11 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    - uses: FedericoCarboni/setup-ffmpeg@v3
-      id: setup-ffmpeg
-      with:
-        ffmpeg-version: release
-        architecture: ''
-        linking-type: static
-        github-token: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+    - name: Install ffmpeg and dev libraries
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg libavformat-dev libavcodec-dev libavdevice-dev \
+          libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
