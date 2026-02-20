@@ -28,18 +28,14 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install ffmpeg and dev libraries
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg libavformat-dev libavcodec-dev libavdevice-dev \
-          libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         # cpu version of pytorch
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-        pip install .[tests,docs]
+        # av must use a binary wheel (bundles ffmpeg internally); building from source requires ffmpeg 7 dev headers not available in apt
+        pip install --only-binary=av .[tests,docs]
         # Use headless version
         pip install opencv-python-headless
     - name: Lint with ruff
