@@ -58,6 +58,9 @@ setup(
             "ruff>=0.0.288",
             "black",
         ],
+        "dash-driving": [
+            "playwright",
+        ],
         "docs": [
             "sphinx>=5,<8",
             "sphinx-autobuild",

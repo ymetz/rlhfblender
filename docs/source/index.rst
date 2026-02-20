@@ -35,12 +35,15 @@ Main Features
     A view of the user interface of the application showing "BabyAI". The environement is pre-configured for a study.
 
 RLHF-Blender is designed to be fully compatible with `gymnasium <https://github.com/Farama-Foundation/Gymnasium>`_ and `Stable Baselines3 <https://github.com/DLR-RM/stable-baselines3>`_.
-A list of currently supported environments:
+Any Gymnasium-compatible environment can be registered via ``--env-gym-entrypoint``.
+Environment families currently integrated and used in this repository include:
 
   - Atari
   - Minigrid/BabyAI
   - SafetyGym
-  - Mujoco
+  - MuJoCo / MetaWorld
+  - Highway-Env
+  - Dash driving (``dash-driving-v0`` via ``rlhfblender.data_collection.dash_driving_gym_env:DashDrivingGymEnv``)
 
 .. toctree::
    :maxdepth: 1

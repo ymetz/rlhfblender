@@ -24,6 +24,12 @@ if __name__ == "__main__":
         default=None,
     )
     parser.add_argument("--num-episodes", type=int, help="The number of episodes to run.", default=10)
+    parser.add_argument(
+        "--max-steps-per-episode",
+        type=int,
+        help="Maximum number of environment steps per episode during benchmark recording.",
+        default=200,
+    )
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--random", action="store_true", help="Use random agent")
@@ -185,7 +191,7 @@ if __name__ == "__main__":
                 "project": args.project,
                 "framework": "random" if use_random_policy else args.framework,
                 "consistent_start_state": args.consistent_start_state,
-                "max_steps": 200,
+                "max_steps": args.max_steps_per_episode,
             }
         )
 

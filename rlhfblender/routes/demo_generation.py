@@ -42,6 +42,16 @@ _ice_server_cache: Dict[str, Any] = {
 }
 
 
+@dataclass
+class DemoArtifactsContext:
+    session_id: str
+    experiment_id: Optional[int]
+    environment_id: str
+    current_checkpoint: Optional[int] = None
+    projection_method: Optional[str] = None
+    projection_props: Optional[dict] = None
+
+
 def _sanitize_component(value: Optional[Any]) -> str:
     """Create a filesystem-friendly identifier component."""
     if value is None:
@@ -342,6 +352,129 @@ def _prepare_demo_artifacts(
 
     return payload
 
+
+def _next_demo_number_for_session(session_id: str, out_dir: Path) -> int:
+    pattern = f"{_sanitize_component(session_id)}_*.npz"
+    max_num = -1
+    for path in out_dir.glob(pattern):
+        stem = path.stem
+        parts = stem.rsplit("_", 1)
+        if len(parts) != 2:
+            continue
+        try:
+            max_num = max(max_num, int(parts[1]))
+        except ValueError:
+            continue
+    return max_num + 1
+
+
+def _normalize_dash_sequence(data: Any, fallback: list, target_len: int) -> list:
+    if data is None:
+        data = fallback
+    if not isinstance(data, list):
+        data = list(data)
+    if len(data) >= target_len:
+        return data[:target_len]
+    if len(data) == 0:
+        if len(fallback) == 0:
+            return [0] * target_len
+        return (fallback + [fallback[-1]] * target_len)[:target_len]
+    return data + [data[-1]] * (target_len - len(data))
+
+
+def _save_dash_demo_payload(
+    *,
+    session_id: str,
+    experiment_id: Optional[int],
+    environment_id: str,
+    checkpoint: Optional[int],
+    projection_method: Optional[str],
+    projection_props: Optional[dict],
+    demo_number: Optional[int],
+    dash_demo: dict,
+) -> tuple[int, Path, Dict[str, Any]]:
+    if not isinstance(dash_demo, dict):
+        raise ValueError("dash_demo payload must be an object")
+
+    obs = dash_demo.get("obs", [])
+    if not isinstance(obs, list) or len(obs) == 0:
+        raise ValueError("dash_demo.obs must be a non-empty list")
+
+    target_len = len(obs)
+    actions = _normalize_dash_sequence(dash_demo.get("actions"), [[0.0, 0.0, 0.0]], target_len)
+    rewards = _normalize_dash_sequence(dash_demo.get("rewards"), [0.0], target_len)
+    dones = _normalize_dash_sequence(dash_demo.get("dones"), [False], target_len)
+    episode_steps = _normalize_dash_sequence(dash_demo.get("episode_steps"), list(range(target_len)), target_len)
+    infos = _normalize_dash_sequence(dash_demo.get("infos"), [{}], target_len)
+    env_states = _normalize_dash_sequence(dash_demo.get("env_states"), [None], target_len)
+    timestamps = _normalize_dash_sequence(dash_demo.get("timestamps"), [None], target_len)
+
+    # Ensure final sample is terminal for episode indexing.
+    if target_len > 0:
+        dones[target_len - 1] = True
+
+    output_dir = Path("data") / "generated_demos" / "dash"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if demo_number is None:
+        demo_number = _next_demo_number_for_session(session_id, output_dir)
+
+    safe_session_id = _sanitize_component(session_id)
+    demo_path = output_dir / f"{safe_session_id}_{int(demo_number)}.npz"
+
+    obs_arr = np.asarray(obs, dtype=np.float32)
+    actions_arr = np.asarray(actions, dtype=np.float32)
+    rewards_arr = np.asarray(rewards, dtype=np.float32)
+    dones_arr = np.asarray(dones, dtype=bool)
+    episode_steps_arr = np.asarray(episode_steps, dtype=np.int32)
+    infos_arr = np.asarray(infos, dtype=object)
+    env_states_arr = np.asarray(env_states, dtype=object)
+    timestamps_arr = np.asarray(timestamps, dtype=object)
+
+    np.savez(
+        demo_path,
+        obs=obs_arr,
+        actions=actions_arr,
+        rewards=rewards_arr,
+        dones=dones_arr,
+        infos=infos_arr,
+        env_states=env_states_arr,
+        episode_steps=episode_steps_arr,
+        timestamps=timestamps_arr,
+    )
+
+    metadata = {
+        "session_id": session_id,
+        "demo_number": int(demo_number),
+        "experiment_id": experiment_id,
+        "environment_id": environment_id,
+        "checkpoint": checkpoint,
+        "projection_method": projection_method,
+        "created_at": int(time.time()),
+        "num_steps": target_len,
+        "source": "dash_iframe",
+        "dash_metadata": dash_demo.get("metadata", {}),
+    }
+    metadata_path = demo_path.with_suffix(".json")
+    with metadata_path.open("w", encoding="utf-8") as meta_file:
+        json.dump(metadata, meta_file, indent=2)
+
+    context = DemoArtifactsContext(
+        session_id=session_id,
+        experiment_id=experiment_id,
+        environment_id=environment_id,
+        current_checkpoint=checkpoint,
+        projection_method=projection_method,
+        projection_props=projection_props,
+    )
+    artifacts = _prepare_demo_artifacts(
+        context,  # type: ignore[arg-type]
+        demo_path,
+        projection_method_override=projection_method,
+        projection_props_override=projection_props,
+    )
+    return int(demo_number), demo_path, artifacts
+
 async def create_expiring_turn_credential() -> Dict[str, Any]:
     """
     Create expiring TURN credentials using the Metered API.
@@ -526,6 +659,8 @@ async def end_demo_session(request: Request):
         success = await stop_webrtc_demo_session(session_id)
         return {"success": success, "session_type": "webrtc"}
 
+    return {"success": True, "session_type": "standard", "session_id": session_id, "pid": pid}
+
 
 async def stop_webrtc_demo_session(session_id: str) -> bool:
     """
@@ -563,12 +698,50 @@ async def save_webrtc_demo(request: Request):
     """
     request = await request.json()
     session_id = request["session_id"]
+    environment_id = request.get("environment_id")
+    experiment_id = request.get("experiment_id")
+    dash_demo = request.get("dash_demo")
     projection_method = request.get("projection_method")
     projection_props = request.get("projection_props")
     checkpoint = request.get("checkpoint")
+    demo_number = request.get("demo_number")
 
     try:
         if session_id not in webrtc_demo_session.gym_sessions:
+            if dash_demo is not None:
+                checkpoint_num = None
+                if checkpoint is not None:
+                    try:
+                        checkpoint_num = int(checkpoint)
+                    except (TypeError, ValueError):
+                        checkpoint_num = None
+
+                exp_num = None
+                if experiment_id is not None:
+                    try:
+                        exp_num = int(experiment_id)
+                    except (TypeError, ValueError):
+                        exp_num = None
+
+                env_name = environment_id or "dash-driving-v0"
+                saved_demo_number, saved_path, artifacts = _save_dash_demo_payload(
+                    session_id=session_id,
+                    experiment_id=exp_num,
+                    environment_id=env_name,
+                    checkpoint=checkpoint_num,
+                    projection_method=projection_method,
+                    projection_props=projection_props,
+                    demo_number=demo_number,
+                    dash_demo=dash_demo,
+                )
+                return {
+                    "success": True,
+                    "message": f"Dash demo saved as {saved_path.name}",
+                    "demo_number": saved_demo_number,
+                    "file_path": str(saved_path),
+                    "artifacts": artifacts,
+                }
+
             return {"success": False, "message": "Session not found"}
             
         track = webrtc_demo_session.gym_sessions[session_id]
@@ -584,7 +757,6 @@ async def save_webrtc_demo(request: Request):
         if projection_props:
             track.projection_props = projection_props
 
-        demo_number = request.get("demo_number")
         if demo_number is None:
             demo_number = track.demo_counter
 
