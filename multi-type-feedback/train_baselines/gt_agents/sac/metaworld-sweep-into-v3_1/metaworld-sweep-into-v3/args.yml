@@ -1,0 +1,87 @@
+!!python/object/apply:collections.OrderedDict
+- - - algo
+    - sac
+  - - conf_file
+    - null
+  - - device
+    - auto
+  - - env
+    - metaworld-sweep-into-v3
+  - - env_kwargs
+    - max_episode_steps: 150
+  - - eval_env_kwargs
+    - null
+  - - eval_episodes
+    - 5
+  - - eval_freq
+    - 25000
+  - - fix_start_state
+    - true
+  - - gym_packages
+    - []
+  - - hyperparams
+    - null
+  - - log_folder
+    - train_baselines/gt_agents
+  - - log_interval
+    - -1
+  - - max_total_trials
+    - null
+  - - n_eval_envs
+    - 1
+  - - n_evaluations
+    - null
+  - - n_jobs
+    - 1
+  - - n_startup_trials
+    - 10
+  - - n_timesteps
+    - -1
+  - - n_trials
+    - 500
+  - - no_optim_plots
+    - false
+  - - num_threads
+    - -1
+  - - optimization_log_path
+    - null
+  - - optimize_hyperparameters
+    - false
+  - - progress
+    - false
+  - - pruner
+    - median
+  - - sampler
+    - tpe
+  - - save_freq
+    - 50000
+  - - save_replay_buffer
+    - false
+  - - seed
+    - 1789
+  - - state_seed
+    - 0
+  - - storage
+    - null
+  - - study_name
+    - null
+  - - tensorboard_log
+    - ''
+  - - track
+    - false
+  - - trained_agent
+    - ''
+  - - truncate_last_trajectory
+    - true
+  - - uuid
+    - false
+  - - vec_env
+    - dummy
+  - - verbose
+    - 1
+  - - wandb_entity
+    - null
+  - - wandb_project_name
+    - sb3
+  - - wandb_tags
+    - []
