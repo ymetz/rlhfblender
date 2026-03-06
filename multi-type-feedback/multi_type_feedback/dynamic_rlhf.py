@@ -105,6 +105,7 @@ class DynamicRLHFRewardFunction(RewardFn):
         _done: np.ndarray,
     ) -> np.ndarray:
         """Return reward given the current state and action."""
+        
         if self.uncertainty_penalty > 0.0:
             reward, uncertainty = self.drlhf_agent.compute_ensemble_reward_with_uncertainty(state, actions)
             return reward - self.uncertainty_penalty * uncertainty
