@@ -696,9 +696,10 @@ class ExperimentManager:
         ):
             self.monitor_kwargs = dict(info_keywords=("is_success",))
 
-        if "metaworld" not in self.env_name:
-            spec = gym.spec(self.env_name.gym_id)
+        if "metaworld" in self.env_name:
             self.monitor_kwargs = dict(info_keywords=("success",))
+        else:
+            spec = gym.spec(self.env_name.gym_id)
 
         # Define make_env here, so it works with subprocesses
         # when the registry was modified with `--gym-packages`
@@ -735,6 +736,7 @@ class ExperimentManager:
                 vec_env_kwargs=self.vec_env_kwargs,
                 monitor_kwargs=self.monitor_kwargs,
                 seed=self.seed,
+                env_kwargs=env_kwargs,
             )
         else:
             env = make_vec_env(

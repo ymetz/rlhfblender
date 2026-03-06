@@ -203,7 +203,6 @@ class UnifiedNetwork(LightningModule):
                 preferred_indices = preferred_indices.repeat(
                     self.ensemble_count, 1
                 ).squeeze()
-                print("PREFERRED INDICES", obs1.shape, preferred_indices, preferred_indices.shape)
 
             # Compute network outputs for both trajectories
             outputs1 = self.forward(obs1, actions1, feedback_type)
@@ -225,7 +224,6 @@ class UnifiedNetwork(LightningModule):
             log_probs = F.log_softmax(rewards, dim=1)
 
             # Compute NLL loss
-            print("LOG PROBS AND PREF. INDICES", log_probs, preferred_indices)
             loss = F.nll_loss(log_probs, preferred_indices)
 
         elif feedback_type in ["evaluative", "descriptive", "supervised"]:
@@ -246,7 +244,6 @@ class UnifiedNetwork(LightningModule):
 
                 # Convert targets to float and repeat
                 targets = targets.float().repeat(self.ensemble_count, 1).squeeze()
-                print("targets", observations, observations.shape, targets, targets.shape)
 
             # Network output: (batch_size, segment_length, output_dim)
             outputs = self.forward(observations, actions, feedback_type)
@@ -261,7 +258,6 @@ class UnifiedNetwork(LightningModule):
             normalized_rewards = total_rewards * scale + bias
 
             # Compute MSE loss
-            print("LOG PROBS AND PREF. INDICES", normalized_rewards, targets)
             loss = F.mse_loss(normalized_rewards, targets)
 
         else:

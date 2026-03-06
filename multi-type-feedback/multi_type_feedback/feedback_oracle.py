@@ -60,8 +60,17 @@ class FeedbackOracle:
             obs = np.asarray(step[0])
             obs = np.squeeze(obs)          # drop singletons, e.g. (1,H,W)->(H,W)
             obs_flat = obs.reshape(-1)     # ALWAYS 1-D
-            act = np.asarray(step[1])
-            act_flat = np.atleast_1d(act)  # scalar or vector → 1-D
+            act = step[1]
+            if self.action_one_hot:
+                act_sq = np.squeeze(np.asarray(act))
+                if act_sq.ndim == 1 and act_sq.shape[0] == self.one_hot_dim:
+                    # Already one-hot encoded (e.g. from generate_feedback.py)
+                    act_flat = act_sq.astype(float)
+                else:
+                    # Raw integer action (e.g. from generate_reference_data)
+                    act_flat = one_hot_vector(int(act_sq), self.one_hot_dim)
+            else:
+                act_flat = np.atleast_1d(np.asarray(act))  # scalar or vector → 1-D
             return np.concatenate((obs_flat, act_flat), axis=0)
     
         states_actions_list, rewards_list = [], []

@@ -87,7 +87,7 @@ def create_dataloaders_by_type(
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            pin_memory=True,
+            pin_memory=False,
             drop_last=True,
             collate_fn=collate_fn,
         )
@@ -96,7 +96,7 @@ def create_dataloaders_by_type(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
-            pin_memory=True,
+            pin_memory=False,
             drop_last=True,
             collate_fn=collate_fn,
         )
@@ -148,7 +148,7 @@ def create_unified_dataloaders(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        pin_memory=True,
+        pin_memory=False,
         drop_last=True,
         collate_fn=unified_collate_fn,
     )
@@ -157,7 +157,7 @@ def create_unified_dataloaders(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        pin_memory=True,
+        pin_memory=False,
         drop_last=True,
         collate_fn=unified_collate_fn,
     )

@@ -152,8 +152,16 @@ class InverseProjectionHandler:
         train_size = len(dataset) - val_size
         train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+        # drop_last=True prevents BatchNorm1d from receiving a single-sample batch
+        # (which would raise "Expected more than 1 value per channel when training").
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, drop_last=False)
+
+        if len(train_loader) == 0:
+            raise ValueError(
+                f"Training dataset ({train_size} samples) is too small for batch_size={self.batch_size}. "
+                "Reduce batch_size or collect more data."
+            )
 
         # Calculate total steps for scheduler
         total_steps = len(train_loader) * self.num_epochs
@@ -368,7 +376,7 @@ class InverseProjectionHandler:
             raise FileNotFoundError(f"Model file not found: {model_path}")
 
         # Load the checkpoint
-        checkpoint = torch.load(model_path, map_location=self.device)
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
 
         # Extract model information
         model_type = checkpoint.get("model_type", "mlp")

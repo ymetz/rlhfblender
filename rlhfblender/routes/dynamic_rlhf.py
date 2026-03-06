@@ -442,7 +442,9 @@ async def generate_dynamic_rlhf_projections(env_name: str, exp_id: str, checkpoi
                     print("STDERR:\n", prediction_result.stderr)
 
                     if prediction_result.returncode != 0:
-                        print(f"Reward/uncertainty prediction failed: {prediction_result.stderr}")
+                        print(f"Reward/uncertainty prediction failed (returncode={prediction_result.returncode}):")
+                        print("STDOUT:", prediction_result.stdout[-3000:] if prediction_result.stdout else "(empty)")
+                        print("STDERR:", prediction_result.stderr[-3000:] if prediction_result.stderr else "(empty)")
                         return True  # Still consider successful since projections were generated
 
                     print("Reward/uncertainty prediction completed successfully")
@@ -505,7 +507,7 @@ async def initialize_dynamic_rlhf_session(
         env_name=exp.env_id,
         env_kwargs=env_kwargs,
         algorithm=exp.algorithm,
-        feedback_types=["evaluative", "comparative", "demonstrative", "corrective", "descriptive"],
+        feedback_types=["evaluative", "comparative", "demonstrative", "descriptive"],
         nr_of_iterations=num_iterations,
         n_feedback_per_iteration=10,
         feedback_buffer_size=1000,
@@ -824,11 +826,11 @@ async def run_training_iteration_background(
             for dynamic_rlhf_file in dynamic_rlhf_files:
                 print(f"Found DynamicRLHF format feedback file: {dynamic_rlhf_file}")
 
-                try:
-                    stats = drlhf.load_feedback_dataset(dynamic_rlhf_file_prefix)
-                    print(f"Feedback integration stats: {stats}")
-                except Exception as e:
-                    print(f"Error loading DynamicRLHF feedback: {e}")
+            try:
+                stats = drlhf.load_feedback_dataset(dynamic_rlhf_file_prefix)
+                print(f"Feedback integration stats: {stats}")
+            except Exception as e:
+                print(f"Error loading DynamicRLHF feedback: {e}")
 
             # Step 2: Train reward models with collected feedback
             session["status"] = "training_reward_models"

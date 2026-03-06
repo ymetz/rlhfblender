@@ -1544,7 +1544,8 @@ class DynamicRLHF:
         load_path = Path(load_path)
 
         # Load training state and configuration
-        state_path = load_path / "state.pkl"
+        # state file is written next to the directory: {load_path}_state.pkl
+        state_path = str(load_path) + "_state.pkl"
         with open(state_path, "rb") as f:
             state_data = pickle.load(f)
 

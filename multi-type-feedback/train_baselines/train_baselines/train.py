@@ -259,6 +259,22 @@ def train() -> None:
         nargs="+",
         help="Tags for wandb run, e.g.: -tags optimized pr-123",
     )
+    parser.add_argument(
+        "--fix-start-state",
+        action="store_true",
+        default=False,
+        help="Fix the starting/object/goal positions across all episodes by locking the first reset state. "
+             "Recommended for Metaworld to simplify the task.",
+    )
+    parser.add_argument(
+        "--state-seed",
+        type=int,
+        default=None,
+        help="Seed used exclusively for sampling the fixed start state. "
+             "Use the SAME value in baseline training and run_simulated_phases.py so that "
+             "expert policies and RLHF training share an identical starting configuration. "
+             "Defaults to the training --seed when not set.",
+    )
 
     args = parser.parse_args()
 
@@ -359,6 +375,16 @@ def train() -> None:
         config=args.conf_file,
         show_progress=args.progress,
     )
+
+    # Apply fixed-start-state wrapper if requested (train + eval envs via ExperimentManager hook)
+    if args.fix_start_state:
+        from multi_type_feedback.fixed_start_wrapper import FixedStartWrapper, sample_fixed_state
+
+        state_seed = args.state_seed if args.state_seed is not None else args.seed
+        print(f"Sampling/loading fixed start state for {env_id} (state_seed={state_seed})…")
+        fixed_state = sample_fixed_state(env_id, state_seed)
+        exp_manager.env_wrapper = lambda env: FixedStartWrapper(env, fixed_state=fixed_state)
+        print("Fixed start state locked.")
 
     # Prepare experiment and launch hyperparameter optimization if needed
     results = exp_manager.setup_experiment()

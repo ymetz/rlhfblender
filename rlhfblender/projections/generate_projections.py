@@ -737,16 +737,27 @@ async def compute_projection(
 
 # Function to compute inverse projection
 def compute_inverse_projection(
-    original_data: np.ndarray, coords_2d: np.ndarray, inverse_options: InverseProjectionOptions, cache_key: str
+    original_data: np.ndarray,
+    coords_2d: np.ndarray,
+    inverse_options: InverseProjectionOptions,
+    cache_key: str,
+    global_model_path: str | None = None,
 ) -> dict[str, Any]:
     """
     Compute inverse projection and grid of samples.
 
+    First tries a pre-trained global inverse-state model (``global_model_path``).
+    If the global model's output dimension matches the observation dimension, its
+    predictions are used directly for the grid reconstructions.  Otherwise (or
+    when no global model is provided) a local MLP is trained on the current
+    episode data.
+
     Args:
-        original_data: Original high-dimensional data
-        coords_2d: 2D coordinates from forward projection
+        original_data: Original high-dimensional data (obs), shape (N, obs_dim)
+        coords_2d: 2D coordinates from forward projection, shape (N, 2)
         inverse_options: Options for inverse projection
         cache_key: Cache key for storing results
+        global_model_path: Optional path to a pre-trained InverseStateProjectionHandler pkl
 
     Returns:
         Dictionary with inverse projection results
@@ -763,63 +774,149 @@ def compute_inverse_projection(
 
         print("Computing inverse projection")
 
-        # Set up the inverse projection handler
-        handler = InverseProjectionHandler(
-            model_type=inverse_options.model_type,
-            learning_rate=inverse_options.learning_rate,
-            batch_size=inverse_options.batch_size,
-            num_epochs=inverse_options.num_epochs,
-            save_model=True,
-            save_dir=str(INVERSE_MODELS_DIR),
-            device=None,  # Auto-detect
-        )
+        obs_dim = original_data.shape[1] if len(original_data.shape) > 1 else original_data.shape[0]
 
-        # Determine suitable model type based on data shape
-        if len(original_data.shape) > 2:  # Image-like data
-            model_type = "cnn" if inverse_options.model_type == "auto" else inverse_options.model_type
-        else:  # Vector data
-            model_type = "mlp" if inverse_options.model_type == "auto" else inverse_options.model_type
-            handler.model_type = model_type
+        # ── Step 1: try the pre-trained global inverse-state model ────────────
+        global_model_result = None
+        if global_model_path and os.path.exists(global_model_path):
+            try:
+                from rlhfblender.projections.inverse_state_projection_handler import InverseStateProjectionHandler
 
-        # Train the inverse projection model
-        print(f"Training inverse projection model with {inverse_options.num_epochs} epochs")
-        history = handler.fit(
-            data=original_data, coords=coords_2d, validation_split=inverse_options.validation_split, verbose=True
-        )
+                print(f"Attempting global inverse-state model: {global_model_path}")
+                state_handler = InverseStateProjectionHandler()
+                state_handler.load_model(global_model_path)
 
-        # Determine grid ranges
-        if inverse_options.auto_grid_range:
-            x_min, x_max = coords_2d[:, 0].min(), coords_2d[:, 0].max()
-            y_min, y_max = coords_2d[:, 1].min(), coords_2d[:, 1].max()
+                # Determine grid ranges for the global model path
+                if inverse_options.auto_grid_range:
+                    x_min, x_max = coords_2d[:, 0].min(), coords_2d[:, 0].max()
+                    y_min, y_max = coords_2d[:, 1].min(), coords_2d[:, 1].max()
+                    x_margin = (x_max - x_min) * (inverse_options.grid_margin - 1) / 2
+                    y_margin = (y_max - y_min) * (inverse_options.grid_margin - 1) / 2
+                    gm_x_range = (x_min - x_margin, x_max + x_margin)
+                    gm_y_range = (y_min - y_margin, y_max + y_margin)
+                else:
+                    gm_x_range = inverse_options.x_range
+                    gm_y_range = inverse_options.y_range
 
-            # Add margin
-            x_margin = (x_max - x_min) * (inverse_options.grid_margin - 1) / 2
-            y_margin = (y_max - y_min) * (inverse_options.grid_margin - 1) / 2
+                x = np.linspace(gm_x_range[0], gm_x_range[1], inverse_options.grid_resolution)
+                y = np.linspace(gm_y_range[0], gm_y_range[1], inverse_options.grid_resolution)
+                gm_grid_x, gm_grid_y = np.meshgrid(x, y)
+                gm_grid_coords = np.stack([gm_grid_x.flatten(), gm_grid_y.flatten()], axis=1)
 
-            x_range = (x_min - x_margin, x_max + x_margin)
-            y_range = (y_min - y_margin, y_max + y_margin)
+                state_preds = state_handler.predict(gm_grid_coords)
+                # Flatten each state dict to a 1-D vector
+                flat_states = []
+                for sp in state_preds:
+                    flat = []
+                    for key in sorted(sp.keys()):
+                        flat.extend(np.array(sp[key]).flatten().astype(np.float64))
+                    flat_states.append(flat)
+                gm_grid_recon = np.array(flat_states)
+
+                state_dim = gm_grid_recon.shape[1]
+                if state_dim == obs_dim:
+                    print(f"Global model dim ({state_dim}) matches obs dim — using global model for reconstructions.")
+                    global_model_result = {
+                        "grid_recon": gm_grid_recon,
+                        "grid_coords": gm_grid_coords,
+                        "grid_x": gm_grid_x,
+                        "grid_y": gm_grid_y,
+                        "x_range": gm_x_range,
+                        "y_range": gm_y_range,
+                        "model_type": "global_state_model",
+                    }
+                else:
+                    print(
+                        f"Global model dim ({state_dim}) != obs dim ({obs_dim}) — "
+                        "falling back to local inverse projection training."
+                    )
+            except Exception as gm_err:
+                print(f"Global model failed ({gm_err}) — falling back to local inverse projection training.")
+                traceback.print_exc()
+
+        # ── Step 2: local MLP training (primary when no global model, fallback otherwise) ─
+        if global_model_result is None:
+            # Set up the inverse projection handler
+            handler = InverseProjectionHandler(
+                model_type=inverse_options.model_type,
+                learning_rate=inverse_options.learning_rate,
+                batch_size=inverse_options.batch_size,
+                num_epochs=inverse_options.num_epochs,
+                save_model=True,
+                save_dir=str(INVERSE_MODELS_DIR),
+                device=None,  # Auto-detect
+            )
+
+            # Determine suitable model type based on data shape
+            if len(original_data.shape) > 2:  # Image-like data
+                model_type = "cnn" if inverse_options.model_type == "auto" else inverse_options.model_type
+            else:  # Vector data
+                model_type = "mlp" if inverse_options.model_type == "auto" else inverse_options.model_type
+                handler.model_type = model_type
+
+            # Train the inverse projection model
+            print(f"Training inverse projection model with {inverse_options.num_epochs} epochs")
+            history = handler.fit(
+                data=original_data, coords=coords_2d, validation_split=inverse_options.validation_split, verbose=True
+            )
+
+        # ── Step 3: assemble final grid samples ──────────────────────────────
+        if global_model_result is not None:
+            # Use pre-computed results from the global model
+            grid_recon = global_model_result["grid_recon"]
+            coords = global_model_result["grid_coords"]
+            grid_x = global_model_result["grid_x"]
+            grid_y = global_model_result["grid_y"]
+            x_range = global_model_result["x_range"]
+            y_range = global_model_result["y_range"]
+            inverse_model_info = {
+                "model_type": global_model_result["model_type"],
+                "source": global_model_path,
+                "data_shape": list(original_data.shape),
+            }
+            saved_model_path = global_model_path
         else:
-            x_range = inverse_options.x_range
-            y_range = inverse_options.y_range
+            # Determine grid ranges for the locally trained model
+            if inverse_options.auto_grid_range:
+                x_min, x_max = coords_2d[:, 0].min(), coords_2d[:, 0].max()
+                y_min, y_max = coords_2d[:, 1].min(), coords_2d[:, 1].max()
+                x_margin = (x_max - x_min) * (inverse_options.grid_margin - 1) / 2
+                y_margin = (y_max - y_min) * (inverse_options.grid_margin - 1) / 2
+                x_range = (x_min - x_margin, x_max + x_margin)
+                y_range = (y_min - y_margin, y_max + y_margin)
+            else:
+                x_range = inverse_options.x_range
+                y_range = inverse_options.y_range
 
-        # Generate grid samples
-        print(f"Generating grid samples with resolution {inverse_options.grid_resolution}")
-        grid_recon, coords, (grid_x, grid_y) = handler.create_latent_space_grid(
-            x_range=x_range, y_range=y_range, resolution=inverse_options.grid_resolution, return_coords=True
-        )
+            # Generate grid samples
+            print(f"Generating grid samples with resolution {inverse_options.grid_resolution}")
+            grid_recon, coords, (grid_x, grid_y) = handler.create_latent_space_grid(
+                x_range=x_range, y_range=y_range, resolution=inverse_options.grid_resolution, return_coords=True
+            )
 
-        # Extract model info
-        inverse_model_info = {
-            "model_type": model_type,
-            "training_history": {
-                "train_loss": [float(loss) for loss in history["train_loss"]],
-                "val_loss": [float(loss) for loss in history["val_loss"]] if "val_loss" in history else [],
-            },
-            "data_shape": list(original_data.shape),
-            "num_epochs": inverse_options.num_epochs,
-            "learning_rate": inverse_options.learning_rate,
-            "batch_size": inverse_options.batch_size,
-        }
+            inverse_model_info = {
+                "model_type": model_type,
+                "training_history": {
+                    "train_loss": [float(loss) for loss in history["train_loss"]],
+                    "val_loss": [float(loss) for loss in history.get("val_loss", [])],
+                },
+                "data_shape": list(original_data.shape),
+                "num_epochs": inverse_options.num_epochs,
+                "learning_rate": inverse_options.learning_rate,
+                "batch_size": inverse_options.batch_size,
+            }
+
+            # Save local model
+            torch.save(
+                {
+                    "model_state_dict": handler.model.state_dict(),
+                    "model_type": model_type,
+                    "data_shape": original_data.shape,
+                    "hidden_dims": handler.hidden_dims,
+                },
+                model_file,
+            )
+            saved_model_path = str(model_file)
 
         # Convert grid data to JSON-serializable format
         grid_samples = {
@@ -827,29 +924,15 @@ def compute_inverse_projection(
             "coords": coords.tolist(),
             "grid_x": grid_x.tolist(),
             "grid_y": grid_y.tolist(),
-            "x_range": x_range,
-            "y_range": y_range,
+            "x_range": list(x_range),
+            "y_range": list(y_range),
             "resolution": inverse_options.grid_resolution,
         }
 
-        # Results are also available in the main projection results, just use this
-        results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": str(model_file)}
+        results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": saved_model_path}
 
-        # with open(cache_file, "w") as f:
-        #    json.dump(results, f)
-
-        # Save model with the cache key as filename
-        torch.save(
-            {
-                "model_state_dict": handler.model.state_dict(),
-                "model_type": model_type,
-                "data_shape": original_data.shape,
-                "hidden_dims": handler.hidden_dims,
-            },
-            model_file,
-        )
-
-        print(f"Inverse projection model and grid samples saved to {cache_file}")
+        print(f"Inverse projection completed. Grid: {inverse_options.grid_resolution}x{inverse_options.grid_resolution}, "
+              f"recon shape: {grid_recon.shape}")
         return results
 
     except Exception as e:
@@ -969,6 +1052,27 @@ async def generate_projections(
         # Get original data for inverse mapping
         original_data = episode_data["obs"]
 
+        # Align sizes — cached projection may have more points than current episode data
+        # (e.g. the .npz cache was built from a larger run; obs is freshly loaded).
+        if len(coords_2d) != len(original_data):
+            n = min(len(coords_2d), len(original_data))
+            print(
+                f"Warning: projection size ({len(coords_2d)}) != obs size ({len(original_data)}). "
+                f"Truncating both to {n} aligned pairs for inverse projection training."
+            )
+            coords_2d = coords_2d[:n]
+            original_data = original_data[:n]
+
+        # Look for a pre-trained global inverse-state model for this environment.
+        # Pattern: data/saved_projections/joint_obs_state/{env_name}_*_state_model.pkl
+        global_model_path = None
+        joint_obs_state_dir = Path("data/saved_projections/joint_obs_state")
+        if joint_obs_state_dir.exists():
+            candidates = sorted(joint_obs_state_dir.glob(f"{env_name}_*_state_model.pkl"))
+            if candidates:
+                global_model_path = str(candidates[-1])
+                print(f"Found global inverse-state model: {global_model_path}")
+
         # Load global bounds from joint projection if available
         if joint_projection_path and inverse_options.auto_grid_range:
             try:
@@ -995,6 +1099,7 @@ async def generate_projections(
             coords_2d=coords_2d,
             inverse_options=inverse_options,
             cache_key=projection_hash + "_inverse",
+            global_model_path=global_model_path,
         )
 
     # Add inverse results to projection results

@@ -7,7 +7,7 @@ import re
 import tempfile
 import warnings
 from pathlib import Path
-from typing import List, Type, Union
+from typing import List, Tuple, Type, Union
 
 import gymnasium as gym
 import numpy as np
@@ -317,7 +317,7 @@ def debug_feedback_output(feedback_data):
 
 def generate_feedback(
     model_class: Type[Union[PPO, SAC]],
-    expert_models: List[Union[PPO, SAC], Union[VecNormalize, None]],
+    expert_models: List[Tuple[Union[PPO, SAC], Union[VecNormalize, None]]],
     environment: gym.Env,
     environment_name: str = "HalfCheetah-v5",
     checkpoints_path: str = "gt_agents",
@@ -453,7 +453,11 @@ def generate_feedback(
 
         opt_gap = initial_val - (discounted_rew_sum + gamma ** len(seg) * final_val)
         """
-        opt_gap = -discounted_sum_numpy([s[2] for s in seg], gamma)
+        # Zero out reward on termination steps so envs with uniform positive rewards
+        # (e.g. CartPole reward=1 every step including failure) produce meaningful
+        # opt_gap variance between good and bad policy segments.
+        rewards = [0.0 if s[3] else s[2] for s in seg]
+        opt_gap = -discounted_sum_numpy(rewards, gamma)
         opt_gaps.append(opt_gap)
 
     max_rating = 10
