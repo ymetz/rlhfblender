@@ -53,97 +53,110 @@ REF_BUFFER=""                       # empty = default (equals budget)
 # Total: ~32 configs × 3 seeds = 96 jobs.
 
 CONFIGS=(
+# Config format (10 pipe-separated fields):
+#   label | --rl-steps | --num-phases | --feedback-budget | --uncertainty-penalty
+#         | --reward-epochs | --initial-feedback | BUFFER_EXTRA | FB_TYPES_EXTRA | SEG_LEN_EXTRA
+#
+# BUFFER_EXTRA  : empty OR "--feedback-buffer-size N"
+# FB_TYPES_EXTRA: empty (use default 3 types) OR "--feedback-types TYPE [TYPE ...]"
+# SEG_LEN_EXTRA : empty (use SEGMENT_LEN=50) OR "--segment-len N"  (overrides fixed default)
+#
+# Groups A–I: all use penalty=0.0 (penalty ablation deferred).
+# Each group varies ONE axis; all others fixed at reference values.
 
 # ── Group A: RL steps per phase ───────────────────────────────────────────────
 # Question: How much does per-phase exploitation matter?
-# Fixed: phases=10, budget=500, penalty=0.0, epochs=20, initial=50
-    "A_steps_0500|--rl-steps    500|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
-    "A_steps_1000|--rl-steps   1000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
-    "A_steps_2000|--rl-steps   2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
-    "A_steps_5000|--rl-steps   5000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
-    "A_steps_10k |--rl-steps  10000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
+# Fixed: phases=10, budget=500, seg=50, epochs=20, initial=50
+    "A_steps_0500|--rl-steps    500|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "A_steps_1000|--rl-steps   1000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "A_steps_2000|--rl-steps   2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "A_steps_5000|--rl-steps   5000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "A_steps_10k |--rl-steps  10000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
 
 # ── Group B: Phase granularity (total RL = 20k steps) ────────────────────────
-# Question: More-frequent reward model updates vs fewer, longer training bursts?
-# Fixed: total_rl=20k, budget=500, penalty=0.0, epochs=20, initial=50
-    "B_grain_p05_s4000|--rl-steps  4000|--num-phases  5|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
-    # A_steps_2000 / phases=10 / steps=2000  ← already in Group A (20k total)
-    "B_grain_p20_s1000|--rl-steps  1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
-    "B_grain_p40_s0500|--rl-steps   500|--num-phases 40|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|"
+# Question: More-frequent reward model updates vs fewer longer bursts?
+# Fixed: total_rl=20k, budget=500, seg=50, epochs=20, initial=50
+# A_steps_2000 (phases=10, steps=2000) already provides the 20k midpoint.
+    "B_grain_p05_s4000|--rl-steps  4000|--num-phases  5|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "B_grain_p20_s1000|--rl-steps  1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "B_grain_p40_s0500|--rl-steps   500|--num-phases 40|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
 
-# ── Group C: Uncertainty penalty ─────────────────────────────────────────────
-# Question: Does penalising ensemble disagreement prevent reward hacking?
-# Fixed: phases=10, steps=2000, budget=500, epochs=20, initial=50
-    "C_pen_0.05|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.05|--reward-epochs 20|--initial-feedback  50|"
-    "C_pen_0.10|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.10|--reward-epochs 20|--initial-feedback  50|"
-    "C_pen_0.20|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.20|--reward-epochs 20|--initial-feedback  50|"
-    "C_pen_0.30|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.30|--reward-epochs 20|--initial-feedback  50|"
-    "C_pen_0.50|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.50|--reward-epochs 20|--initial-feedback  50|"
-
-# ── Group D: Feedback budget ──────────────────────────────────────────────────
+# ── Group C: Feedback budget ──────────────────────────────────────────────────
 # Question: More oracle data per run → better reward model?
-# Fixed: phases=10, steps=2000, penalty=0.1, epochs=20, initial=50
-    "D_budget_0250|--rl-steps 2000|--num-phases 10|--feedback-budget  250|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  50|"
-    # budget=500 covered by C_pen_0.10
-    "D_budget_0750|--rl-steps 2000|--num-phases 10|--feedback-budget  750|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  50|"
-    "D_budget_1000|--rl-steps 2000|--num-phases 10|--feedback-budget 1000|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  50|"
-    "D_budget_1500|--rl-steps 2000|--num-phases 10|--feedback-budget 1500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  50|"
+# Fixed: phases=10, steps=2000, seg=50, epochs=20, initial=50
+    "C_budget_0250|--rl-steps 2000|--num-phases 10|--feedback-budget  250|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    # budget=500 ← covered by A_steps_2000
+    "C_budget_0750|--rl-steps 2000|--num-phases 10|--feedback-budget  750|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "C_budget_1000|--rl-steps 2000|--num-phases 10|--feedback-budget 1000|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    "C_budget_1500|--rl-steps 2000|--num-phases 10|--feedback-budget 1500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
 
-# ── Group E: Reward model training epochs ────────────────────────────────────
+# ── Group D: Reward model training epochs ─────────────────────────────────────
 # Question: How much does reward model training depth matter?
-# Fixed: phases=10, steps=2000, budget=500, penalty=0.1, initial=50
-    "E_epochs_05|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs  5|--initial-feedback  50|"
-    "E_epochs_10|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 10|--initial-feedback  50|"
-    # epochs=20 covered by C_pen_0.10
-    "E_epochs_30|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 30|--initial-feedback  50|"
-    "E_epochs_50|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 50|--initial-feedback  50|"
+# Fixed: phases=10, steps=2000, budget=500, seg=50, initial=50
+    "D_epochs_05|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs  5|--initial-feedback  50|||"
+    "D_epochs_10|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 10|--initial-feedback  50|||"
+    # epochs=20 ← covered by A_steps_2000
+    "D_epochs_30|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 30|--initial-feedback  50|||"
+    "D_epochs_50|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 50|--initial-feedback  50|||"
 
-# ── Group F: Initial feedback count (phase 0 warmup) ─────────────────────────
+# ── Group E: Initial feedback count (phase 0 warmup) ─────────────────────────
 # Question: Does a better phase-0 reward model bootstrap subsequent phases?
-# Fixed: phases=10, steps=2000, budget=500, penalty=0.1, epochs=20
-    "F_init_0025|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback   25|"
-    # initial=50 covered by C_pen_0.10
-    "F_init_0100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  100|"
-    "F_init_0250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  250|"
-    "F_init_0500|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  500|"
+# Fixed: phases=10, steps=2000, budget=500, seg=50, epochs=20
+    "E_init_0025|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback   25|||"
+    # initial=50 ← covered by A_steps_2000
+    "E_init_0100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  100|||"
+    "E_init_0250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  250|||"
+    "E_init_0500|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  500|||"
 
-# ── Group G: Feedback buffer size ─────────────────────────────────────────────
-# Question: Should old (potentially off-distribution) feedback expire faster?
-# Fixed: phases=10, steps=2000, budget=500, penalty=0.1, epochs=20, initial=50
-    "G_buf_100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  100"
-    "G_buf_250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  250"
-    # no buffer flag = keep all (budget=500 used by C_pen_0.10)
+# ── Group F: Feedback buffer size (staleness) ─────────────────────────────────
+# Question: Should old off-distribution feedback expire faster?
+# Fixed: phases=10, steps=2000, budget=500, seg=50, epochs=20, initial=50
+    "F_buf_100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  100||"
+    "F_buf_250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  250||"
+    # no buffer flag (keep all) ← covered by A_steps_2000
+
+# ── Group G: Segment length ───────────────────────────────────────────────────
+# Question: What feedback granularity suits this task?
+# Shorter segments = more clips per episode, finer reward signal but less context.
+# Longer segments = richer context but fewer clips per budget.
+# Fixed: phases=10, steps=2000, budget=500, epochs=20, initial=50
+# max_episode_steps=150, so seg=150 = full episode; seg=10 = 15 clips/episode.
+    "G_seg_010|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  10"
+    "G_seg_025|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  25"
+    # seg=50 ← covered by A_steps_2000
+    "G_seg_075|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  75"
+    "G_seg_100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 100"
+    "G_seg_150|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 150"
 
 # ── Group H: Best-guess combinations ─────────────────────────────────────────
-# Promising multi-axis combinations informed by the above groups
-    # Fine-grained + penalty: frequent updates to limit hacking, penalty as backup
-    "H_fine_pen|--rl-steps 1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.2|--reward-epochs 20|--initial-feedback  50|"
-    # Rich oracle data + fine phases
-    "H_rich_fine|--rl-steps 1000|--num-phases 20|--feedback-budget 1000|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback  50|"
-    # Max conservative: very short exploitation + strong penalty + fresh buffer
-    "H_max_safe|--rl-steps  500|--num-phases 40|--feedback-budget 500|--uncertainty-penalty 0.3|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  200"
-    # Strong warmup: lots of initial feedback so phase-0 reward model is solid
-    "H_warmup|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.1|--reward-epochs 20|--initial-feedback 500|"
-    # Generous everything: budget + phases + penalty + good warmup
-    "H_generous|--rl-steps 1000|--num-phases 20|--feedback-budget 1000|--uncertainty-penalty 0.2|--reward-epochs 30|--initial-feedback 100|"
+# Promising multi-axis combos using findings from the single-axis sweeps above.
+# Fill in the best seg_len after Group G results; using 50 as placeholder.
+    # Fine-grained phases + rich budget
+    "H_fine_rich|--rl-steps 1000|--num-phases 20|--feedback-budget 1000|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
+    # Very fine phases + larger budget + fresh buffer
+    "H_fine_fresh|--rl-steps  500|--num-phases 40|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  200||"
+    # Strong warmup + fine phases
+    "H_warmup_fine|--rl-steps 1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback 500|||"
+    # Generous: budget + phases + epochs + warmup
+    "H_generous|--rl-steps 1000|--num-phases 20|--feedback-budget 1000|--uncertainty-penalty 0.0|--reward-epochs 30|--initial-feedback 100|||"
+    # Short segment + fine phases (bet: short seg better for dense manipulation)
+    "H_short_seg_fine|--rl-steps 1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  25"
 
 # ── Group I: Feedback type combinations ───────────────────────────────────────
 # Question: Which feedback types contribute signal vs noise?
-# Fixed: phases=10, steps=2000, budget=500, penalty=0.0, epochs=20, initial=50
-# Note: "demonstrative" requires expert models (enabled when --expert-model-path is given)
-# Uses SEEDS_FB (2 seeds) to stay within ~100 total jobs.
-# Single-type runs establish individual signal; combo runs test complementarity.
-    "I_fb_eval       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative"
-    "I_fb_comp       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative"
-    "I_fb_desc       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types descriptive"
-    "I_fb_demo       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types demonstrative"
-    "I_fb_eval_comp  |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative"
-    "I_fb_eval_demo  |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative demonstrative"
-    "I_fb_comp_demo  |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative demonstrative"
-    "I_fb_no_demo    |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive"
-    "I_fb_all        |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative"
-    # All types + conservative settings: best of both worlds
-    "I_fb_all_safe   |--rl-steps 1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.2|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative"
+# Fixed: phases=10, steps=2000, budget=500, seg=50, epochs=20, initial=50
+# "demonstrative" requires expert models (auto-enabled when --expert-model-path present).
+# Uses SEEDS_FB (2 seeds) to limit job count.
+    "I_fb_eval      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative|"
+    "I_fb_comp      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative|"
+    "I_fb_desc      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types descriptive|"
+    "I_fb_demo      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types demonstrative|"
+    "I_fb_eval_comp |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative|"
+    "I_fb_eval_demo |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative demonstrative|"
+    "I_fb_comp_demo |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative demonstrative|"
+    "I_fb_no_demo   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive|"
+    "I_fb_all       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative|"
+    "I_fb_all_fine  |--rl-steps 1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative|"
 
 )
 
@@ -165,7 +178,7 @@ n_submitted=0
 
 # ── Submit ────────────────────────────────────────────────────────────────────
 for config_str in "${CONFIGS[@]}"; do
-    IFS='|' read -r label rl_steps_arg num_phases_arg budget_arg penalty_arg epochs_arg initial_arg buffer_arg fb_types_arg <<< "$config_str"
+    IFS='|' read -r label rl_steps_arg num_phases_arg budget_arg penalty_arg epochs_arg initial_arg buffer_arg fb_types_arg seg_len_arg <<< "$config_str"
 
     # Strip leading/trailing whitespace from label (some have padding for alignment)
     label="$(echo "$label" | xargs)"
@@ -206,6 +219,7 @@ python scripts/run_simulated_phases.py \\
     --max-episode-steps ${MAX_EPISODE_STEPS} \\
     --n-trajectories    ${N_TRAJECTORIES} \\
     --segment-len       ${SEGMENT_LEN} \\
+    ${seg_len_arg} \\
     --fix-start-state \\
     --state-seed        ${STATE_SEED} \\
     --skip-projections \\
