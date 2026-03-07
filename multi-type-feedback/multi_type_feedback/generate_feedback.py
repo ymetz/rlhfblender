@@ -7,11 +7,7 @@ import re
 import tempfile
 import warnings
 from pathlib import Path
-<<<<<<< HEAD
 from typing import List, Tuple, Type, Union
-=======
-from typing import List, Type, Union
->>>>>>> 785abddcd3393f5a7ecaea755c3d8548ab22b051
 
 import gymnasium as gym
 import numpy as np
