@@ -205,6 +205,12 @@ for config_str in "${CONFIGS[@]}"; do
         [[ -n "$ONLY_SEED" && "$SEED" != "$ONLY_SEED" ]] && continue
         EXP_NAME="${ENV//metaworld-/mw_}_${ALGO}_${label}_s${SEED}"
 
+        # Build optional args — only include non-empty fields to avoid passing "" to argparse
+        EXTRA_ARGS=""
+        [[ -n "$seg_len_arg"   ]] && EXTRA_ARGS="$EXTRA_ARGS $seg_len_arg"
+        [[ -n "$buffer_arg"    ]] && EXTRA_ARGS="$EXTRA_ARGS $buffer_arg"
+        [[ -n "$fb_types_arg"  ]] && EXTRA_ARGS="$EXTRA_ARGS $fb_types_arg"
+
         JOB_SCRIPT=$(cat <<SLURM
 #!/bin/bash
 #SBATCH --job-name=rlhf_${label}_s${SEED}
@@ -231,7 +237,6 @@ python scripts/run_simulated_phases.py \\
     --max-episode-steps ${MAX_EPISODE_STEPS} \\
     --n-trajectories    ${N_TRAJECTORIES} \\
     --segment-len       ${SEGMENT_LEN} \\
-    ${seg_len_arg} \\
     --fix-start-state \\
     --state-seed        ${STATE_SEED} \\
     --skip-projections \\
@@ -240,9 +245,8 @@ python scripts/run_simulated_phases.py \\
     ${budget_arg} \\
     ${penalty_arg} \\
     ${epochs_arg} \\
-    ${initial_arg} \\
-    ${buffer_arg} \\
-    ${fb_types_arg}
+    ${initial_arg}${EXTRA_ARGS:+ \\
+    ${EXTRA_ARGS}}
 SLURM
 )
 
