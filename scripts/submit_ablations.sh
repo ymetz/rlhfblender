@@ -162,7 +162,15 @@ CONFIGS=(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 DRY_RUN=false
-if [[ "${1:-}" == "--dry-run" ]]; then DRY_RUN=true; fi
+ONLY_LABEL=""
+ONLY_SEED=""
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=true ;;
+        --label=*) ONLY_LABEL="${arg#--label=}" ;;
+        --seed=*)  ONLY_SEED="${arg#--seed=}" ;;
+    esac
+done
 
 mkdir -p "$LOG_DIR"
 
@@ -190,7 +198,11 @@ for config_str in "${CONFIGS[@]}"; do
         seed_list=("${SEEDS[@]}")
     fi
 
+    # Filter by --label / --seed if provided
+    [[ -n "$ONLY_LABEL" && "$label" != "$ONLY_LABEL" ]] && continue
+
     for SEED in "${seed_list[@]}"; do
+        [[ -n "$ONLY_SEED" && "$SEED" != "$ONLY_SEED" ]] && continue
         EXP_NAME="${ENV//metaworld-/mw_}_${ALGO}_${label}_s${SEED}"
 
         JOB_SCRIPT=$(cat <<SLURM
