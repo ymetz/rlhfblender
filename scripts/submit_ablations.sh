@@ -12,14 +12,13 @@ set -euo pipefail
 
 # ── Cluster settings ─────────────────────────────────────────────────────────
 PARTITION="cpu"
-ACCOUNT="yametz"                          # leave blank if not required
+ACCOUNT=""                          # leave blank if not required
 CPUS=2
-MEM="4G"
+MEM="2G"
 TIME="06:00:00"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CONDA_ENV="rlhf"                    # conda env name; leave blank to skip activation
 EXPERT_MODEL_PATH="multi-type-feedback/train_baselines/gt_agents"
 LOG_DIR="$REPO_ROOT/slurm_logs"
 
@@ -177,10 +176,6 @@ mkdir -p "$LOG_DIR"
 ACCOUNT_FLAG=""
 if [[ -n "$ACCOUNT" ]]; then ACCOUNT_FLAG="#SBATCH --account=$ACCOUNT"; fi
 
-CONDA_INIT=""
-if [[ -n "$CONDA_ENV" ]]; then
-    CONDA_INIT="source \"\$(conda info --base)/etc/profile.d/conda.sh\" && conda activate $CONDA_ENV"
-fi
 
 n_submitted=0
 
@@ -216,7 +211,7 @@ for config_str in "${CONFIGS[@]}"; do
 #SBATCH --job-name=rlhf_${label}_s${SEED}
 #SBATCH --partition=${PARTITION}
 #SBATCH --cpus-per-task=${CPUS}
-#SBATCH --mem=${MEM}
+#SBATCH --mem-per-cpu=${MEM}
 #SBATCH --time=${TIME}
 #SBATCH --output=${LOG_DIR}/${EXP_NAME}_%j.out
 #SBATCH --error=${LOG_DIR}/${EXP_NAME}_%j.err
@@ -224,7 +219,6 @@ ${ACCOUNT_FLAG}
 
 set -euo pipefail
 cd "${REPO_ROOT}"
-${CONDA_INIT}
 
 python scripts/run_simulated_phases.py \\
     --env               "${ENV}" \\
