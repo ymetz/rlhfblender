@@ -200,11 +200,30 @@ for config_str in "${CONFIGS[@]}"; do
         [[ -n "$ONLY_SEED" && "$SEED" != "$ONLY_SEED" ]] && continue
         EXP_NAME="${ENV//metaworld-/mw_}_${ALGO}_${label}_s${SEED}"
 
-        # Build optional args — only include non-empty fields to avoid passing "" to argparse
-        EXTRA_ARGS=""
-        [[ -n "$seg_len_arg"   ]] && EXTRA_ARGS="$EXTRA_ARGS $seg_len_arg"
-        [[ -n "$buffer_arg"    ]] && EXTRA_ARGS="$EXTRA_ARGS $buffer_arg"
-        [[ -n "$fb_types_arg"  ]] && EXTRA_ARGS="$EXTRA_ARGS $fb_types_arg"
+        # Build the python command outside the heredoc to avoid empty-arg expansion bugs
+        PYTHON_CMD="python scripts/run_simulated_phases.py"
+        PYTHON_CMD+=" --env ${ENV}"
+        PYTHON_CMD+=" --algorithm ${ALGO}"
+        PYTHON_CMD+=" --expert-algorithm ${EXPERT_ALGO}"
+        PYTHON_CMD+=" --expert-model-path ${EXPERT_MODEL_PATH}"
+        PYTHON_CMD+=" --exp-name ${EXP_NAME}"
+        PYTHON_CMD+=" --seed ${SEED}"
+        PYTHON_CMD+=" --device ${DEVICE}"
+        PYTHON_CMD+=" --max-episode-steps ${MAX_EPISODE_STEPS}"
+        PYTHON_CMD+=" --n-trajectories ${N_TRAJECTORIES}"
+        PYTHON_CMD+=" --segment-len ${SEGMENT_LEN}"
+        PYTHON_CMD+=" --fix-start-state"
+        PYTHON_CMD+=" --state-seed ${STATE_SEED}"
+        PYTHON_CMD+=" --skip-projections"
+        PYTHON_CMD+=" ${rl_steps_arg}"
+        PYTHON_CMD+=" ${num_phases_arg}"
+        PYTHON_CMD+=" ${budget_arg}"
+        PYTHON_CMD+=" ${penalty_arg}"
+        PYTHON_CMD+=" ${epochs_arg}"
+        PYTHON_CMD+=" ${initial_arg}"
+        [[ -n "$buffer_arg"   ]] && PYTHON_CMD+=" ${buffer_arg}"
+        [[ -n "$fb_types_arg" ]] && PYTHON_CMD+=" ${fb_types_arg}"
+        [[ -n "$seg_len_arg"  ]] && PYTHON_CMD+=" ${seg_len_arg}"
 
         JOB_SCRIPT=$(cat <<SLURM
 #!/bin/bash
@@ -220,27 +239,7 @@ ${ACCOUNT_FLAG}
 set -euo pipefail
 cd "${REPO_ROOT}"
 
-python scripts/run_simulated_phases.py \\
-    --env               "${ENV}" \\
-    --algorithm         "${ALGO}" \\
-    --expert-algorithm  "${EXPERT_ALGO}" \\
-    --expert-model-path "${EXPERT_MODEL_PATH}" \\
-    --exp-name          "${EXP_NAME}" \\
-    --seed              ${SEED} \\
-    --device            "${DEVICE}" \\
-    --max-episode-steps ${MAX_EPISODE_STEPS} \\
-    --n-trajectories    ${N_TRAJECTORIES} \\
-    --segment-len       ${SEGMENT_LEN} \\
-    --fix-start-state \\
-    --state-seed        ${STATE_SEED} \\
-    --skip-projections \\
-    ${rl_steps_arg} \\
-    ${num_phases_arg} \\
-    ${budget_arg} \\
-    ${penalty_arg} \\
-    ${epochs_arg} \\
-    ${initial_arg}${EXTRA_ARGS:+ \\
-    ${EXTRA_ARGS}}
+${PYTHON_CMD}
 SLURM
 )
 
