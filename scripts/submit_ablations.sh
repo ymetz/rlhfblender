@@ -11,10 +11,10 @@
 set -euo pipefail
 
 # ── Cluster settings ─────────────────────────────────────────────────────────
-PARTITION="gpu"
-ACCOUNT=""                          # leave blank if not required
-CPUS=4
-MEM="16G"
+PARTITION="cpu"
+ACCOUNT="yametz"                          # leave blank if not required
+CPUS=2
+MEM="4G"
 TIME="06:00:00"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
