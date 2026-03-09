@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 
 # ── Config ────────────────────────────────────────────────────────────────────
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = REPO_ROOT / "rlhfblender.db"
+DB_PATH = "rlhfblender.db"
 BENCHMARKS_DIR = REPO_ROOT / "data" / "saved_benchmarks"
 MONITOR_BASE = REPO_ROOT / "dynamic_rlhf_models"
 EXP_NAME_PREFIX = "mw_sweep-into-v3_ppo_"
@@ -47,13 +47,16 @@ GROUP_LABELS = {
 
 def load_experiments_from_db(db_path: Path) -> dict[str, int]:
     """Return {exp_name: exp_id} for all ablation experiments."""
+    
+    db_path = Path(db_path)
+
     if not db_path.exists():
         print(f"[WARN] Database not found: {db_path}")
         return {}
     con = sqlite3.connect(db_path)
     try:
         rows = con.execute(
-            "SELECT exp_name, id FROM experiments WHERE exp_name LIKE ?",
+            "SELECT exp_name, id FROM experiment WHERE exp_name LIKE ?",
             (EXP_NAME_PREFIX + "%",),
         ).fetchall()
     except sqlite3.OperationalError as e:
