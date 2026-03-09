@@ -216,6 +216,7 @@ for config_str in "${CONFIGS[@]}"; do
         PYTHON_CMD+=" --state-seed ${STATE_SEED}"
         PYTHON_CMD+=" --skip-projections"
         PYTHON_CMD+=" --results-only"
+        PYTHON_CMD+=" --n-envs 1"
         PYTHON_CMD+=" ${rl_steps_arg}"
         PYTHON_CMD+=" ${num_phases_arg}"
         PYTHON_CMD+=" ${budget_arg}"

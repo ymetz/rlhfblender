@@ -441,6 +441,10 @@ class ExperimentManager:
         self, hyperparams: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Optional[Callable], List[BaseCallback], Optional[Callable]]:
         self.n_envs = hyperparams.get("n_envs", 1)
+        # Allow callers to pin n_envs (e.g. n_envs=1 for short RLHF phases) by setting
+        # _n_envs_override before setup_experiment() is called.
+        if getattr(self, "_n_envs_override", None) is not None:
+            self.n_envs = self._n_envs_override
 
         if self.verbose > 0:
             print(f"Using {self.n_envs} environments")

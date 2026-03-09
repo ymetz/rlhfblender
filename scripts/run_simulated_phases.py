@@ -490,6 +490,9 @@ def main():
                         help="Subtract this coefficient * ensemble_std from the reward during RL training. "
                              "Penalises the agent for visiting states where the reward model is uncertain, "
                              "reducing reward hacking. Good starting values: 0.1–0.5.")
+    parser.add_argument("--n-envs", type=int, default=None,
+                        help="Override the number of parallel training environments (default: use YAML value). "
+                             "Set to 1 for short RLHF phases (avoids a rollout buffer larger than total_timesteps).")
     parser.add_argument("--results-only", action="store_true",
                         help="Skip render collection, model checkpoints, and episode splits. "
                              "Only save episode_rewards per phase (much smaller disk footprint, "
@@ -612,6 +615,10 @@ def main():
         n_timesteps=args.rl_steps,
         env_kwargs=env_kwargs or None,
     )
+
+    # Override n_envs before setup_experiment() is called (inside DynamicRLHF.__init__)
+    if args.n_envs is not None:
+        exp_manager._n_envs_override = args.n_envs
 
     # Apply the fixed-start wrapper to train *and* eval envs created by ExperimentManager.
     if fixed_start_state is not None:
