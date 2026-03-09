@@ -490,6 +490,10 @@ def main():
                         help="Subtract this coefficient * ensemble_std from the reward during RL training. "
                              "Penalises the agent for visiting states where the reward model is uncertain, "
                              "reducing reward hacking. Good starting values: 0.1–0.5.")
+    parser.add_argument("--results-only", action="store_true",
+                        help="Skip render collection, model checkpoints, and episode splits. "
+                             "Only save episode_rewards per phase (much smaller disk footprint, "
+                             "suitable for large ablation sweeps).")
     parser.add_argument("--fix-start-state", action="store_true",
                         help="Fix starting/object/goal positions across all episodes by locking the first reset state. "
                              "Recommended for Metaworld to simplify the task without requiring full training convergence.")
@@ -658,23 +662,35 @@ def main():
         else:
             trajectories, initial_states = drlhf.collect_trajectories(n_trajectories=args.n_trajectories)
 
-        # Collect render frames by replaying in a render-capable env
-        print(f"  Collecting render frames...")
-        renders = collect_renders(trajectories, env_name, seed=args.seed, fixed_state=fixed_start_state)
+        if args.results_only:
+            # Minimal save: only episode_rewards (no renders, no episode splits, no model ckpts)
+            from rlhfblender.routes.dynamic_rlhf import process_env_name as _penv
+            _env_proc = _penv(env_name)
+            _save_dir = Path("data", "saved_benchmarks", _env_proc)
+            _save_dir.mkdir(parents=True, exist_ok=True)
+            _save_path = _save_dir / f"{_env_proc}_{exp_id}_{checkpoint_step}.npz"
+            _ep_rewards = np.array([sum(s[2] for s in traj) for traj in trajectories if traj])
+            _ep_lengths = np.array([len(traj) for traj in trajectories if traj])
+            np.savez(_save_path, episode_rewards=_ep_rewards, episode_lengths=_ep_lengths)
+            print(f"  Saved episode rewards → {_save_path}  ({len(_ep_rewards)} episodes)")
+        else:
+            # Collect render frames by replaying in a render-capable env
+            print(f"  Collecting render frames...")
+            renders = collect_renders(trajectories, env_name, seed=args.seed, fixed_state=fixed_start_state)
 
-        # Save in rlhfblender-compatible format (with real render frames + initial env states)
-        save_trajectories(trajectories, env_name, exp_id, checkpoint_step,
-                          renders=renders, initial_states=initial_states)
+            # Save in rlhfblender-compatible format (with real render frames + initial env states)
+            save_trajectories(trajectories, env_name, exp_id, checkpoint_step,
+                              renders=renders, initial_states=initial_states)
 
-        # Split bulk benchmark into per-episode files + encode videos/thumbnails
-        split_benchmarks_to_episodes(env_name, exp_id, checkpoint_step)
+            # Split bulk benchmark into per-episode files + encode videos/thumbnails
+            split_benchmarks_to_episodes(env_name, exp_id, checkpoint_step)
+
+            # Save DynamicRLHF checkpoint (reward models + RL agent + state)
+            ckpt_base = f"dynamic_rlhf_models/sim_{exp_name}_checkpoint_{checkpoint_step}"
+            drlhf.save(ckpt_base, checkpoint_step=checkpoint_step, exp_id=str(exp_id))
 
         # Update DB checkpoint list
         asyncio.run(update_checkpoint_list(exp_id, checkpoint_step))
-
-        # Save DynamicRLHF checkpoint (reward models + RL agent + state)
-        ckpt_base = f"dynamic_rlhf_models/sim_{exp_name}_checkpoint_{checkpoint_step}"
-        drlhf.save(ckpt_base, checkpoint_step=checkpoint_step, exp_id=str(exp_id))
 
         # Derive paths for reward prediction script
         ckpt_dir = Path("multi-type-feedback/reward_models/checkpoints")
