@@ -307,8 +307,8 @@ def plot_phase0_vs_final(df: pd.DataFrame, output_dir: Path) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Analyze ablation results")
     parser.add_argument("--output-dir", default="plots", help="Directory for output plots")
-    parser.add_argument("--env-proc", default="sweep_into_v3",
-                        help="Processed env name used in benchmark file paths")
+    parser.add_argument("--env-proc", default="metaworld-sweep-into-v3",
+                        help="Processed env name used in benchmark file paths (must match process_env_name output)")
     parser.add_argument("--show", action="store_true", help="Show plots interactively")
     parser.add_argument("--csv-only", action="store_true",
                         help="Only write summary CSV, skip plots")
