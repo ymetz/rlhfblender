@@ -497,6 +497,19 @@ def main():
                         help="Skip render collection, model checkpoints, and episode splits. "
                              "Only save episode_rewards per phase (much smaller disk footprint, "
                              "suitable for large ablation sweeps).")
+    parser.add_argument("--reward-model-type", type=str, default="unified",
+                        choices=["separate", "multi-head", "unified", "film-unified"],
+                        help="Reward model architecture. 'film-unified' uses FiLM conditioning "
+                             "with optional ResponseRank loss.")
+    parser.add_argument("--reward-normalization", type=str, default="welford",
+                        choices=["welford", "quantile"],
+                        help="How to normalize rewards across feedback types before aggregation. "
+                             "'quantile' maps each type to [0,1] via running quantile buffers "
+                             "(scale-invariant; recommended with film-unified).")
+    parser.add_argument("--responserank-weight", type=float, default=0.5,
+                        help="Weight for ResponseRank Plackett-Luce loss vs Bradley-Terry NLL "
+                             "in pairwise feedback types (only used with film-unified). "
+                             "0.0 = pure BT, 1.0 = pure ResponseRank.")
     parser.add_argument("--fix-start-state", action="store_true",
                         help="Fix starting/object/goal positions across all episodes by locking the first reset state. "
                              "Recommended for Metaworld to simplify the task without requiring full training convergence.")
@@ -649,10 +662,12 @@ def main():
         rl_steps_per_iteration=args.rl_steps,
         device=args.device,
         seed=args.seed,
-        reward_model_type="unified",
+        reward_model_type=args.reward_model_type,
         exp_manager=exp_manager,
         env_kwargs=env_kwargs or None,
         uncertainty_penalty=args.uncertainty_penalty,
+        reward_normalization=args.reward_normalization,
+        responserank_weight=args.responserank_weight,
     )
 
     # --- Step 6: Phase loop ---

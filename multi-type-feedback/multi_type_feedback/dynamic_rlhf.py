@@ -38,6 +38,7 @@ from multi_type_feedback.unified_dataset import (
     create_unified_dataloaders,
 )
 from multi_type_feedback.unified_networks import (
+    FiLMUnifiedNetwork,
     UnifiedCnnNetwork,
     UnifiedNetwork,
 )
@@ -61,6 +62,59 @@ def vectorized_one_hot_vector(k, max_val):
     vec = np.zeros((k.size, max_val))
     vec[np.arange(k.size), k] = 1
     return vec
+
+
+class QuantileNormalizer:
+    """
+    Running quantile normalizer that maps each feedback type's reward to [0, 1]
+    using a sorted buffer of recent predictions.
+
+    Unlike mean/std standardization, this is invariant to scale and shift —
+    it only preserves ordinal information.  This makes it safe to aggregate
+    rewards from feedback types that live on incompatible scales (e.g.
+    comparative NLL utility vs. evaluative MSE predictions).
+    """
+
+    def __init__(self, buffer_size: int = 5000):
+        self.buffer_size = buffer_size
+        self.buffers: Dict[str, np.ndarray] = {}     # fb_type → sorted recent rewards
+        self._buf_counts: Dict[str, int] = {}
+
+    def update_and_normalize(
+        self, rewards: torch.Tensor, feedback_type: str
+    ) -> torch.Tensor:
+        """
+        Update the running buffer for *feedback_type* and return quantile-
+        normalized rewards in [0, 1].
+
+        Args:
+            rewards: 1-D tensor of raw reward predictions (batch_size,)
+            feedback_type: which type produced these rewards
+
+        Returns:
+            Tensor of same shape, values in [0, 1]
+        """
+        r_np = rewards.detach().cpu().numpy().ravel()
+
+        if feedback_type not in self.buffers:
+            self.buffers[feedback_type] = r_np.copy()
+            self._buf_counts[feedback_type] = len(r_np)
+        else:
+            buf = self.buffers[feedback_type]
+            combined = np.concatenate([buf, r_np])
+            if len(combined) > self.buffer_size:
+                combined = combined[-self.buffer_size:]
+            self.buffers[feedback_type] = combined
+            self._buf_counts[feedback_type] = len(combined)
+
+        # Compute quantile rank: fraction of buffer values <= each reward
+        buf = self.buffers[feedback_type]
+        sorted_buf = np.sort(buf)
+        # searchsorted gives index where r_np would be inserted to keep sorted
+        indices = np.searchsorted(sorted_buf, r_np, side="right")
+        quantiles = indices.astype(np.float32) / max(len(sorted_buf), 1)
+
+        return torch.as_tensor(quantiles, device=rewards.device, dtype=rewards.dtype)
 
 
 def compute_grouped(tensor, k):
@@ -139,13 +193,15 @@ class DynamicRLHF:
         seed: int = None,
         wandb_logger: Any = None,
         custom_sb3_logger: Any = None,
-        reward_model_type: str = "separate",  # Options: "separate", "multi-head", "unified"
+        reward_model_type: str = "separate",  # Options: "separate", "multi-head", "unified", "film-unified"
         shared_layer_num: int = 5,
         head_layer_num: int = 1,
         feedback_embedding_dim: int = 32,
         exp_manager: ExperimentManager = None,  # Add ExperimentManager
         env_kwargs: Optional[Dict[str, Any]] = None,
         uncertainty_penalty: float = 0.0,
+        reward_normalization: str = "welford",  # "welford" (mean/std) or "quantile"
+        responserank_weight: float = 0.5,
     ):
         self.oracle = oracle
         self.env_name = env_name
@@ -169,6 +225,8 @@ class DynamicRLHF:
         self.exp_manager = exp_manager  # Store the experiment manager
         self.env_kwargs = env_kwargs or {}
         self.uncertainty_penalty = uncertainty_penalty
+        self.reward_normalization = reward_normalization
+        self.responserank_weight = responserank_weight
 
         self.reward_model_type = reward_model_type
         self.shared_layer_num = shared_layer_num
@@ -192,6 +250,9 @@ class DynamicRLHF:
         self.reward_mean = None
         self.squared_distance_from_mean = None
         self.reward_counters = None
+
+        # Quantile normalizer (alternative to Welford)
+        self.quantile_normalizer = QuantileNormalizer(buffer_size=5000)
 
         if apply_random_response_handling:
             self._apply_random_response_handling()
@@ -303,6 +364,9 @@ class DynamicRLHF:
         elif self.reward_model_type == "unified":
             # Unified model with feedback type conditioning
             return self._init_unified_reward_model(observation_space, action_space)
+        elif self.reward_model_type == "film-unified":
+            # FiLM-conditioned unified model
+            return self._init_film_unified_reward_model(observation_space, action_space)
         else:
             raise ValueError(f"Unknown reward model type: {self.reward_model_type}")
 
@@ -538,6 +602,22 @@ class DynamicRLHF:
         # For unified, we return a dictionary with a single key
         # This is to maintain compatibility with the rest of the code
         return {"unified": model}
+
+    def _init_film_unified_reward_model(self, observation_space, action_space):
+        """Initialize a FiLM-conditioned unified reward model."""
+        model = FiLMUnifiedNetwork(
+            input_spaces=(observation_space, action_space),
+            layer_num=6,
+            hidden_dim=256,
+            action_hidden_dim=32,
+            output_dim=1,
+            feedback_types=self.feedback_types,
+            learning_rate=1e-5,
+            ensemble_count=self.num_ensemble_models,
+            feedback_embedding_dim=self.feedback_embedding_dim,
+            responserank_weight=self.responserank_weight,
+        )
+        return {"film_unified": model}
 
     def _initialize_reward_models_with_random_feedback(self):
         """Collect initial random feedback and train reward models before RL training begins."""
@@ -852,8 +932,8 @@ class DynamicRLHF:
 
                 print(f"{feedback_type} training complete: val_loss={val_loss:.4f}")
 
-        elif self.reward_model_type == "unified":
-            # Unified implementation
+        elif self.reward_model_type in ("unified", "film-unified"):
+            # Unified / FiLM-unified implementation
             model = list(self.reward_models.values())[0]  # Only one model in dict
 
             # Check if we have any data to train on
@@ -868,10 +948,13 @@ class DynamicRLHF:
                 return {}
 
             # Create unified data module
+            # FiLM-unified uses larger batch for ResponseRank PL loss (needs groups)
+            effective_batch_size = 8 if self.reward_model_type == "film-unified" else 1
             train_dataloader, val_dataloader = create_unified_dataloaders(
                 self.feedback_buffers,
-                batch_size=1,
+                batch_size=effective_batch_size,
                 val_split=0.368,
+                partition_size=4,
             )
 
             # Configure callbacks
@@ -1022,8 +1105,8 @@ class DynamicRLHF:
                 else:
                     traj_unc = 0.0
     
-            elif self.reward_model_type == "unified":
-                model = list(self.reward_models.values())[0]   # {"unified": model}
+            elif self.reward_model_type in ("unified", "film-unified"):
+                model = list(self.reward_models.values())[0]
                 if model.ensemble_count > 1:
                     states_expanded = states.unsqueeze(0).expand(model.ensemble_count, *states.shape)
                     actions_expanded = actions.unsqueeze(0).expand(model.ensemble_count, *actions.shape)
@@ -1339,6 +1422,7 @@ class DynamicRLHF:
         # Lists to accumulate each model's reward and uncertainty
         model_rewards = []
         model_uncertainties = []
+        reward_fb_types = []  # track which feedback type produced each reward
 
         with torch.no_grad():
             if self.reward_model_type == "separate":
@@ -1380,6 +1464,7 @@ class DynamicRLHF:
                     # Collect
                     model_rewards.append(mean_reward)  # shape [batch_size,]
                     model_uncertainties.append(uncertainty)  # shape [batch_size,]
+                    reward_fb_types.append(feedback_type)
 
             elif self.reward_model_type == "multi-head":
                 # Multi-head model: get predictions from each head
@@ -1417,18 +1502,16 @@ class DynamicRLHF:
                     # Collect
                     model_rewards.append(mean_reward)  # shape [batch_size,]
                     model_uncertainties.append(uncertainty)  # shape [batch_size,]
+                    reward_fb_types.append(feedback_type)
 
-            elif self.reward_model_type == "unified":
-                # Unified model: get predictions for each feedback type
-                unified_model = list(self.reward_models.values())[0]  # Only one model
+            elif self.reward_model_type in ("unified", "film-unified"):
+                # Unified / FiLM-unified: same forward API (obs, act, feedback_type)
+                unified_model = list(self.reward_models.values())[0]
 
-                # For each feedback type that has data, get predictions
                 for feedback_type in self.feedback_types:
-                    # Only use feedback types which have some feedback
                     if len(self.feedback_buffers[feedback_type]) == 0:
                         continue
 
-                    # Expand along ensemble dimension
                     st_expanded = state_tensor.repeat(
                         unified_model.ensemble_count,
                         *[1] * (len(state_tensor.shape) - 1),
@@ -1438,7 +1521,6 @@ class DynamicRLHF:
                         *[1] * (len(action_tensor.shape) - 1),
                     )
 
-                    # Forward pass with specific feedback type
                     predictions = unified_model(
                         st_expanded, act_expanded, feedback_type
                     )
@@ -1447,9 +1529,9 @@ class DynamicRLHF:
                         predictions, unified_model.ensemble_count
                     )
 
-                    # Collect
-                    model_rewards.append(mean_reward)  # shape [batch_size,]
-                    model_uncertainties.append(uncertainty)  # shape [batch_size,]
+                    model_rewards.append(mean_reward)
+                    model_uncertainties.append(uncertainty)
+                    reward_fb_types.append(feedback_type)
 
         # If no models have feedback, return zeros for the entire batch
         if not model_rewards:
@@ -1459,11 +1541,19 @@ class DynamicRLHF:
         stacked_rewards = torch.stack(model_rewards, dim=0)
         stacked_uncerts = torch.stack(model_uncertainties, dim=0)
 
-        # Apply standardization using Welford's algorithm
-        # Transpose to (batch_size, #models) for standardization, then transpose back
-        rewards_for_standardization = stacked_rewards.transpose(0, 1)  # shape (batch_size, #models)
-        standardized_rewards = self.standardize_rewards(rewards_for_standardization)
-        stacked_rewards = standardized_rewards.transpose(0, 1)  # back to (#models, batch_size)
+        # Normalize rewards across feedback types before aggregation
+        if self.reward_normalization == "quantile" and reward_fb_types:
+            # Per-type quantile normalization: maps each type to [0, 1]
+            for m_idx in range(stacked_rewards.shape[0]):
+                fb_type = reward_fb_types[m_idx] if m_idx < len(reward_fb_types) else f"model_{m_idx}"
+                stacked_rewards[m_idx] = self.quantile_normalizer.update_and_normalize(
+                    stacked_rewards[m_idx], fb_type
+                )
+        else:
+            # Welford mean/std standardization (original behavior)
+            rewards_for_standardization = stacked_rewards.transpose(0, 1)
+            standardized_rewards = self.standardize_rewards(rewards_for_standardization)
+            stacked_rewards = standardized_rewards.transpose(0, 1)
 
         # Calculate final rewards => shape [batch_size,]
         batch_size = state.shape[0]
@@ -1498,6 +1588,7 @@ class DynamicRLHF:
         state_tensor = torch.as_tensor(state, device=device, dtype=torch.float32).unsqueeze(1)
         action_tensor = torch.as_tensor(action, device=device, dtype=torch.float32).unsqueeze(1)
         model_rewards, model_uncertainties = [], []
+        reward_fb_types = []
         with torch.no_grad():
             if self.reward_model_type == "separate":
                 for feedback_type, reward_model in self.reward_models.items():
@@ -1518,6 +1609,7 @@ class DynamicRLHF:
                         unc = torch.zeros_like(mean_r)
                     model_rewards.append(mean_r)
                     model_uncertainties.append(unc)
+                    reward_fb_types.append(feedback_type)
             elif self.reward_model_type == "multi-head":
                 multi = list(self.reward_models.values())[0]
                 st_exp = state_tensor.repeat(multi.ensemble_count, *[1] * (len(state_tensor.shape) - 1))
@@ -1531,7 +1623,8 @@ class DynamicRLHF:
                     mean_r, unc = compute_grouped(outputs, multi.ensemble_count)
                     model_rewards.append(mean_r)
                     model_uncertainties.append(unc)
-            elif self.reward_model_type == "unified":
+                    reward_fb_types.append(feedback_type)
+            elif self.reward_model_type in ("unified", "film-unified"):
                 uni = list(self.reward_models.values())[0]
                 for feedback_type in self.feedback_types:
                     if len(self.feedback_buffers[feedback_type]) == 0:
@@ -1544,14 +1637,23 @@ class DynamicRLHF:
                     mean_r, unc = compute_grouped(preds, uni.ensemble_count)
                     model_rewards.append(mean_r)
                     model_uncertainties.append(unc)
+                    reward_fb_types.append(feedback_type)
         if not model_rewards:
             zeros = np.zeros(state.shape[0], dtype=np.float32)
             return zeros, zeros
         stacked_rewards = torch.stack(model_rewards, dim=0)
         stacked_uncerts = torch.stack(model_uncertainties, dim=0)
-        rewards_for_standardization = stacked_rewards.transpose(0, 1)
-        standardized_rewards = self.standardize_rewards(rewards_for_standardization)
-        stacked_rewards = standardized_rewards.transpose(0, 1)
+        # Normalize rewards across feedback types before aggregation
+        if self.reward_normalization == "quantile" and reward_fb_types:
+            for m_idx in range(stacked_rewards.shape[0]):
+                fb_type = reward_fb_types[m_idx] if m_idx < len(reward_fb_types) else f"model_{m_idx}"
+                stacked_rewards[m_idx] = self.quantile_normalizer.update_and_normalize(
+                    stacked_rewards[m_idx], fb_type
+                )
+        else:
+            rewards_for_standardization = stacked_rewards.transpose(0, 1)
+            standardized_rewards = self.standardize_rewards(rewards_for_standardization)
+            stacked_rewards = standardized_rewards.transpose(0, 1)
         batch_size = state.shape[0]
         final_rewards = torch.zeros(batch_size, device=device, dtype=torch.float32)
         avg_uncert = torch.zeros(batch_size, device=device, dtype=torch.float32)

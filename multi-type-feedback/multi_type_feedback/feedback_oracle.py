@@ -312,19 +312,19 @@ class FeedbackOracle:
             return (
                 (trajectory1_obs, trajectory1_actions, mask1),
                 (trajectory2_obs, trajectory2_actions, mask2),
-            ), 0
+            ), 0, 0.0
 
         diff = abs(return1 - return2) / total_return
         if return1 > return2:
             return (
                 (trajectory2_obs, trajectory2_actions, mask2),
                 (trajectory1_obs, trajectory1_actions, mask1),
-            ), 1
+            ), 1, diff
         else:
             return (
                 (trajectory1_obs, trajectory1_actions, mask1),
                 (trajectory2_obs, trajectory2_actions, mask2),
-            ), 1
+            ), 1, diff
 
     def get_demonstrative_feedback(
         self, initial_state

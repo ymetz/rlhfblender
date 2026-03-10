@@ -6,6 +6,9 @@ from torch.utils.data import DataLoader, Dataset
 
 from multi_type_feedback.feedback_dataset import BufferDataset
 
+# Pairwise feedback types that support ResponseRank loss
+_PAIRWISE_TYPES = {"comparative", "demonstrative", "corrective", "descriptive_preference"}
+
 
 class UnifiedBufferDataset(Dataset):
     """
@@ -106,29 +109,83 @@ def create_dataloaders_by_type(
     return dataloaders
 
 
+def _unified_collate_fn(batch, partition_size: int = 4):
+    """
+    Custom collate function for unified training.
+
+    For pairwise feedback types (comparative, demonstrative, etc.), if items
+    carry a return-difference third element, we inject ResponseRank metadata:
+      - ranks:  negative return difference (higher diff = stronger preference = lower rank)
+      - partition_ids: random partitions of size ``partition_size``
+
+    The resulting batch is:
+      (feedback_types, (pair_data, pref_indices, ranks, partition_ids))
+
+    For scalar types or pairwise items without diff, the batch is unchanged:
+      (feedback_types, collated_data)
+    """
+    feedback_types = []
+    data_batch = []
+
+    for feedback_type, data in batch:
+        feedback_types.append(feedback_type)
+        data_batch.append(data)
+
+    # Check if this batch is a pairwise type with rank info (3-element tuples)
+    fb_type_0 = feedback_types[0] if feedback_types else None
+    is_pairwise = fb_type_0 in _PAIRWISE_TYPES
+    has_diff = is_pairwise and len(data_batch) > 0 and len(data_batch[0]) == 3
+
+    if has_diff and len(data_batch) > 1:
+        # Separate pair_data, preference, diff
+        pair_data_list = [d[0] for d in data_batch]
+        pref_list = [d[1] for d in data_batch]
+        diff_list = [d[2] for d in data_batch]
+
+        # Collate trajectories and preferences
+        collated_pairs = torch.utils.data.dataloader.default_collate(pair_data_list)
+        collated_prefs = torch.utils.data.dataloader.default_collate(pref_list)
+
+        # Build ranks: negative diff (lower = stronger preference)
+        ranks = torch.tensor([-d for d in diff_list], dtype=torch.float32)
+
+        # Random partition assignment
+        n = len(data_batch)
+        perm = torch.randperm(n)
+        partition_ids = torch.zeros(n, dtype=torch.long)
+        pid = 0
+        for i in range(0, n, partition_size):
+            for j in perm[i : i + partition_size]:
+                partition_ids[j] = pid
+            pid += 1
+
+        collated_data = (collated_pairs, collated_prefs, ranks, partition_ids)
+    else:
+        # Standard collation (scalar feedback, or single-item batch, or no diff)
+        collated_data = torch.utils.data.dataloader.default_collate(data_batch)
+
+    return feedback_types, collated_data
+
+
 def create_unified_dataloaders(
-    feedback_buffers: Dict[str, List[Any]], batch_size: int, val_split: float = 0.2
+    feedback_buffers: Dict[str, List[Any]],
+    batch_size: int,
+    val_split: float = 0.2,
+    partition_size: int = 4,
 ):
     """
     Create unified dataloaders that include feedback type with the data.
+
+    Args:
+        feedback_buffers: Dictionary mapping feedback types to lists of feedback
+        batch_size: Batch size for dataloaders
+        val_split: Fraction of data to use for validation
+        partition_size: Partition size for ResponseRank PL loss grouping
     """
-    
-    def unified_collate_fn(batch):
-        """Custom collate function for unified training"""
-        # Separate feedback types and data
-        feedback_types = []
-        data_batch = []
-        
-        for feedback_type, data in batch:
-            feedback_types.append(feedback_type)
-            data_batch.append(data)
-        
-        # Collate the data normally
-        collated_data = torch.utils.data.dataloader.default_collate(data_batch)
-        
-        # Return feedback types (as strings) and collated data
-        return feedback_types, collated_data
-    
+
+    def collate_fn(batch):
+        return _unified_collate_fn(batch, partition_size=partition_size)
+
     # Create unified dataset
     dataset = UnifiedBufferDataset(feedback_buffers)
 
@@ -150,7 +207,7 @@ def create_unified_dataloaders(
         shuffle=True,
         pin_memory=False,
         drop_last=True,
-        collate_fn=unified_collate_fn,
+        collate_fn=collate_fn,
     )
 
     val_loader = DataLoader(
@@ -159,7 +216,7 @@ def create_unified_dataloaders(
         shuffle=False,
         pin_memory=False,
         drop_last=True,
-        collate_fn=unified_collate_fn,
+        collate_fn=collate_fn,
     )
 
     return train_loader, val_loader

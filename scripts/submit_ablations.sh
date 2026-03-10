@@ -55,13 +55,15 @@ REF_BUFFER=""                       # empty = default (equals budget)
 # Total: ~32 configs × 3 seeds = 96 jobs.
 
 CONFIGS=(
-# Config format (10 pipe-separated fields):
+# Config format (11 pipe-separated fields):
 #   label | --rl-steps | --num-phases | --feedback-budget | --uncertainty-penalty
-#         | --reward-epochs | --initial-feedback | BUFFER_EXTRA | FB_TYPES_EXTRA | SEG_LEN_EXTRA
+#         | --reward-epochs | --initial-feedback | BUFFER_EXTRA | FB_TYPES_EXTRA
+#         | SEG_LEN_EXTRA | MODEL_EXTRA
 #
 # BUFFER_EXTRA  : empty OR "--feedback-buffer-size N"
 # FB_TYPES_EXTRA: empty (use default 3 types) OR "--feedback-types TYPE [TYPE ...]"
-# SEG_LEN_EXTRA : empty (use SEGMENT_LEN=50) OR "--segment-len N"  (overrides fixed default)
+# SEG_LEN_EXTRA : empty (use SEGMENT_LEN=150) OR "--segment-len N"  (overrides fixed default)
+# MODEL_EXTRA   : empty (use default unified) OR "--reward-model-type film-unified ..."
 #
 # Groups A–I: all use penalty=0.0 (penalty ablation deferred).
 # Each group varies ONE axis; all others fixed at reference values.
@@ -160,7 +162,27 @@ CONFIGS=(
     "I_fb_comp_demo |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative demonstrative|"
     "I_fb_no_demo   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive|"
     "I_fb_all       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative|"
-    "I_fb_all_fine  |--rl-steps 1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative|"
+    "I_fb_all_fine  |--rl-steps 1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative||"
+
+# ── Group J: FiLM-unified architecture ─────────────────────────────────────
+# Question: Does FiLM conditioning + quantile normalization fix multi-type interference?
+# Mirrors key Group I combos with --reward-model-type film-unified.
+# Also tests ResponseRank weight variants on comparative-heavy combos.
+# Uses SEEDS_FB (2 seeds) to limit job count.
+    # ── Baselines: film-unified with same feedback combos as Group I ────────
+    "J_film_comp      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative||--reward-model-type film-unified --reward-normalization quantile"
+    "J_film_eval      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative||--reward-model-type film-unified --reward-normalization quantile"
+    "J_film_demo      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types demonstrative||--reward-model-type film-unified --reward-normalization quantile"
+    "J_film_eval_comp |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization quantile"
+    "J_film_comp_demo |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative demonstrative||--reward-model-type film-unified --reward-normalization quantile"
+    "J_film_no_demo   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive||--reward-model-type film-unified --reward-normalization quantile"
+    "J_film_all       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative||--reward-model-type film-unified --reward-normalization quantile"
+    # ── ResponseRank weight ablation (on eval+comp, the worst combo in Group I) ──
+    "J_film_ec_rr00   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization quantile --responserank-weight 0.0"
+    "J_film_ec_rr03   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization quantile --responserank-weight 0.3"
+    "J_film_ec_rr07   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization quantile --responserank-weight 0.7"
+    # ── Welford normalization baseline (film-unified without quantile) ───────
+    "J_film_ec_welford|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization welford"
 
 )
 
@@ -188,13 +210,13 @@ n_submitted=0
 
 # ── Submit ────────────────────────────────────────────────────────────────────
 for config_str in "${CONFIGS[@]}"; do
-    IFS='|' read -r label rl_steps_arg num_phases_arg budget_arg penalty_arg epochs_arg initial_arg buffer_arg fb_types_arg seg_len_arg <<< "$config_str"
+    IFS='|' read -r label rl_steps_arg num_phases_arg budget_arg penalty_arg epochs_arg initial_arg buffer_arg fb_types_arg seg_len_arg model_arg <<< "$config_str"
 
     # Strip leading/trailing whitespace from label (some have padding for alignment)
     label="$(echo "$label" | xargs)"
 
-    # Group I (feedback type combos) uses fewer seeds to stay under ~100 total jobs
-    if [[ "$label" == I_* ]]; then
+    # Groups I & J (feedback type / architecture combos) use fewer seeds to limit job count
+    if [[ "$label" == I_* || "$label" == J_* ]]; then
         seed_list=("${SEEDS_FB[@]}")
     else
         seed_list=("${SEEDS[@]}")
@@ -237,6 +259,7 @@ for config_str in "${CONFIGS[@]}"; do
         [[ -n "$buffer_arg"   ]] && PYTHON_CMD+=" ${buffer_arg}"
         [[ -n "$fb_types_arg" ]] && PYTHON_CMD+=" ${fb_types_arg}"
         [[ -n "$seg_len_arg"  ]] && PYTHON_CMD+=" ${seg_len_arg}"
+        [[ -n "$model_arg"    ]] && PYTHON_CMD+=" ${model_arg}"
 
         JOB_SCRIPT=$(cat <<SLURM
 #!/bin/bash
@@ -271,7 +294,7 @@ done
 
 echo ""
 if $DRY_RUN; then
-    echo "Dry run: would submit $n_submitted jobs (Groups A–H: ${#SEEDS[@]} seeds; Group I: ${#SEEDS_FB[@]} seeds)."
+    echo "Dry run: would submit $n_submitted jobs (Groups A–H: ${#SEEDS[@]} seeds; Groups I–J: ${#SEEDS_FB[@]} seeds)."
 else
     echo "Submitted $n_submitted jobs. Logs → $LOG_DIR/"
 fi
