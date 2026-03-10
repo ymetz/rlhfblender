@@ -9,6 +9,24 @@ from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 
 
+# ── Batch helpers ────────────────────────────────────────────────────────────
+
+
+def _is_multi_batch(batch):
+    """Check if batch is a list of sub-batches (from mixed-type collation)."""
+    return isinstance(batch, list) and len(batch) > 0 and isinstance(batch[0], tuple)
+
+
+def _get_feedback_type(batch):
+    """Extract feedback type string from a single (fb_types, data) batch."""
+    feedback_type = batch[0]
+    if isinstance(feedback_type, (list, tuple, torch.Tensor)):
+        feedback_type = feedback_type[0]
+    if isinstance(feedback_type, torch.Tensor):
+        feedback_type = feedback_type.item()
+    return feedback_type
+
+
 # ── ResponseRank helpers ─────────────────────────────────────────────────────
 
 
@@ -311,14 +329,13 @@ class FiLMUnifiedNetwork(LightningModule):
     # ── Lightning hooks ──────────────────────────────────────────────────────
 
     def training_step(self, batch: Tensor, batch_idx: int):
+        if _is_multi_batch(batch):
+            total_loss = sum(self.universal_loss(sb) for sb in batch)
+            self.log("train_loss", total_loss, on_epoch=True)
+            return total_loss
+
         loss = self.universal_loss(batch)
-
-        feedback_type = batch[0]
-        if isinstance(feedback_type, (list, tuple, torch.Tensor)):
-            feedback_type = feedback_type[0]
-        if isinstance(feedback_type, torch.Tensor):
-            feedback_type = feedback_type.item()
-
+        feedback_type = _get_feedback_type(batch)
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True)
         self.log("train_loss", loss, on_epoch=True)
 
@@ -330,12 +347,13 @@ class FiLMUnifiedNetwork(LightningModule):
         return loss
 
     def validation_step(self, batch: Tensor, batch_idx: int):
+        if _is_multi_batch(batch):
+            total_loss = sum(self.universal_loss(sb) for sb in batch)
+            self.log("val_loss", total_loss, on_epoch=True)
+            return total_loss
+
         loss = self.universal_loss(batch)
-        feedback_type = batch[0]
-        if isinstance(feedback_type, (list, tuple, torch.Tensor)):
-            feedback_type = feedback_type[0]
-        if isinstance(feedback_type, torch.Tensor):
-            feedback_type = feedback_type.item()
+        feedback_type = _get_feedback_type(batch)
         self.log(f"val_loss_{feedback_type}", loss, on_epoch=True)
         self.log("val_loss", loss, on_epoch=True)
         return loss
@@ -602,18 +620,16 @@ class UnifiedNetwork(LightningModule):
 
     def training_step(self, batch: Tensor, batch_idx: int):
         """Compute universal loss for training."""
+        if _is_multi_batch(batch):
+            total_loss = sum(self.universal_loss(sb) for sb in batch)
+            self.log("train_loss", total_loss, on_epoch=True)
+            return total_loss
+
         loss = self.universal_loss(batch)
-
-        feedback_type = batch[0]
-        if isinstance(feedback_type, (list, tuple, torch.Tensor)):
-            feedback_type = feedback_type[0]
-        if isinstance(feedback_type, torch.Tensor):
-            feedback_type = feedback_type.item()
-
+        feedback_type = _get_feedback_type(batch)
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True)
         self.log("train_loss", loss, on_epoch=True)
 
-        # Also log the learned normalization parameters
         if feedback_type in self.feedback_type_map:
             idx = self.feedback_type_map[feedback_type]
             self.log(f"norm_scale_{feedback_type}", self.loss_scale[idx], on_epoch=True)
@@ -623,12 +639,15 @@ class UnifiedNetwork(LightningModule):
 
     def validation_step(self, batch: Tensor, batch_idx: int):
         """Compute universal loss for validation."""
-        loss = self.universal_loss(batch)
+        if _is_multi_batch(batch):
+            total_loss = sum(self.universal_loss(sb) for sb in batch)
+            self.log("val_loss", total_loss, on_epoch=True)
+            return total_loss
 
-        feedback_type = batch[0]
+        loss = self.universal_loss(batch)
+        feedback_type = _get_feedback_type(batch)
         self.log(f"val_loss_{feedback_type}", loss, on_epoch=True)
         self.log("val_loss", loss, on_epoch=True)
-
         return loss
 
     def configure_optimizers(self):
@@ -871,18 +890,16 @@ class UnifiedCnnNetwork(LightningModule):
 
     def training_step(self, batch: Tensor, batch_idx: int):
         """Compute universal loss for training."""
+        if _is_multi_batch(batch):
+            total_loss = sum(self.universal_loss(sb) for sb in batch)
+            self.log("train_loss", total_loss, on_epoch=True, prog_bar=True)
+            return total_loss
+
         loss = self.universal_loss(batch)
-
-        feedback_type = batch[0]
-        if isinstance(feedback_type, (list, tuple, torch.Tensor)):
-            feedback_type = feedback_type[0]
-        if isinstance(feedback_type, torch.Tensor):
-            feedback_type = feedback_type.item()
-
+        feedback_type = _get_feedback_type(batch)
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True, prog_bar=True)
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
 
-        # Also log the learned normalization parameters
         if feedback_type in self.feedback_type_map:
             idx = self.feedback_type_map[feedback_type]
             self.log(f"norm_scale_{feedback_type}", self.loss_scale[idx], on_epoch=True)
@@ -892,12 +909,15 @@ class UnifiedCnnNetwork(LightningModule):
 
     def validation_step(self, batch: Tensor, batch_idx: int):
         """Compute universal loss for validation."""
-        loss = self.universal_loss(batch)
+        if _is_multi_batch(batch):
+            total_loss = sum(self.universal_loss(sb) for sb in batch)
+            self.log("val_loss", total_loss, prog_bar=True)
+            return total_loss
 
-        feedback_type = batch[0]
+        loss = self.universal_loss(batch)
+        feedback_type = _get_feedback_type(batch)
         self.log(f"val_loss_{feedback_type}", loss, prog_bar=True)
         self.log("val_loss", loss, prog_bar=True)
-
         return loss
 
     def configure_optimizers(self):

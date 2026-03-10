@@ -109,74 +109,90 @@ def create_dataloaders_by_type(
     return dataloaders
 
 
+def _collate_pairwise_group(items, feedback_types, partition_size):
+    """Collate a group of pairwise feedback items."""
+    pair_data_list = []
+    pref_list = []
+    diff_list = []
+    for d in items:
+        if len(d) == 3:
+            pair_data_list.append(d[0])
+            pref_list.append(d[1])
+            diff_list.append(d[2])
+        else:
+            pair_data_list.append(d[0])
+            pref_list.append(d[1])
+            diff_list.append(0.0)
+
+    collated_pairs = torch.utils.data.dataloader.default_collate(pair_data_list)
+    collated_prefs = torch.utils.data.dataloader.default_collate(pref_list)
+    ranks = torch.tensor([-d for d in diff_list], dtype=torch.float32)
+
+    n = len(items)
+    perm = torch.randperm(n)
+    partition_ids = torch.zeros(n, dtype=torch.long)
+    pid = 0
+    for i in range(0, n, partition_size):
+        for j in perm[i : i + partition_size]:
+            partition_ids[j] = pid
+        pid += 1
+
+    return feedback_types, (collated_pairs, collated_prefs, ranks, partition_ids)
+
+
+def _collate_scalar_group(items, feedback_types):
+    """Collate a group of scalar feedback items."""
+    collated_data = torch.utils.data.dataloader.default_collate(items)
+    return feedback_types, collated_data
+
+
 def _unified_collate_fn(batch, partition_size: int = 4):
     """
     Custom collate function for unified training.
 
-    For pairwise feedback types (comparative, demonstrative, etc.), items are
-    normalized to 3-element tuples (pair_data, pref, diff) — items without a
-    diff get diff=0.0.  When any item carries a non-zero diff we inject
-    ResponseRank metadata:
-      - ranks:  negative return difference (higher diff → lower rank number)
-      - partition_ids: random partitions of size ``partition_size``
+    Separates batch items by structural type (pairwise vs scalar) and collates
+    each group independently.  Returns a **list** of sub-batches so that
+    ``training_step`` can sum losses across groups.
 
-    The resulting batch for pairwise types is:
-      (feedback_types, (pair_data, pref_indices, ranks, partition_ids))
+    Each sub-batch is a tuple:
+      (feedback_types_list, collated_data)
 
-    For scalar types the batch is:
-      (feedback_types, collated_data)
+    For pairwise groups, collated_data is:
+      (pair_data, pref_indices, ranks, partition_ids)
+
+    For scalar groups, collated_data is the standard default_collate output.
     """
-    feedback_types = []
-    data_batch = []
+    # Separate items by structural type
+    pairwise_types = []
+    pairwise_items = []
+    scalar_types = []
+    scalar_items = []
 
     for feedback_type, data in batch:
-        feedback_types.append(feedback_type)
-        data_batch.append(data)
+        if feedback_type in _PAIRWISE_TYPES:
+            pairwise_types.append(feedback_type)
+            pairwise_items.append(data)
+        else:
+            scalar_types.append(feedback_type)
+            scalar_items.append(data)
 
-    # Check if this batch contains pairwise feedback
-    fb_type_0 = feedback_types[0] if feedback_types else None
-    is_pairwise = fb_type_0 in _PAIRWISE_TYPES
+    sub_batches = []
 
-    if is_pairwise and len(data_batch) > 0:
-        # Normalize all pairwise items to 3-element tuples (pair_data, pref, diff).
-        # Items without a diff (e.g. demonstrative) get diff=0.0.
-        pair_data_list = []
-        pref_list = []
-        diff_list = []
-        for d in data_batch:
-            if len(d) == 3:
-                pair_data_list.append(d[0])
-                pref_list.append(d[1])
-                diff_list.append(d[2])
-            else:
-                # 2-element tuple: (pair_data, pref) — no diff available
-                pair_data_list.append(d[0])
-                pref_list.append(d[1])
-                diff_list.append(0.0)
+    if pairwise_items:
+        sub_batches.append(
+            _collate_pairwise_group(pairwise_items, pairwise_types, partition_size)
+        )
 
-        # Collate trajectories and preferences
-        collated_pairs = torch.utils.data.dataloader.default_collate(pair_data_list)
-        collated_prefs = torch.utils.data.dataloader.default_collate(pref_list)
+    if scalar_items:
+        sub_batches.append(
+            _collate_scalar_group(scalar_items, scalar_types)
+        )
 
-        # Build ranks: negative diff (lower = stronger preference)
-        ranks = torch.tensor([-d for d in diff_list], dtype=torch.float32)
+    # If only one group, return it directly (backward-compatible single-batch path)
+    if len(sub_batches) == 1:
+        return sub_batches[0]
 
-        # Random partition assignment
-        n = len(data_batch)
-        perm = torch.randperm(n)
-        partition_ids = torch.zeros(n, dtype=torch.long)
-        pid = 0
-        for i in range(0, n, partition_size):
-            for j in perm[i : i + partition_size]:
-                partition_ids[j] = pid
-            pid += 1
-
-        collated_data = (collated_pairs, collated_prefs, ranks, partition_ids)
-    else:
-        # Standard collation (scalar feedback or empty batch)
-        collated_data = torch.utils.data.dataloader.default_collate(data_batch)
-
-    return feedback_types, collated_data
+    return sub_batches
 
 
 def create_unified_dataloaders(
