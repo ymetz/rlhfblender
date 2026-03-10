@@ -122,13 +122,15 @@ CONFIGS=(
 # Shorter segments = more clips per episode, finer reward signal but less context.
 # Longer segments = richer context but fewer clips per budget.
 # Fixed: phases=10, steps=2000, budget=500, epochs=20, initial=50
-# max_episode_steps=150, so seg=150 = full episode.
-# Baseline (SEGMENT_LEN=150) is covered by A_steps_2000; vary around and above it.
+# IMPORTANT: max_episode_steps must be >= segment_len or the episode ends early and
+# the segment is zero-padded (no extra signal). For seg > 150, extend max_episode_steps
+# to match by including --max-episode-steps in the SEG_LEN_EXTRA field.
+# Baseline (seg=150, max_episode_steps=150) is covered by A_steps_2000.
     "G_seg_075|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  75"
     "G_seg_100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 100"
     # seg=150 ← covered by A_steps_2000 (SEGMENT_LEN default)
-    "G_seg_200|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 200"
-    "G_seg_250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 250"
+    "G_seg_200|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 200 --max-episode-steps 200"
+    "G_seg_250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 250 --max-episode-steps 250"
 
 # ── Group H: Best-guess combinations ─────────────────────────────────────────
 # Promising multi-axis combos using findings from the single-axis sweeps above.
@@ -215,7 +217,10 @@ for config_str in "${CONFIGS[@]}"; do
         PYTHON_CMD+=" --exp-name ${EXP_NAME}"
         PYTHON_CMD+=" --seed ${SEED}"
         PYTHON_CMD+=" --device ${DEVICE}"
-        PYTHON_CMD+=" --max-episode-steps ${MAX_EPISODE_STEPS}"
+        # max-episode-steps: use per-config override if present in seg_len_arg, else the global default
+        if [[ "$seg_len_arg" != *"--max-episode-steps"* ]]; then
+            PYTHON_CMD+=" --max-episode-steps ${MAX_EPISODE_STEPS}"
+        fi
         PYTHON_CMD+=" --n-trajectories ${N_TRAJECTORIES}"
         PYTHON_CMD+=" --segment-len ${SEGMENT_LEN}"
         PYTHON_CMD+=" --fix-start-state"
