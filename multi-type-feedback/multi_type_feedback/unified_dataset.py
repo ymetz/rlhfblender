@@ -111,20 +111,27 @@ def create_dataloaders_by_type(
 
 def _collate_pairwise_group(items, feedback_types, partition_size):
     """Collate a group of pairwise feedback items."""
-    pair_data_list = []
+    obs1_list, act1_list, mask1_list = [], [], []
+    obs2_list, act2_list, mask2_list = [], [], []
     pref_list = []
     diff_list = []
     for d in items:
-        if len(d) == 3:
-            pair_data_list.append(d[0])
-            pref_list.append(d[1])
-            diff_list.append(d[2])
-        else:
-            pair_data_list.append(d[0])
-            pref_list.append(d[1])
-            diff_list.append(0.0)
+        pair_data = d[0]
+        pref_list.append(d[1])
+        diff_list.append(d[2] if len(d) == 3 else 0.0)
 
-    collated_pairs = torch.utils.data.dataloader.default_collate(pair_data_list)
+        (o1, a1, m1), (o2, a2, m2) = pair_data
+        obs1_list.append(o1)
+        act1_list.append(a1)
+        mask1_list.append(m1)
+        obs2_list.append(o2)
+        act2_list.append(a2)
+        mask2_list.append(m2)
+
+    collated_pairs = (
+        (torch.stack(obs1_list), torch.stack(act1_list), torch.stack(mask1_list)),
+        (torch.stack(obs2_list), torch.stack(act2_list), torch.stack(mask2_list)),
+    )
     collated_prefs = torch.utils.data.dataloader.default_collate(pref_list)
     ranks = torch.tensor([-d for d in diff_list], dtype=torch.float32)
 
