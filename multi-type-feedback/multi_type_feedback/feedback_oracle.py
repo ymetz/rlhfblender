@@ -424,15 +424,23 @@ class FeedbackOracle:
             )
             mask_demo = torch.cat([mask_demo, torch.zeros(pad_size, 1)], dim=0)
 
+        total_return = abs(expert_return) + abs(trajectory_return)
+        if total_return == 0:
+            return (
+                (obs_orig, actions_orig, mask_traj),
+                (obs_expert, actions_expert, mask_demo),
+            ), 0, 0.0
+
+        diff = abs(expert_return - trajectory_return) / total_return
         if expert_return > trajectory_return:
             return (
                 (obs_orig, actions_orig, mask_traj),
                 (obs_expert, actions_expert, mask_demo),
-            ), 1
+            ), 1, diff
         return (
             (obs_expert, actions_expert, mask_demo),
             (obs_orig, actions_orig, mask_traj),
-        ), 1
+        ), 1, diff
 
     def get_descriptive_feedback(
         self, trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]]

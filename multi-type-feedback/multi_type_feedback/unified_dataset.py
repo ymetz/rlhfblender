@@ -113,15 +113,17 @@ def _unified_collate_fn(batch, partition_size: int = 4):
     """
     Custom collate function for unified training.
 
-    For pairwise feedback types (comparative, demonstrative, etc.), if items
-    carry a return-difference third element, we inject ResponseRank metadata:
-      - ranks:  negative return difference (higher diff = stronger preference = lower rank)
+    For pairwise feedback types (comparative, demonstrative, etc.), items are
+    normalized to 3-element tuples (pair_data, pref, diff) — items without a
+    diff get diff=0.0.  When any item carries a non-zero diff we inject
+    ResponseRank metadata:
+      - ranks:  negative return difference (higher diff → lower rank number)
       - partition_ids: random partitions of size ``partition_size``
 
-    The resulting batch is:
+    The resulting batch for pairwise types is:
       (feedback_types, (pair_data, pref_indices, ranks, partition_ids))
 
-    For scalar types or pairwise items without diff, the batch is unchanged:
+    For scalar types the batch is:
       (feedback_types, collated_data)
     """
     feedback_types = []
@@ -131,16 +133,26 @@ def _unified_collate_fn(batch, partition_size: int = 4):
         feedback_types.append(feedback_type)
         data_batch.append(data)
 
-    # Check if this batch is a pairwise type with rank info (3-element tuples)
+    # Check if this batch contains pairwise feedback
     fb_type_0 = feedback_types[0] if feedback_types else None
     is_pairwise = fb_type_0 in _PAIRWISE_TYPES
-    has_diff = is_pairwise and len(data_batch) > 0 and len(data_batch[0]) == 3
 
-    if has_diff and len(data_batch) > 1:
-        # Separate pair_data, preference, diff
-        pair_data_list = [d[0] for d in data_batch]
-        pref_list = [d[1] for d in data_batch]
-        diff_list = [d[2] for d in data_batch]
+    if is_pairwise and len(data_batch) > 0:
+        # Normalize all pairwise items to 3-element tuples (pair_data, pref, diff).
+        # Items without a diff (e.g. demonstrative) get diff=0.0.
+        pair_data_list = []
+        pref_list = []
+        diff_list = []
+        for d in data_batch:
+            if len(d) == 3:
+                pair_data_list.append(d[0])
+                pref_list.append(d[1])
+                diff_list.append(d[2])
+            else:
+                # 2-element tuple: (pair_data, pref) — no diff available
+                pair_data_list.append(d[0])
+                pref_list.append(d[1])
+                diff_list.append(0.0)
 
         # Collate trajectories and preferences
         collated_pairs = torch.utils.data.dataloader.default_collate(pair_data_list)
@@ -161,7 +173,7 @@ def _unified_collate_fn(batch, partition_size: int = 4):
 
         collated_data = (collated_pairs, collated_prefs, ranks, partition_ids)
     else:
-        # Standard collation (scalar feedback, or single-item batch, or no diff)
+        # Standard collation (scalar feedback or empty batch)
         collated_data = torch.utils.data.dataloader.default_collate(data_batch)
 
     return feedback_types, collated_data
