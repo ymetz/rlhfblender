@@ -586,12 +586,20 @@ def main():
     if expert_models and "demonstrative" not in feedback_types:
         feedback_types.append("demonstrative")
         print("  Expert models found → enabling demonstrative feedback")
+    elif not expert_models and "demonstrative" in feedback_types:
+        feedback_types.remove("demonstrative")
+        print("  [WARN] --feedback-types included 'demonstrative' but no expert models were loaded. "
+              "Removing 'demonstrative' to avoid a crash (oracle._get_best_demonstration returns None).")
 
     oracle = FeedbackOracle(
         expert_models=expert_models,
         environment=gen_env,
         reference_data_path=str(ref_data_path),
         segment_len=args.segment_len,
+        # Use stochastic expert actions so that demonstrations are diverse even when
+        # --fix-start-state pins every episode to the same start (deterministic expert
+        # would produce identical demos each call, giving the reward model zero new signal).
+        deterministic_expert=not args.fix_start_state,
     )
 
     # --- Step 4b: Sample a fixed start state (if requested) ---

@@ -3,9 +3,12 @@
 # SLURM ablation launcher for run_simulated_phases.py
 #
 # Usage (from repo root):
-#   bash scripts/submit_ablations.sh [--dry-run]
+#   bash scripts/submit_ablations.sh [--dry-run] [--group=I] [--label=I_fb_demo] [--seed=42]
 #
-# --dry-run: print sbatch commands without submitting
+# --dry-run:      print sbatch commands without submitting
+# --group=LETTER: only submit configs whose label starts with LETTER_ (e.g. --group=I)
+# --label=NAME:   only submit the single named config
+# --seed=N:       only submit runs with this specific seed
 # ============================================================
 
 set -euo pipefail
@@ -29,7 +32,7 @@ EXPERT_ALGO="sac"
 MAX_EPISODE_STEPS=150               # matches train_local.sh
 STATE_SEED=0
 N_TRAJECTORIES=10
-SEGMENT_LEN=50
+SEGMENT_LEN=150
 DEVICE="cpu"
 SEEDS=(42 123 456)                  # 3 seeds for A–H groups
 SEEDS_FB=(42 123)                   # 2 seeds for Group I (feedback type combos — more configs)
@@ -65,7 +68,7 @@ CONFIGS=(
 
 # ── Group A: RL steps per phase ───────────────────────────────────────────────
 # Question: How much does per-phase exploitation matter?
-# Fixed: phases=10, budget=500, seg=50, epochs=20, initial=50
+# Fixed: phases=10, budget=500, seg=150, epochs=20, initial=50
     "A_steps_0500|--rl-steps    500|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
     "A_steps_1000|--rl-steps   1000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
     "A_steps_2000|--rl-steps   2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
@@ -74,7 +77,7 @@ CONFIGS=(
 
 # ── Group B: Phase granularity (total RL = 20k steps) ────────────────────────
 # Question: More-frequent reward model updates vs fewer longer bursts?
-# Fixed: total_rl=20k, budget=500, seg=50, epochs=20, initial=50
+# Fixed: total_rl=20k, budget=500, seg=150, epochs=20, initial=50
 # A_steps_2000 (phases=10, steps=2000) already provides the 20k midpoint.
     "B_grain_p05_s4000|--rl-steps  4000|--num-phases  5|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
     "B_grain_p20_s1000|--rl-steps  1000|--num-phases 20|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
@@ -82,7 +85,7 @@ CONFIGS=(
 
 # ── Group C: Feedback budget ──────────────────────────────────────────────────
 # Question: More oracle data per run → better reward model?
-# Fixed: phases=10, steps=2000, seg=50, epochs=20, initial=50
+# Fixed: phases=10, steps=2000, seg=150, epochs=20, initial=50
     "C_budget_0250|--rl-steps 2000|--num-phases 10|--feedback-budget  250|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
     # budget=500 ← covered by A_steps_2000
     "C_budget_0750|--rl-steps 2000|--num-phases 10|--feedback-budget  750|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
@@ -91,7 +94,7 @@ CONFIGS=(
 
 # ── Group D: Reward model training epochs ─────────────────────────────────────
 # Question: How much does reward model training depth matter?
-# Fixed: phases=10, steps=2000, budget=500, seg=50, initial=50
+# Fixed: phases=10, steps=2000, budget=500, seg=150, initial=50
     "D_epochs_05|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs  5|--initial-feedback  50|||"
     "D_epochs_10|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 10|--initial-feedback  50|||"
     # epochs=20 ← covered by A_steps_2000
@@ -100,7 +103,7 @@ CONFIGS=(
 
 # ── Group E: Initial feedback count (phase 0 warmup) ─────────────────────────
 # Question: Does a better phase-0 reward model bootstrap subsequent phases?
-# Fixed: phases=10, steps=2000, budget=500, seg=50, epochs=20
+# Fixed: phases=10, steps=2000, budget=500, seg=150, epochs=20
     "E_init_0025|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback   25|||"
     # initial=50 ← covered by A_steps_2000
     "E_init_0100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  100|||"
@@ -109,7 +112,7 @@ CONFIGS=(
 
 # ── Group F: Feedback buffer size (staleness) ─────────────────────────────────
 # Question: Should old off-distribution feedback expire faster?
-# Fixed: phases=10, steps=2000, budget=500, seg=50, epochs=20, initial=50
+# Fixed: phases=10, steps=2000, budget=500, seg=150, epochs=20, initial=50
     "F_buf_100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  100||"
     "F_buf_250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|--feedback-buffer-size  250||"
     # no buffer flag (keep all) ← covered by A_steps_2000
@@ -119,17 +122,17 @@ CONFIGS=(
 # Shorter segments = more clips per episode, finer reward signal but less context.
 # Longer segments = richer context but fewer clips per budget.
 # Fixed: phases=10, steps=2000, budget=500, epochs=20, initial=50
-# max_episode_steps=150, so seg=150 = full episode; seg=10 = 15 clips/episode.
-    "G_seg_010|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  10"
-    "G_seg_025|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  25"
-    # seg=50 ← covered by A_steps_2000
+# max_episode_steps=150, so seg=150 = full episode.
+# Baseline (SEGMENT_LEN=150) is covered by A_steps_2000; vary around and above it.
     "G_seg_075|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len  75"
     "G_seg_100|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 100"
-    "G_seg_150|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 150"
+    # seg=150 ← covered by A_steps_2000 (SEGMENT_LEN default)
+    "G_seg_200|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 200"
+    "G_seg_250|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||--segment-len 250"
 
 # ── Group H: Best-guess combinations ─────────────────────────────────────────
 # Promising multi-axis combos using findings from the single-axis sweeps above.
-# Fill in the best seg_len after Group G results; using 50 as placeholder.
+# All use SEGMENT_LEN=150 default; add explicit --segment-len if needed.
     # Fine-grained phases + rich budget
     "H_fine_rich|--rl-steps 1000|--num-phases 20|--feedback-budget 1000|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50|||"
     # Very fine phases + larger budget + fresh buffer
@@ -143,7 +146,7 @@ CONFIGS=(
 
 # ── Group I: Feedback type combinations ───────────────────────────────────────
 # Question: Which feedback types contribute signal vs noise?
-# Fixed: phases=10, steps=2000, budget=500, seg=50, epochs=20, initial=50
+# Fixed: phases=10, steps=2000, budget=500, seg=150, epochs=20, initial=50
 # "demonstrative" requires expert models (auto-enabled when --expert-model-path present).
 # Uses SEEDS_FB (2 seeds) to limit job count.
     "I_fb_eval      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative|"
@@ -163,11 +166,13 @@ CONFIGS=(
 DRY_RUN=false
 ONLY_LABEL=""
 ONLY_SEED=""
+ONLY_GROUP=""
 for arg in "$@"; do
     case "$arg" in
-        --dry-run) DRY_RUN=true ;;
-        --label=*) ONLY_LABEL="${arg#--label=}" ;;
-        --seed=*)  ONLY_SEED="${arg#--seed=}" ;;
+        --dry-run)  DRY_RUN=true ;;
+        --label=*)  ONLY_LABEL="${arg#--label=}" ;;
+        --seed=*)   ONLY_SEED="${arg#--seed=}" ;;
+        --group=*)  ONLY_GROUP="${arg#--group=}" ;;
     esac
 done
 
@@ -193,7 +198,8 @@ for config_str in "${CONFIGS[@]}"; do
         seed_list=("${SEEDS[@]}")
     fi
 
-    # Filter by --label / --seed if provided
+    # Filter by --group / --label / --seed if provided
+    [[ -n "$ONLY_GROUP" && "$label" != "${ONLY_GROUP}_"* ]] && continue
     [[ -n "$ONLY_LABEL" && "$label" != "$ONLY_LABEL" ]] && continue
 
     for SEED in "${seed_list[@]}"; do

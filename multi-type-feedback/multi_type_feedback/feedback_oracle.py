@@ -27,9 +27,16 @@ class FeedbackOracle:
         gamma: float = 0.99,
         noise_level: float = 0.0,
         n_clusters: int = 100,
+        deterministic_expert: bool = False,
     ):
         """
-        Generate on-the-fly oracle feedback for queries and different feedback types
+        Generate on-the-fly oracle feedback for queries and different feedback types.
+
+        deterministic_expert: if False (default), expert actions are sampled stochastically
+            from the policy distribution rather than taking the mean action. This is especially
+            important when --fix-start-state is used: with a fixed start and a deterministic
+            expert, every demonstration is identical, giving the reward model zero new signal.
+            Stochastic sampling produces diverse trajectories from the same start state.
         """
         self.expert_models = expert_models
         self.environment = environment
@@ -37,6 +44,7 @@ class FeedbackOracle:
         self.gamma = gamma
         self.noise_level = noise_level
         self.n_clusters = n_clusters
+        self.deterministic_expert = deterministic_expert
         self.action_one_hot = isinstance(
             self.environment.action_space, gym.spaces.Discrete
         )
@@ -562,7 +570,7 @@ class FeedbackOracle:
             for _ in range(self.segment_len):
                 action, _ = expert_model.predict(
                     exp_norm_env.normalize_obs(obs) if exp_norm_env else obs,
-                    deterministic=True,
+                    deterministic=self.deterministic_expert,
                 )
                 next_obs, reward, terminated, truncated, _ = self.environment.step(
                     action
