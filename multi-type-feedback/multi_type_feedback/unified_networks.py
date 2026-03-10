@@ -536,7 +536,11 @@ class UnifiedNetwork(LightningModule):
             "descriptive_preference",
         ]:
             # Handle pairwise comparison feedback
-            pair_data, preferred_indices = data
+            # Support both (pair_data, pref) and (pair_data, pref, ranks, pids) formats
+            if len(data) == 4:
+                pair_data, preferred_indices, _ranks, _pids = data
+            else:
+                pair_data, preferred_indices = data
             (obs1, actions1, mask1), (obs2, actions2, mask2) = pair_data
 
             # For ensemble models, use optimized batch repetition
@@ -833,7 +837,11 @@ class UnifiedCnnNetwork(LightningModule):
             "descriptive_preference",
         ]:
             # Handle pairwise comparison feedback
-            pair_data, preferred_indices = data
+            # Support both (pair_data, pref) and (pair_data, pref, ranks, pids) formats
+            if len(data) == 4:
+                pair_data, preferred_indices, _ranks, _pids = data
+            else:
+                pair_data, preferred_indices = data
 
             (obs1, actions1, mask1), (obs2, actions2, mask2) = pair_data
 
