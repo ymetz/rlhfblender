@@ -141,9 +141,27 @@ def _collate_pairwise_group(items, feedback_types, partition_size):
 
 
 def _collate_scalar_group(items, feedback_types):
-    """Collate a group of scalar feedback items."""
-    collated_data = torch.utils.data.dataloader.default_collate(items)
-    return feedback_types, collated_data
+    """Collate a group of scalar feedback items, sub-grouped by type.
+
+    Different scalar types can have incompatible tensor shapes (e.g.
+    evaluative [150, obs_dim] vs descriptive [1, obs_dim]), so we collate
+    each feedback type independently and return a list of sub-batches.
+    """
+    from collections import defaultdict
+
+    by_type = defaultdict(list)
+    for fb_type, item in zip(feedback_types, items):
+        by_type[fb_type].append(item)
+
+    sub_batches = []
+    for fb_type, type_items in by_type.items():
+        collated = torch.utils.data.dataloader.default_collate(type_items)
+        sub_batches.append(([fb_type] * len(type_items), collated))
+
+    # If only one scalar type, return it directly
+    if len(sub_batches) == 1:
+        return sub_batches[0]
+    return sub_batches
 
 
 def _unified_collate_fn(batch, partition_size: int = 4):
@@ -184,9 +202,13 @@ def _unified_collate_fn(batch, partition_size: int = 4):
         )
 
     if scalar_items:
-        sub_batches.append(
-            _collate_scalar_group(scalar_items, scalar_types)
-        )
+        scalar_result = _collate_scalar_group(scalar_items, scalar_types)
+        # _collate_scalar_group returns a list of sub-batches when multiple
+        # scalar types with incompatible shapes are present
+        if isinstance(scalar_result, list):
+            sub_batches.extend(scalar_result)
+        else:
+            sub_batches.append(scalar_result)
 
     # If only one group, return it directly (backward-compatible single-batch path)
     if len(sub_batches) == 1:
