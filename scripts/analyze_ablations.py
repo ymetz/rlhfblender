@@ -368,6 +368,23 @@ def main():
     print("\n── Final-phase performance (mean ± std across seeds) ──")
     print(summary_table.to_string(index=False))
 
+    # Max achieved reward: per seed, find the phase with highest mean_reward, then average across seeds
+    max_per_seed = df.loc[df.groupby(["label", "seed"])["mean_reward"].idxmax()]
+    max_table = (
+        max_per_seed.groupby(["group", "label"])
+        .agg(
+            max_mean=("mean_reward", "mean"),
+            max_std=("mean_reward", "std"),
+            best_phase=("phase", "mean"),
+            count=("mean_reward", "count"),
+        )
+        .round(3)
+        .reset_index()
+        .sort_values(["group", "max_mean"], ascending=[True, False])
+    )
+    print("\n── Max achieved reward (best phase per seed, averaged across seeds) ──")
+    print(max_table.to_string(index=False))
+
     if args.csv_only:
         return
 
