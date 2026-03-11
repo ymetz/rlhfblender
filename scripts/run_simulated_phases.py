@@ -506,6 +506,9 @@ def main():
                         help="How to normalize rewards across feedback types before aggregation. "
                              "'quantile' maps each type to [0,1] via running quantile buffers "
                              "(scale-invariant; recommended with film-unified).")
+    parser.add_argument("--reward-batch-size", type=int, default=0,
+                        help="Batch size for unified reward model training. "
+                             "0 = auto (8 for film-unified, 1 otherwise).")
     parser.add_argument("--responserank-weight", type=float, default=0.5,
                         help="Weight for ResponseRank Plackett-Luce loss vs Bradley-Terry NLL "
                              "in pairwise feedback types (only used with film-unified). "
@@ -668,6 +671,7 @@ def main():
         uncertainty_penalty=args.uncertainty_penalty,
         reward_normalization=args.reward_normalization,
         responserank_weight=args.responserank_weight,
+        reward_batch_size=args.reward_batch_size,
     )
 
     # --- Step 6: Phase loop ---

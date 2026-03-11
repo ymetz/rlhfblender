@@ -188,6 +188,22 @@ CONFIGS=(
     # ── Welford normalization baseline (film-unified without quantile) ───────
     "J_film_ec_welford|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization welford"
 
+# ── Group K: FiLM-unified with batch_size=1 ─────────────────────────────────
+# Isolates FiLM architecture effect from training budget (batch_size=8→1).
+# Compares directly against Group I (unified, bs=1) and Group J (film, bs=8).
+# Uses SEEDS_FB (2 seeds).
+    # ── Key single-type baselines ─────────────────────────────────────────────
+    "K_film_bs1_comp      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types comparative||--reward-model-type film-unified --reward-normalization quantile --reward-batch-size 1"
+    "K_film_bs1_eval      |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative||--reward-model-type film-unified --reward-normalization quantile --reward-batch-size 1"
+    # ── Multi-type combos (the interference test) ────────────────────────────
+    "K_film_bs1_eval_comp |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization quantile --reward-batch-size 1"
+    "K_film_bs1_no_demo   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive||--reward-model-type film-unified --reward-normalization quantile --reward-batch-size 1"
+    "K_film_bs1_all       |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative descriptive demonstrative||--reward-model-type film-unified --reward-normalization quantile --reward-batch-size 1"
+    # ── ResponseRank 0.3 (best from Group J) at bs=1 ────────────────────────
+    "K_film_bs1_ec_rr03   |--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization quantile --reward-batch-size 1 --responserank-weight 0.3"
+    # ── Welford at bs=1 (fair comparison to Group I) ─────────────────────────
+    "K_film_bs1_ec_welford|--rl-steps 2000|--num-phases 10|--feedback-budget 500|--uncertainty-penalty 0.0|--reward-epochs 20|--initial-feedback  50||--feedback-types evaluative comparative||--reward-model-type film-unified --reward-normalization welford --reward-batch-size 1"
+
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -220,7 +236,7 @@ for config_str in "${CONFIGS[@]}"; do
     label="$(echo "$label" | xargs)"
 
     # Groups I & J (feedback type / architecture combos) use fewer seeds to limit job count
-    if [[ "$label" == I_* || "$label" == J_* ]]; then
+    if [[ "$label" == I_* || "$label" == J_* || "$label" == K_* ]]; then
         seed_list=("${SEEDS_FB[@]}")
     else
         seed_list=("${SEEDS[@]}")
@@ -298,7 +314,7 @@ done
 
 echo ""
 if $DRY_RUN; then
-    echo "Dry run: would submit $n_submitted jobs (Groups A–H: ${#SEEDS[@]} seeds; Groups I–J: ${#SEEDS_FB[@]} seeds)."
+    echo "Dry run: would submit $n_submitted jobs (Groups A–H: ${#SEEDS[@]} seeds; Groups I–K: ${#SEEDS_FB[@]} seeds)."
 else
     echo "Submitted $n_submitted jobs. Logs → $LOG_DIR/"
 fi

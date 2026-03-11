@@ -202,6 +202,7 @@ class DynamicRLHF:
         uncertainty_penalty: float = 0.0,
         reward_normalization: str = "welford",  # "welford" (mean/std) or "quantile"
         responserank_weight: float = 0.5,
+        reward_batch_size: int = 0,  # 0 = auto (8 for film-unified, 1 otherwise)
     ):
         self.oracle = oracle
         self.env_name = env_name
@@ -227,6 +228,7 @@ class DynamicRLHF:
         self.uncertainty_penalty = uncertainty_penalty
         self.reward_normalization = reward_normalization
         self.responserank_weight = responserank_weight
+        self.reward_batch_size = reward_batch_size
 
         self.reward_model_type = reward_model_type
         self.shared_layer_num = shared_layer_num
@@ -948,8 +950,11 @@ class DynamicRLHF:
                 return {}
 
             # Create unified data module
-            # FiLM-unified uses larger batch for ResponseRank PL loss (needs groups)
-            effective_batch_size = 8 if self.reward_model_type == "film-unified" else 1
+            if self.reward_batch_size > 0:
+                effective_batch_size = self.reward_batch_size
+            else:
+                # Auto: film-unified defaults to 8 for ResponseRank grouping, others to 1
+                effective_batch_size = 8 if self.reward_model_type == "film-unified" else 1
             train_dataloader, val_dataloader = create_unified_dataloaders(
                 self.feedback_buffers,
                 batch_size=effective_batch_size,
