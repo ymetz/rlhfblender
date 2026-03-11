@@ -1336,12 +1336,11 @@ class DynamicRLHF:
             for feedback_type, feedback in feedback_dict.items():
                 if feedback_type != "uncertainty":  # Skip uncertainty metadata
                     if feedback_type == "supervised":
-                        # for supervised feedback, we get a list of states and associated rewards
-                        # so extend instead of append
-                        if (
-                            len(self.feedback_buffers[feedback_type])
-                            >= self.feedback_buffer_size
-                        ):
+                        # Supervised feedback stores per-step items (~segment_len per trajectory)
+                        # via extend, so scale the buffer cap accordingly to match other types
+                        # which store one item per trajectory via append.
+                        effective_cap = self.feedback_buffer_size * max(1, self.oracle.segment_len)
+                        if len(self.feedback_buffers[feedback_type]) >= effective_cap:
                             # Remove oldest feedback
                             self.feedback_buffers[feedback_type] = (
                                 self.feedback_buffers[feedback_type][len(feedback) :]
