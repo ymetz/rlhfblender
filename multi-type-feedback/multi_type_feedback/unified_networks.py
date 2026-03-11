@@ -182,10 +182,6 @@ class FiLMUnifiedNetwork(LightningModule):
         else:
             self.output_masksemble = None
 
-        # Learned loss normalization per feedback type
-        self.loss_scale = nn.Parameter(torch.ones(len(feedback_types)))
-        self.loss_bias = nn.Parameter(torch.zeros(len(feedback_types)))
-
         self._init_weights()
         self.save_hyperparameters()
 
@@ -293,19 +289,14 @@ class FiLMUnifiedNetwork(LightningModule):
         rewards1 = (outputs1 * mask1).sum(dim=1).squeeze(-1)
         rewards2 = (outputs2 * mask2).sum(dim=1).squeeze(-1)
 
-        scale = torch.abs(self.loss_scale[fb_idx]) + 1e-6
-        bias = self.loss_bias[fb_idx]
-        nr1 = rewards1 * scale + bias
-        nr2 = rewards2 * scale + bias
-
         # Standard Bradley-Terry NLL
-        rewards = torch.stack([nr1, nr2], dim=1)
+        rewards = torch.stack([rewards1, rewards2], dim=1)
         log_probs = F.log_softmax(rewards, dim=1)
         bt_loss = F.nll_loss(log_probs, preferred_indices)
 
         # ResponseRank loss (if rank information is available)
         if has_ranks and self.responserank_weight > 0:
-            utility_diff = nr1 - nr2
+            utility_diff = rewards1 - rewards2
             rr_loss = compute_responserank_loss(utility_diff, ranks, partition_ids)
             loss = (1 - self.responserank_weight) * bt_loss + self.responserank_weight * rr_loss
         else:
@@ -323,11 +314,7 @@ class FiLMUnifiedNetwork(LightningModule):
         outputs = self.forward(observations, actions, feedback_type)
         total_rewards = (outputs * masks).sum(dim=1).squeeze(-1)
 
-        scale = torch.abs(self.loss_scale[fb_idx]) + 1e-6
-        bias = self.loss_bias[fb_idx]
-        normalized = total_rewards * scale + bias
-
-        return F.mse_loss(normalized, targets.float())
+        return F.mse_loss(total_rewards, targets.float())
 
     # ── Lightning hooks ──────────────────────────────────────────────────────
 
@@ -341,11 +328,6 @@ class FiLMUnifiedNetwork(LightningModule):
         feedback_type = _get_feedback_type(batch)
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True)
         self.log("train_loss", loss, on_epoch=True)
-
-        if feedback_type in self.feedback_type_map:
-            idx = self.feedback_type_map[feedback_type]
-            self.log(f"norm_scale_{feedback_type}", self.loss_scale[idx], on_epoch=True)
-            self.log(f"norm_bias_{feedback_type}", self.loss_bias[idx], on_epoch=True)
 
         return loss
 
@@ -463,10 +445,6 @@ class UnifiedNetwork(LightningModule):
         # Initialize weights
         self._init_weights()
 
-        # Define loss normalization parameters (learned)
-        self.loss_scale = nn.Parameter(torch.ones(len(feedback_types)))
-        self.loss_bias = nn.Parameter(torch.zeros(len(feedback_types)))
-
         self.save_hyperparameters()
 
     def _init_weights(self):
@@ -572,15 +550,8 @@ class UnifiedNetwork(LightningModule):
             rewards1 = (outputs1 * mask1).sum(dim=1).squeeze(-1)
             rewards2 = (outputs2 * mask2).sum(dim=1).squeeze(-1)
 
-            # Apply learned normalization
-            scale = torch.abs(self.loss_scale[feedback_idx]) + 1e-6  # Ensure positive
-            bias = self.loss_bias[feedback_idx]
-
-            normalized_rewards1 = rewards1 * scale + bias
-            normalized_rewards2 = rewards2 * scale + bias
-
             # Stack rewards and compute log softmax
-            rewards = torch.stack([normalized_rewards1, normalized_rewards2], dim=1)
+            rewards = torch.stack([rewards1, rewards2], dim=1)
             log_probs = F.log_softmax(rewards, dim=1)
 
             # Compute NLL loss
@@ -611,14 +582,8 @@ class UnifiedNetwork(LightningModule):
             # Sum over the sequence dimension to get total rewards per segment
             total_rewards = (outputs * masks).sum(dim=1).squeeze(-1)
 
-            # Apply learned normalization
-            scale = torch.abs(self.loss_scale[feedback_idx]) + 1e-6  # Ensure positive
-            bias = self.loss_bias[feedback_idx]
-
-            normalized_rewards = total_rewards * scale + bias
-
             # Compute MSE loss
-            loss = F.mse_loss(normalized_rewards, targets)
+            loss = F.mse_loss(total_rewards, targets)
 
         else:
             raise ValueError(f"Unknown feedback type: {feedback_type}")
@@ -636,12 +601,6 @@ class UnifiedNetwork(LightningModule):
         feedback_type = _get_feedback_type(batch)
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True)
         self.log("train_loss", loss, on_epoch=True)
-
-        if feedback_type in self.feedback_type_map:
-            idx = self.feedback_type_map[feedback_type]
-            self.log(f"norm_scale_{feedback_type}", self.loss_scale[idx], on_epoch=True)
-            self.log(f"norm_bias_{feedback_type}", self.loss_bias[idx], on_epoch=True)
-
         return loss
 
     def validation_step(self, batch: Tensor, batch_idx: int):
@@ -742,10 +701,6 @@ class UnifiedCnnNetwork(LightningModule):
 
         # Final fully connected layer
         self.fc = nn.Linear(combined_size, output_dim)
-
-        # Define loss normalization parameters (learned)
-        self.loss_scale = nn.Parameter(torch.ones(len(feedback_types)))
-        self.loss_bias = nn.Parameter(torch.zeros(len(feedback_types)))
 
         self.save_hyperparameters()
 
@@ -856,15 +811,8 @@ class UnifiedCnnNetwork(LightningModule):
             rewards1 = (outputs1 * mask1).sum(dim=1).squeeze(-1)
             rewards2 = (outputs2 * mask2).sum(dim=1).squeeze(-1)
 
-            # Apply learned normalization
-            scale = torch.abs(self.loss_scale[feedback_idx]) + 1e-6  # Ensure positive
-            bias = self.loss_bias[feedback_idx]
-
-            normalized_rewards1 = rewards1 * scale + bias
-            normalized_rewards2 = rewards2 * scale + bias
-
             # Stack rewards and compute log softmax
-            rewards = torch.stack([normalized_rewards1, normalized_rewards2], dim=1)
+            rewards = torch.stack([rewards1, rewards2], dim=1)
             log_probs = F.log_softmax(rewards, dim=1)
 
             # Compute NLL loss
@@ -880,19 +828,13 @@ class UnifiedCnnNetwork(LightningModule):
             # Sum over the sequence dimension to get total rewards per segment
             total_rewards = (outputs * masks).sum(dim=1).squeeze(-1)
 
-            # Apply learned normalization
-            scale = torch.abs(self.loss_scale[feedback_idx]) + 1e-6  # Ensure positive
-            bias = self.loss_bias[feedback_idx]
-
-            normalized_rewards = total_rewards * scale + bias
-
             # Ensure targets have the correct shape
             targets = targets.float()
             if targets.dim() > 1 and targets.shape[1] == 1:
                 targets = targets.squeeze(1)
 
             # Compute MSE loss
-            loss = F.mse_loss(normalized_rewards, targets)
+            loss = F.mse_loss(total_rewards, targets)
 
         else:
             raise ValueError(f"Unknown feedback type: {feedback_type}")
@@ -910,12 +852,6 @@ class UnifiedCnnNetwork(LightningModule):
         feedback_type = _get_feedback_type(batch)
         self.log(f"train_loss_{feedback_type}", loss, on_epoch=True, prog_bar=True)
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
-
-        if feedback_type in self.feedback_type_map:
-            idx = self.feedback_type_map[feedback_type]
-            self.log(f"norm_scale_{feedback_type}", self.loss_scale[idx], on_epoch=True)
-            self.log(f"norm_bias_{feedback_type}", self.loss_bias[idx], on_epoch=True)
-
         return loss
 
     def validation_step(self, batch: Tensor, batch_idx: int):

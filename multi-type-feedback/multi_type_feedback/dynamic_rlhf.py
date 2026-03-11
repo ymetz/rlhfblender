@@ -692,6 +692,7 @@ class DynamicRLHF:
         print("\nInitial reward model losses:")
         for feedback_type, loss in reward_metrics.items():
             print(f"{feedback_type}: {loss:.4f}")
+        self.print_reward_model_diagnostics()
 
         # Log initial training metrics
         if (
@@ -1547,18 +1548,21 @@ class DynamicRLHF:
         stacked_uncerts = torch.stack(model_uncertainties, dim=0)
 
         # Normalize rewards across feedback types before aggregation
-        if self.reward_normalization == "quantile" and reward_fb_types:
-            # Per-type quantile normalization: maps each type to [0, 1]
-            for m_idx in range(stacked_rewards.shape[0]):
-                fb_type = reward_fb_types[m_idx] if m_idx < len(reward_fb_types) else f"model_{m_idx}"
-                stacked_rewards[m_idx] = self.quantile_normalizer.update_and_normalize(
-                    stacked_rewards[m_idx], fb_type
-                )
-        else:
-            # Welford mean/std standardization (original behavior)
-            rewards_for_standardization = stacked_rewards.transpose(0, 1)
-            standardized_rewards = self.standardize_rewards(rewards_for_standardization)
-            stacked_rewards = standardized_rewards.transpose(0, 1)
+        # Skip normalization entirely when there is only one active feedback type —
+        # there is nothing to normalize across, and the running statistics introduce
+        # non-stationarity that destabilises PPO.
+        n_active = stacked_rewards.shape[0]
+        if n_active > 1:
+            if self.reward_normalization == "quantile" and reward_fb_types:
+                for m_idx in range(n_active):
+                    fb_type = reward_fb_types[m_idx] if m_idx < len(reward_fb_types) else f"model_{m_idx}"
+                    stacked_rewards[m_idx] = self.quantile_normalizer.update_and_normalize(
+                        stacked_rewards[m_idx], fb_type
+                    )
+            else:
+                rewards_for_standardization = stacked_rewards.transpose(0, 1)
+                standardized_rewards = self.standardize_rewards(rewards_for_standardization)
+                stacked_rewards = standardized_rewards.transpose(0, 1)
 
         # Calculate final rewards => shape [batch_size,]
         batch_size = state.shape[0]
@@ -1649,16 +1653,19 @@ class DynamicRLHF:
         stacked_rewards = torch.stack(model_rewards, dim=0)
         stacked_uncerts = torch.stack(model_uncertainties, dim=0)
         # Normalize rewards across feedback types before aggregation
-        if self.reward_normalization == "quantile" and reward_fb_types:
-            for m_idx in range(stacked_rewards.shape[0]):
-                fb_type = reward_fb_types[m_idx] if m_idx < len(reward_fb_types) else f"model_{m_idx}"
-                stacked_rewards[m_idx] = self.quantile_normalizer.update_and_normalize(
-                    stacked_rewards[m_idx], fb_type
-                )
-        else:
-            rewards_for_standardization = stacked_rewards.transpose(0, 1)
-            standardized_rewards = self.standardize_rewards(rewards_for_standardization)
-            stacked_rewards = standardized_rewards.transpose(0, 1)
+        # Skip when only one active type (see compute_ensemble_reward)
+        n_active = stacked_rewards.shape[0]
+        if n_active > 1:
+            if self.reward_normalization == "quantile" and reward_fb_types:
+                for m_idx in range(n_active):
+                    fb_type = reward_fb_types[m_idx] if m_idx < len(reward_fb_types) else f"model_{m_idx}"
+                    stacked_rewards[m_idx] = self.quantile_normalizer.update_and_normalize(
+                        stacked_rewards[m_idx], fb_type
+                    )
+            else:
+                rewards_for_standardization = stacked_rewards.transpose(0, 1)
+                standardized_rewards = self.standardize_rewards(rewards_for_standardization)
+                stacked_rewards = standardized_rewards.transpose(0, 1)
         batch_size = state.shape[0]
         final_rewards = torch.zeros(batch_size, device=device, dtype=torch.float32)
         avg_uncert = torch.zeros(batch_size, device=device, dtype=torch.float32)
@@ -1679,10 +1686,15 @@ class DynamicRLHF:
         device = self.device
         if len(batch_segments) == 0:
             return np.array([]), np.array([])
-        # Stack batch (B, T, D)
-        obs = torch.stack([s[0] for s in batch_segments]).to(device).float().unsqueeze(1)
-        actions = torch.stack([s[1] for s in batch_segments]).to(device).float().unsqueeze(1)
-        masks = torch.stack([s[2] for s in batch_segments]).to(device).float().unsqueeze(1)
+        # Stack batch → (B, T, D)
+        obs = torch.stack([s[0] for s in batch_segments]).to(device).float()
+        actions = torch.stack([s[1] for s in batch_segments]).to(device).float()
+        masks = torch.stack([s[2] for s in batch_segments]).to(device).float()
+        # Ensure 3D: (B, T, D) — add sequence dim only if input is 2D (single-step)
+        if obs.dim() == 2:
+            obs = obs.unsqueeze(1)
+            actions = actions.unsqueeze(1)
+            masks = masks.unsqueeze(1)
         with torch.no_grad():
             if self.reward_model_type == "separate":
                 model = self.reward_models[feedback_type]
@@ -1929,6 +1941,67 @@ class DynamicRLHF:
 
         if metrics:
             self.wandb.log(metrics, step=step)
+
+    def print_reward_model_diagnostics(self):
+        """Print reward model quality metrics to stdout (no wandb needed)."""
+        lines = []
+
+        # Per-type holdout correlation (segment-level)
+        if hasattr(self, "eval_holdout") and self.eval_holdout:
+            batch_segments = [h[0] for h in self.eval_holdout]
+            gt_totals = np.array([h[1] for h in self.eval_holdout])
+            for fb in self.feedback_types:
+                try:
+                    preds, uncs = self._predict_segment_totals(fb, batch_segments)
+                    if preds.size > 0:
+                        pr, sr = self._pearson_spearman(preds, gt_totals)
+                        mse = float(np.mean((preds - gt_totals) ** 2))
+                        lines.append(
+                            f"    {fb:20s}  pearson={pr:+.3f}  spearman={sr:+.3f}  "
+                            f"MSE={mse:.4f}  pred_mean={np.mean(preds):.3f}  gt_mean={np.mean(gt_totals):.3f}"
+                        )
+                except Exception:
+                    lines.append(f"    {fb:20s}  (prediction failed)")
+
+        # Step-level correlation (ensemble output vs GT per-step reward)
+        if hasattr(self, "eval_holdout_sa") and self.eval_holdout_sa:
+            try:
+                states = np.squeeze(np.array([s[0] for s in self.eval_holdout_sa]), axis=1)
+                actions = np.array([s[1] for s in self.eval_holdout_sa])
+                gt_step = np.array([s[2] for s in self.eval_holdout_sa])
+                pred, unc = self.compute_ensemble_reward_with_uncertainty(states, actions)
+                pr_s, sr_s = self._pearson_spearman(pred, gt_step)
+                lines.append(
+                    f"    {'ensemble (step)':20s}  pearson={pr_s:+.3f}  spearman={sr_s:+.3f}  "
+                    f"pred_std={np.std(pred):.4f}  gt_std={np.std(gt_step):.4f}"
+                )
+            except Exception as e:
+                lines.append(f"    ensemble (step)       (failed: {e})")
+
+        # Pairwise accuracy
+        if hasattr(self, "eval_pairs") and self.eval_pairs:
+            for fb in self.feedback_types:
+                if fb not in ["comparative", "demonstrative", "corrective", "descriptive_preference"]:
+                    continue
+                try:
+                    left = [p[0] for p in [(e[0:2]) for e in [(((o1, a1, m1), (o2, a2, m2)), lbl) for (o1, a1, m1), (o2, a2, m2), lbl in self.eval_pairs]]]
+                    right = [p[1] for p in [(e[0:2]) for e in [(((o1, a1, m1), (o2, a2, m2)), lbl) for (o1, a1, m1), (o2, a2, m2), lbl in self.eval_pairs]]]
+                    labels = [lbl for _, _, lbl in self.eval_pairs]
+                    l_pred, _ = self._predict_segment_totals(fb, [l for l in left])
+                    r_pred, _ = self._predict_segment_totals(fb, [r for r in right])
+                    if l_pred.size > 0 and r_pred.size > 0:
+                        scores = r_pred - l_pred
+                        acc = float(np.mean((scores > 0).astype(int) == np.array(labels)))
+                        lines.append(f"    {fb + ' (pair)':20s}  accuracy={acc:.3f}")
+                except Exception:
+                    pass
+
+        if lines:
+            print("  Reward model diagnostics:")
+            for line in lines:
+                print(line)
+        else:
+            print("  Reward model diagnostics: no holdout data available")
 
     def train(self, total_timesteps: Optional[int] = None, sampling_strategy: str = "random", query_sampling_strategy: str = "none", query_sampling_multiplier: float = 2.0):
         """

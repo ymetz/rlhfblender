@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 from typing import Any
 
@@ -25,6 +26,7 @@ from rlhfblender.utils import convert_to_serializable, process_env_name
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/data")
+logger = logging.getLogger(__name__)
 
 
 @router.get("/get_available_frameworks", response_model=list[str])
@@ -103,16 +105,26 @@ async def get_uncertainty(
     episode_num: int,
 ):
     """Return step rewards a list for the selected episode"""
-    # Replace with your rewards file path
-    uncertainty = np.load(
-        os.path.join(
-            "data",
-            "uncertainty",
-            process_env_name(env_name),
-            f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
-            f"uncertainty_{episode_num}.npy",
-        ),
+    uncertainty_path = os.path.join(
+        "data",
+        "uncertainty",
+        process_env_name(env_name),
+        f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
+        f"uncertainty_{episode_num}.npy",
     )
+
+    if not os.path.exists(uncertainty_path):
+        logger.warning(
+            "Uncertainty file missing for env=%s benchmark=%s checkpoint=%s episode=%s (%s)",
+            env_name,
+            benchmark_id,
+            checkpoint_step,
+            episode_num,
+            uncertainty_path,
+        )
+        return []
+
+    uncertainty = np.load(uncertainty_path)
 
     return uncertainty.tolist()
 

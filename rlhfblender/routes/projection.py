@@ -262,6 +262,7 @@ async def load_grid_projection_data(
     benchmark_id: int,
     checkpoint_step: int,
     projection_method: str = "UMAP",
+    allow_missing: bool = False,
 ):
     """
     Load pre-computed reward and uncertainty predictions for grid projections.
@@ -297,6 +298,17 @@ async def load_grid_projection_data(
                 return prediction_data
 
         else:
+            if allow_missing:
+                return {
+                    "available": False,
+                    "grid_coordinates": [],
+                    "grid_predictions": [],
+                    "grid_uncertainties": [],
+                    "original_coordinates": [],
+                    "original_predictions": [],
+                    "original_uncertainties": [],
+                }
+
             # If we get here, no file was found
             raise HTTPException(
                 status_code=404,

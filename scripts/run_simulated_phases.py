@@ -513,6 +513,13 @@ def main():
                         help="Weight for ResponseRank Plackett-Luce loss vs Bradley-Terry NLL "
                              "in pairwise feedback types (only used with film-unified). "
                              "0.0 = pure BT, 1.0 = pure ResponseRank.")
+    parser.add_argument("--eval-freq", type=int, default=2000,
+                        help="Evaluate RL agent on GT env reward every N steps (0 to disable). "
+                             "Results printed as eval/mean_reward.")
+    parser.add_argument("--hyperparams", nargs="+", default=None,
+                        help="Override PPO/SAC hyperparameters as KEY:VALUE pairs. "
+                             "Example: --hyperparams learning_rate:1e-4 batch_size:128 gamma:0.995 "
+                             "Values are auto-cast to int/float/bool/str.")
     parser.add_argument("--fix-start-state", action="store_true",
                         help="Fix starting/object/goal positions across all episodes by locking the first reset state. "
                              "Recommended for Metaworld to simplify the task without requiring full training convergence.")
@@ -527,6 +534,26 @@ def main():
     algorithm = args.algorithm
     expert_algorithm = args.expert_algorithm or algorithm  # defaults to same as online algo
     exp_name = args.exp_name or f"{env_name.replace('/', '_')}_{algorithm}_sim"
+
+    # Parse --hyperparams KEY:VALUE pairs into a dict for ExperimentManager
+    custom_hyperparams = None
+    if args.hyperparams:
+        custom_hyperparams = {}
+        for kv in args.hyperparams:
+            key, val_str = kv.split(":", 1)
+            # Auto-cast value
+            if val_str.lower() in ("true", "false"):
+                val = val_str.lower() == "true"
+            else:
+                try:
+                    val = int(val_str)
+                except ValueError:
+                    try:
+                        val = float(val_str)
+                    except ValueError:
+                        val = val_str
+            custom_hyperparams[key] = val
+        print(f"  PPO hyperparameter overrides: {custom_hyperparams}")
 
     # Build env_kwargs — currently only max_episode_steps if the user requested it.
     env_kwargs = {}
@@ -599,10 +626,10 @@ def main():
     # --- Step 4: Create oracle ---
     # Enable demonstrative feedback automatically if expert models are available.
     feedback_types = list(args.feedback_types)
-    if expert_models and "demonstrative" not in feedback_types:
-        feedback_types.append("demonstrative")
-        print("  Expert models found → enabling demonstrative feedback")
-    elif not expert_models and "demonstrative" in feedback_types:
+    #if expert_models and "demonstrative" not in feedback_types:
+    #    feedback_types.append("demonstrative")
+    #    print("  Expert models found → enabling demonstrative feedback")
+    if not expert_models and "demonstrative" in feedback_types:
         feedback_types.remove("demonstrative")
         print("  [WARN] --feedback-types included 'demonstrative' but no expert models were loaded. "
               "Removing 'demonstrative' to avoid a crash (oracle._get_best_demonstration returns None).")
@@ -637,7 +664,10 @@ def main():
         env_id=env_name,
         log_folder=f"dynamic_rlhf_models/sim_{exp_name}",
         n_timesteps=args.rl_steps,
+        eval_freq=args.eval_freq,
+        n_eval_episodes=5,
         env_kwargs=env_kwargs or None,
+        hyperparams=custom_hyperparams,
     )
 
     # Override n_envs before setup_experiment() is called (inside DynamicRLHF.__init__)
@@ -758,6 +788,7 @@ def main():
             print(f"  Training reward models ({args.reward_epochs} epochs)...")
             metrics = drlhf.train_reward_models()
             print(f"  Reward model losses: { {k: f'{v:.4f}' for k, v in metrics.items()} }")
+            drlhf.print_reward_model_diagnostics()
 
             print(f"  Training RL agent ({args.rl_steps} steps)...")
             # reset_num_timesteps=True resets the timestep counter so PPO's linear
