@@ -283,6 +283,9 @@ class FiLMUnifiedNetwork(LightningModule):
         )
         if self.ensemble_count > 1:
             preferred_indices = preferred_indices.repeat(self.ensemble_count, 1).squeeze()
+            if has_ranks:
+                ranks = ranks.repeat(self.ensemble_count)
+                partition_ids = partition_ids.repeat(self.ensemble_count)
 
         outputs1 = self.forward(obs1, actions1, feedback_type)
         outputs2 = self.forward(obs2, actions2, feedback_type)
