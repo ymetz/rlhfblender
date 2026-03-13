@@ -58,170 +58,107 @@ FB_TYPES="--feedback-types supervised"
 # EXTRA_ARGS:   additional flags (buffer size, model type, etc.)
 # HYPERPARAMS:  PPO overrides as KEY:VALUE (passed via --hyperparams)
 
+# ── Optimized PPO baseline (from round 1 ablation results) ────────────────────
+# With n_envs=1, the ppo.yml defaults (tuned for n_envs=16) are broken.
+# These values are derived from single-axis winners in round 1:
+#   n_steps=512 (S, 112.4), gamma=0.9 (R, 61.5), gae_lambda=0.9 (W, 57.4),
+#   clip_range=0.2 (U, 45.5), ent_coef=0.01 (X, 42.3), n_epochs=10 (Z_aggressive),
+#   learning_rate=1e-4 (Z_conservative), batch_size=128 (Z_aggressive)
+TUNED_PPO="n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10"
+
 CONFIGS=(
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group L: RL training steps per phase
+# Group L2: RL training steps per phase (with tuned PPO)
 # ══════════════════════════════════════════════════════════════════════════════
-# Question: How many RL steps does the supervised reward model need?
-# Total RL = rl_steps × phases. Sweeps from 100K total to 1M total.
-    "L_steps_10k  |--rl-steps  10000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
-    "L_steps_20k  |--rl-steps  20000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
-    "L_steps_50k  |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
-    "L_steps_100k |--rl-steps 100000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
+    "L2_steps_10k  |--rl-steps  10000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "L2_steps_20k  |--rl-steps  20000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "L2_steps_50k  |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "L2_steps_100k |--rl-steps 100000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group M: Phase granularity (total RL = 500K steps)
+# Group M2: Phase granularity (total RL = 500K steps, with tuned PPO)
 # ══════════════════════════════════════════════════════════════════════════════
-# Question: Frequent reward model updates vs fewer longer training bursts?
-    "M_grain_p05_s100k|--rl-steps 100000|--num-phases  5|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
-    "M_grain_p10_s50k |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
-    "M_grain_p20_s25k |--rl-steps  25000|--num-phases 20|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
-    "M_grain_p50_s10k |--rl-steps  10000|--num-phases 50|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
+    "M2_grain_p05_s100k|--rl-steps 100000|--num-phases  5|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "M2_grain_p10_s50k |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "M2_grain_p20_s25k |--rl-steps  25000|--num-phases 20|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "M2_grain_p50_s10k |--rl-steps  10000|--num-phases 50|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group N: Feedback budget (supervised = per-step GT rewards, ~150 items/traj)
+# Group N2: Feedback budget (with tuned PPO)
 # ══════════════════════════════════════════════════════════════════════════════
-# Question: How much GT reward data does the reward model need?
-    "N_budget_100  |--rl-steps 50000|--num-phases 10|--feedback-budget  100|--reward-epochs 20|--initial-feedback  25||"
-    "N_budget_250  |--rl-steps 50000|--num-phases 10|--feedback-budget  250|--reward-epochs 20|--initial-feedback  50||"
-    "N_budget_500  |--rl-steps 10000|--num-phases 10|--feedback-budget  500|--reward-epochs 20|--initial-feedback  50||"
-    "N_budget_1000 |--rl-steps 50000|--num-phases 10|--feedback-budget 1000|--reward-epochs 20|--initial-feedback 100||"
-    "N_budget_2000 |--rl-steps 50000|--num-phases 10|--feedback-budget 2000|--reward-epochs 20|--initial-feedback 200||"
+    "N2_budget_100  |--rl-steps 50000|--num-phases 10|--feedback-budget  100|--reward-epochs 10|--initial-feedback  25||${TUNED_PPO}"
+    "N2_budget_250  |--rl-steps 50000|--num-phases 10|--feedback-budget  250|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "N2_budget_500  |--rl-steps 50000|--num-phases 10|--feedback-budget  500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "N2_budget_1000 |--rl-steps 50000|--num-phases 10|--feedback-budget 1000|--reward-epochs 10|--initial-feedback 100||${TUNED_PPO}"
+    "N2_budget_2000 |--rl-steps 50000|--num-phases 10|--feedback-budget 2000|--reward-epochs 10|--initial-feedback 200||${TUNED_PPO}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group O: Initial feedback (phase 0 warmup)
+# Group O2: Initial feedback (with tuned PPO)
 # ══════════════════════════════════════════════════════════════════════════════
-# Question: How much warmup data does the supervised reward model need?
-    "O_init_10   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback   10||"
-    "O_init_25   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback   25||"
-    "O_init_50   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback   50||"
-    "O_init_100  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  100||"
-    "O_init_250  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  250||"
+    "O2_init_10   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback   10||${TUNED_PPO}"
+    "O2_init_25   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback   25||${TUNED_PPO}"
+    "O2_init_50   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback   50||${TUNED_PPO}"
+    "O2_init_100  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  100||${TUNED_PPO}"
+    "O2_init_250  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  250||${TUNED_PPO}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group P: Reward model training epochs
+# Group P2: Reward model training epochs (with tuned PPO)
 # ══════════════════════════════════════════════════════════════════════════════
-# Question: How much reward model training per phase?
-    "P_epochs_5   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs  5|--initial-feedback  50||"
-    "P_epochs_10  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||"
-    "P_epochs_20  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||"
-    "P_epochs_50  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 50|--initial-feedback  50||"
-    "P_epochs_100 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 100|--initial-feedback  50||"
+    "P2_epochs_5   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs  5|--initial-feedback  50||${TUNED_PPO}"
+    "P2_epochs_10  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    "P2_epochs_20  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||${TUNED_PPO}"
+    "P2_epochs_50  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 50|--initial-feedback  50||${TUNED_PPO}"
+    "P2_epochs_100 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 100|--initial-feedback  50||${TUNED_PPO}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group Q: PPO learning rate
+# Group Q2: PPO learning rate (fine-tune around 1e-4 baseline)
 # ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 3e-4 (from ppo.yml). Sweep around it.
-    "Q_lr_1e5  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:1e-5"
-    "Q_lr_5e5  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:5e-5"
-    "Q_lr_1e4  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:1e-4"
-    "Q_lr_3e4  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:3e-4"
-    "Q_lr_5e4  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:5e-4"
-    "Q_lr_1e3  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:1e-3"
+    "Q2_lr_3e5  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 batch_size:128 n_epochs:10 learning_rate:3e-5"
+    "Q2_lr_5e5  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 batch_size:128 n_epochs:10 learning_rate:5e-5"
+    "Q2_lr_1e4  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 batch_size:128 n_epochs:10 learning_rate:1e-4"
+    "Q2_lr_3e4  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 batch_size:128 n_epochs:10 learning_rate:3e-4"
+    "Q2_lr_5e4  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 batch_size:128 n_epochs:10 learning_rate:5e-4"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group R: PPO gamma (discount factor)
+# Group R2: PPO gamma (fine-tune around 0.9 baseline)
 # ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 0.99. Critical for reward shaping — learned rewards may need
-# different discounting than GT env rewards.
-    "R_gamma_090 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gamma:0.9"
-    "R_gamma_095 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gamma:0.95"
-    "R_gamma_098 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gamma:0.98"
-    "R_gamma_099 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gamma:0.99"
-    "R_gamma_0995|--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gamma:0.995"
-    "R_gamma_0999|--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gamma:0.999"
+    "R2_gamma_080 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 gamma:0.8"
+    "R2_gamma_085 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 gamma:0.85"
+    "R2_gamma_090 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 gamma:0.9"
+    "R2_gamma_095 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 gamma:0.95"
+    "R2_gamma_098 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 gamma:0.98"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group S: PPO n_steps (rollout buffer length)
+# Group S2: PPO n_steps (fine-tune around 512 baseline)
 # ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 256 (× 16 envs = 4096 samples/update). With n_envs=1 in ablations,
-# n_steps directly controls samples/update.
-    "S_nsteps_64   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_steps:64"
-    "S_nsteps_128  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_steps:128"
-    "S_nsteps_256  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_steps:256"
-    "S_nsteps_512  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_steps:512"
-    "S_nsteps_1024 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_steps:1024"
-    "S_nsteps_2048 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_steps:2048"
+    "S2_nsteps_256  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 n_steps:256"
+    "S2_nsteps_512  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 n_steps:512"
+    "S2_nsteps_1024 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 n_steps:1024"
+    "S2_nsteps_2048 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 n_steps:2048"
+    "S2_nsteps_4096 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 n_steps:4096"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Group T: PPO batch_size (minibatch size for SGD updates)
+# Group Z2: Best-guess combos (round 2)
 # ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 64. Must be <= n_steps (with n_envs=1).
-# Using n_steps=256 (default) as constraint.
-    "T_batch_16  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||batch_size:16"
-    "T_batch_32  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||batch_size:32"
-    "T_batch_64  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||batch_size:64"
-    "T_batch_128 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||batch_size:128"
-    "T_batch_256 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||batch_size:256"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Group U: PPO clip_range
-# ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 0.4 (aggressive). Reward model noise may benefit from tighter clipping.
-    "U_clip_01  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||clip_range:0.1"
-    "U_clip_02  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||clip_range:0.2"
-    "U_clip_03  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||clip_range:0.3"
-    "U_clip_04  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||clip_range:0.4"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Group V: PPO n_epochs (SGD passes per rollout)
-# ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 20. With noisy reward signal, fewer epochs may prevent overfitting.
-    "V_nepochs_5  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_epochs:5"
-    "V_nepochs_10 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_epochs:10"
-    "V_nepochs_20 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_epochs:20"
-    "V_nepochs_30 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_epochs:30"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Group W: PPO gae_lambda
-# ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 0.92. Controls bias-variance tradeoff in advantage estimation.
-    "W_gae_080 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gae_lambda:0.8"
-    "W_gae_090 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gae_lambda:0.9"
-    "W_gae_092 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gae_lambda:0.92"
-    "W_gae_095 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gae_lambda:0.95"
-    "W_gae_098 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gae_lambda:0.98"
-    "W_gae_100 |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||gae_lambda:1.0"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Group X: PPO entropy coefficient
-# ══════════════════════════════════════════════════════════════════════════════
-# Baseline: 0.0. Exploration bonus may help with noisy reward landscape.
-    "X_ent_000  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||ent_coef:0.0"
-    "X_ent_001  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||ent_coef:0.01"
-    "X_ent_005  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||ent_coef:0.05"
-    "X_ent_010  |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||ent_coef:0.1"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Group Y: PPO network architecture
-# ══════════════════════════════════════════════════════════════════════════════
-# Baseline: [256, 256, 256]. Smaller/larger networks for the policy.
-    "Y_arch_64x2    |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||policy_kwargs:dict(net_arch=dict(pi=[64,64],vf=[64,64]))"
-    "Y_arch_128x2   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||policy_kwargs:dict(net_arch=dict(pi=[128,128],vf=[128,128]))"
-    "Y_arch_256x2   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||policy_kwargs:dict(net_arch=dict(pi=[256,256],vf=[256,256]))"
-    "Y_arch_256x3   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||policy_kwargs:dict(net_arch=dict(pi=[256,256,256],vf=[256,256,256]))"
-    "Y_arch_512x2   |--rl-steps 50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||policy_kwargs:dict(net_arch=dict(pi=[512,512],vf=[512,512]))"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Group Z: Best-guess combinations
-# ══════════════════════════════════════════════════════════════════════════════
-# Promising multi-axis combos informed by single-axis intuitions.
-
-    # High RL budget + generous feedback
-    "Z_high_budget       |--rl-steps  50000|--num-phases 10|--feedback-budget 1000|--reward-epochs 20|--initial-feedback 100||"
-    # High RL budget + fine phases
-    "Z_high_fine         |--rl-steps  10000|--num-phases 50|--feedback-budget 1000|--reward-epochs 20|--initial-feedback 100||"
-    # High RL + conservative PPO (lower lr, tighter clip, more exploration)
-    "Z_conservative_ppo  |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:1e-4 clip_range:0.2 ent_coef:0.01"
-    # High RL + aggressive PPO (higher lr, big batches)
-    "Z_aggressive_ppo    |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||learning_rate:5e-4 batch_size:128 n_epochs:10"
-    # Long rollouts + high gamma (maximize long-horizon credit)
-    "Z_long_horizon      |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||n_steps:1024 gamma:0.995 gae_lambda:0.98"
-    # Minimal architecture + lots of training
-    "Z_small_net_long    |--rl-steps 100000|--num-phases 10|--feedback-budget 500|--reward-epochs 20|--initial-feedback  50||policy_kwargs:dict(net_arch=dict(pi=[64,64],vf=[64,64]))"
-    # Kitchen sink: high budget + fine phases + tuned PPO
-    "Z_kitchen_sink      |--rl-steps  20000|--num-phases 25|--feedback-budget 1000|--reward-epochs 30|--initial-feedback 100||learning_rate:1e-4 clip_range:0.2 n_steps:512 gamma:0.995"
+    # Tuned PPO baseline (the reference point for all round 2)
+    "Z2_baseline         |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    # More total RL (1M steps)
+    "Z2_long_train       |--rl-steps 100000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    # Fine phases + tuned PPO (50 phases × 10K = 500K total, more reward model updates)
+    "Z2_fine_phases       |--rl-steps  10000|--num-phases 50|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||${TUNED_PPO}"
+    # Rich data + tuned PPO
+    "Z2_rich_data         |--rl-steps  50000|--num-phases 10|--feedback-budget 1000|--reward-epochs 10|--initial-feedback 100||${TUNED_PPO}"
+    # Fine phases + rich data + tuned PPO
+    "Z2_fine_rich         |--rl-steps  10000|--num-phases 50|--feedback-budget 1000|--reward-epochs 10|--initial-feedback 100||${TUNED_PPO}"
+    # Larger rollout buffer (n_steps=1024) with tuned PPO
+    "Z2_big_rollout       |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:1024 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10"
+    # Smaller policy net (faster learning with less data)
+    "Z2_small_net         |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10 policy_kwargs:dict(net_arch=dict(pi=[64,64],vf=[64,64]))"
+    # Even lower gamma (very short horizon)
+    "Z2_very_short_horizon|--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.8 gae_lambda:0.9 clip_range:0.2 ent_coef:0.01 learning_rate:1e-4 batch_size:128 n_epochs:10"
+    # Higher entropy for more exploration
+    "Z2_high_entropy      |--rl-steps  50000|--num-phases 10|--feedback-budget 500|--reward-epochs 10|--initial-feedback  50||n_steps:512 gamma:0.9 gae_lambda:0.9 clip_range:0.2 ent_coef:0.05 learning_rate:1e-4 batch_size:128 n_epochs:10"
 
 )
 
