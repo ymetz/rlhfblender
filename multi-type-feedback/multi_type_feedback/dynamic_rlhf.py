@@ -203,6 +203,8 @@ class DynamicRLHF:
         reward_normalization: str = "welford",  # "welford" (mean/std) or "quantile"
         responserank_weight: float = 0.5,
         reward_batch_size: int = 0,  # 0 = auto (8 for film-unified, 1 otherwise)
+        reward_model_hidden_dim: int = 256,
+        reward_model_layer_num: int = 6,
     ):
         self.oracle = oracle
         self.env_name = env_name
@@ -229,6 +231,8 @@ class DynamicRLHF:
         self.reward_normalization = reward_normalization
         self.responserank_weight = responserank_weight
         self.reward_batch_size = reward_batch_size
+        self.reward_model_hidden_dim = reward_model_hidden_dim
+        self.reward_model_layer_num = reward_model_layer_num
 
         self.reward_model_type = reward_model_type
         self.shared_layer_num = shared_layer_num
@@ -522,9 +526,9 @@ class DynamicRLHF:
             else:
                 model = SingleNetwork(
                     input_spaces=(observation_space, action_space),
-                    hidden_dim=256,
+                    hidden_dim=self.reward_model_hidden_dim,
                     action_hidden_dim=32,
-                    layer_num=6,
+                    layer_num=self.reward_model_layer_num,
                     output_dim=1,
                     loss_function=(
                         calculate_single_reward_loss
@@ -560,7 +564,7 @@ class DynamicRLHF:
                 input_spaces=(observation_space, action_space),
                 shared_layer_num=self.shared_layer_num,
                 head_layer_num=self.head_layer_num,
-                hidden_dim=256,
+                hidden_dim=self.reward_model_hidden_dim,
                 action_hidden_dim=32,
                 output_dim=1,
                 feedback_types=self.feedback_types,
@@ -591,8 +595,8 @@ class DynamicRLHF:
         else:
             model = UnifiedNetwork(
                 input_spaces=(observation_space, action_space),
-                layer_num=6,
-                hidden_dim=256,
+                layer_num=self.reward_model_layer_num,
+                hidden_dim=self.reward_model_hidden_dim,
                 action_hidden_dim=32,
                 output_dim=1,
                 feedback_types=self.feedback_types,
@@ -609,8 +613,8 @@ class DynamicRLHF:
         """Initialize a FiLM-conditioned unified reward model."""
         model = FiLMUnifiedNetwork(
             input_spaces=(observation_space, action_space),
-            layer_num=6,
-            hidden_dim=256,
+            layer_num=self.reward_model_layer_num,
+            hidden_dim=self.reward_model_hidden_dim,
             action_hidden_dim=32,
             output_dim=1,
             feedback_types=self.feedback_types,
@@ -729,7 +733,11 @@ class DynamicRLHF:
                     # this is the case for initial generation, use random agent here
                     action = env.action_space.sample()
                 else:
-                    action, _ = self.rl_agent.predict(obs, deterministic=False)
+                    # Normalize obs if the training env uses VecNormalize, so the policy
+                    # sees the same input distribution it was trained on.
+                    vec_normalize = self.rl_agent.get_vec_normalize_env()
+                    obs_for_policy = vec_normalize.normalize_obs(obs[np.newaxis])[0] if vec_normalize is not None else obs
+                    action, _ = self.rl_agent.predict(obs_for_policy, deterministic=False)
                 next_obs, reward, terminated, truncated, _ = env.step(action)
                 if self.action_one_hot:
                     action = one_hot_vector(action, self.one_hot_dim)
@@ -2142,6 +2150,8 @@ class DynamicRLHF:
             "shared_layer_num": self.shared_layer_num,
             "head_layer_num": self.head_layer_num,
             "feedback_embedding_dim": self.feedback_embedding_dim,
+            "reward_model_hidden_dim": self.reward_model_hidden_dim,
+            "reward_model_layer_num": self.reward_model_layer_num,
             "action_one_hot": self.action_one_hot,
             "one_hot_dim": getattr(self, "one_hot_dim", None),
             "feedback_buffers": self.feedback_buffers,
@@ -2195,6 +2205,8 @@ class DynamicRLHF:
             shared_layer_num=state_data["shared_layer_num"],
             head_layer_num=state_data["head_layer_num"],
             feedback_embedding_dim=state_data["feedback_embedding_dim"],
+            reward_model_hidden_dim=state_data.get("reward_model_hidden_dim", 256),
+            reward_model_layer_num=state_data.get("reward_model_layer_num", 6),
             exp_manager=exp_manager,
         )
 

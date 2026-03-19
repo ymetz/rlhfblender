@@ -636,8 +636,8 @@ metaworld-sweep-into-v3: &metaworld-defaults
     gamma: 0.9
     learning_rate: !!float 1e-5
     n_envs: 1
-    n_steps: 512
-    ent_coef: 0.01
+    n_steps: 2048
+    ent_coef: 0.0
     n_epochs: 20
     clip_range: 0.2
     gae_lambda: 0.9

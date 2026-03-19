@@ -516,6 +516,18 @@ def main():
     parser.add_argument("--eval-freq", type=int, default=2000,
                         help="Evaluate RL agent on GT env reward every N steps (0 to disable). "
                              "Results printed as eval/mean_reward.")
+    parser.add_argument("--feedback-sampling", type=str, default="random",
+                        choices=["random", "uncertainty"],
+                        help="Strategy for selecting which trajectories to query: 'random' (uniform) or "
+                             "'uncertainty' (prefer segments with high ensemble variance, maximising "
+                             "information gain per labelling session).")
+    parser.add_argument("--reward-model-hidden-dim", type=int, default=256,
+                        help="Hidden layer width of the reward model MLP (default: 256). "
+                             "Smaller values (e.g. 64, 128) reduce capacity and can improve "
+                             "generalisation when the feedback budget is small.")
+    parser.add_argument("--reward-model-layer-num", type=int, default=6,
+                        help="Number of layers in the reward model MLP (default: 6). "
+                             "Smaller values (e.g. 2, 3) reduce overfitting with limited labels.")
     parser.add_argument("--hyperparams", nargs="+", default=None,
                         help="Override PPO/SAC hyperparameters as KEY:VALUE pairs. "
                              "Example: --hyperparams learning_rate:1e-4 batch_size:128 gamma:0.995 "
@@ -702,6 +714,8 @@ def main():
         reward_normalization=args.reward_normalization,
         responserank_weight=args.responserank_weight,
         reward_batch_size=args.reward_batch_size,
+        reward_model_hidden_dim=args.reward_model_hidden_dim,
+        reward_model_layer_num=args.reward_model_layer_num,
     )
 
     # --- Step 6: Phase loop ---
@@ -782,8 +796,11 @@ def main():
 
         # For phases > 0: collect oracle feedback, train reward model, train RL agent
         if phase < args.num_phases - 1:
-            print(f"  Sampling oracle feedback ({drlhf.n_feedback_per_iteration} queries)...")
-            drlhf.sample_feedback_random(trajectories, initial_states)
+            print(f"  Sampling oracle feedback ({drlhf.n_feedback_per_iteration} queries, strategy={args.feedback_sampling})...")
+            if args.feedback_sampling == "uncertainty":
+                drlhf.sample_feedback_uncertainty(trajectories, initial_states)
+            else:
+                drlhf.sample_feedback_random(trajectories, initial_states)
 
             print(f"  Training reward models ({args.reward_epochs} epochs)...")
             metrics = drlhf.train_reward_models()
