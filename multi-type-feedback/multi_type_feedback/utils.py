@@ -68,6 +68,7 @@ class TrainingUtils:
                 "Meta-World/MT1",
                 env_name=environment_name,
                 seed=seed if seed is not None else random.randint(0, 10000),
+                disable_env_checker=True,  # suppress known Metaworld obs-space bound warnings
                 **(env_kwargs or {}),
             )
         else:

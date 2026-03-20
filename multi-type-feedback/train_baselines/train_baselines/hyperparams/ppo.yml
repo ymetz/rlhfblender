@@ -627,7 +627,7 @@ merge-v0:
     <<: *highway-defaults
 
 metaworld-sweep-into-v3: &metaworld-defaults
-    normalize: True
+    normalize: False
     policy: 'MlpPolicy'
     policy_kwargs: "dict(
         net_arch=dict(pi=[256, 256, 256], vf=[256, 256, 256])

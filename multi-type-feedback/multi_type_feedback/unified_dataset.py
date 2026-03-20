@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 
 import pytorch_lightning
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 from multi_type_feedback.feedback_dataset import BufferDataset
 
@@ -100,7 +100,7 @@ def create_dataloaders_by_type(
             batch_size=batch_size,
             shuffle=False,
             pin_memory=False,
-            drop_last=True,
+            drop_last=False,
             collate_fn=collate_fn,
         )
 
@@ -224,11 +224,35 @@ def _unified_collate_fn(batch, partition_size: int = 4):
     return sub_batches
 
 
+def _reward_weight(item, eps: float = 0.05) -> float:
+    """Return a sampling weight for one UnifiedBufferDataset entry.
+
+    For scalar feedback types (supervised, evaluative, descriptive) the weight
+    is proportional to |reward| so that rare high-reward steps are oversampled
+    relative to the majority near-zero steps.  Pairwise types get weight 1.0.
+    eps is the minimum weight assigned to zero-reward steps so they are never
+    fully excluded.
+    """
+    feedback_type, data = item
+    if feedback_type not in _PAIRWISE_TYPES:
+        try:
+            reward = data[1]
+            if hasattr(reward, "item"):
+                reward = float(reward.item())
+            else:
+                reward = float(reward)
+            return abs(reward) + eps
+        except Exception:
+            pass
+    return 1.0
+
+
 def create_unified_dataloaders(
     feedback_buffers: Dict[str, List[Any]],
     batch_size: int,
     val_split: float = 0.2,
     partition_size: int = 4,
+    oversample_rewards: bool = False,
 ):
     """
     Create unified dataloaders that include feedback type with the data.
@@ -258,21 +282,38 @@ def create_unified_dataloaders(
     )
 
     # Create data loaders with custom collate function
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        pin_memory=False,
-        drop_last=True,
-        collate_fn=collate_fn,
-    )
+    if oversample_rewards:
+        # Weight each training sample by |reward| + eps so rare high-reward
+        # steps are seen more often than the majority near-zero steps.
+        weights = torch.tensor(
+            [_reward_weight(train_dataset.dataset.data[i]) for i in train_dataset.indices],
+            dtype=torch.float32,
+        )
+        sampler = WeightedRandomSampler(weights, num_samples=len(train_dataset), replacement=True)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            pin_memory=False,
+            drop_last=True,
+            collate_fn=collate_fn,
+        )
+    else:
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=False,
+            drop_last=True,
+            collate_fn=collate_fn,
+        )
 
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
         pin_memory=False,
-        drop_last=True,
+        drop_last=False,
         collate_fn=collate_fn,
     )
 

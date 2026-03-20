@@ -508,7 +508,8 @@ def main():
                              "(scale-invariant; recommended with film-unified).")
     parser.add_argument("--reward-batch-size", type=int, default=0,
                         help="Batch size for unified reward model training. "
-                             "0 = auto (8 for film-unified, 1 otherwise).")
+                             "0 = auto (4 × num_ensemble_models, minimum 16). "
+                             "Must be > num_ensemble_models for Masksemble to work correctly.")
     parser.add_argument("--responserank-weight", type=float, default=0.5,
                         help="Weight for ResponseRank Plackett-Luce loss vs Bradley-Terry NLL "
                              "in pairwise feedback types (only used with film-unified). "
@@ -516,6 +517,19 @@ def main():
     parser.add_argument("--eval-freq", type=int, default=2000,
                         help="Evaluate RL agent on GT env reward every N steps (0 to disable). "
                              "Results printed as eval/mean_reward.")
+    parser.add_argument("--pretrain-steps", type=int, default=0,
+                        help="Train the policy on the ground-truth environment reward for this many "
+                             "steps before starting the RLHF loop. Produces trajectories with "
+                             "meaningful reward variance so the reward model has better signal from "
+                             "phase 0. Ignored when --use-gt-reward is set.")
+    parser.add_argument("--oversample-rewards", action="store_true",
+                        help="Oversample high-reward steps during reward model training using "
+                             "WeightedRandomSampler with weight proportional to |reward| + eps. "
+                             "Counteracts mean-collapse when most buffer steps have near-zero reward.")
+    parser.add_argument("--use-gt-reward", action="store_true",
+                        help="Debug mode: use environment ground-truth reward instead of the learned reward "
+                             "model. Reward model training and inference are skipped; everything else "
+                             "(phases, trajectory collection, oracle queries) runs unchanged.")
     parser.add_argument("--feedback-sampling", type=str, default="random",
                         choices=["random", "uncertainty"],
                         help="Strategy for selecting which trajectories to query: 'random' (uniform) or "
@@ -716,7 +730,41 @@ def main():
         reward_batch_size=args.reward_batch_size,
         reward_model_hidden_dim=args.reward_model_hidden_dim,
         reward_model_layer_num=args.reward_model_layer_num,
+        use_gt_reward=args.use_gt_reward,
+        oversample_rewards=args.oversample_rewards,
     )
+
+    # --- Step 6b: Optional GT pre-training ---
+    # Train the policy on real env reward before the RLHF loop so it produces
+    # trajectories with meaningful reward variance (reward model gets better signal).
+    if args.pretrain_steps > 0 and not args.use_gt_reward:
+        print(f"\nPre-training policy for {args.pretrain_steps} steps with GT reward...")
+
+        # Build a GT env: same wrappers as training env but without the reward model wrapper.
+        # Temporarily remove the reward function so create_envs skips RewardVecEnvWrapper.
+        saved_reward_fn = drlhf.exp_manager.reward_function
+        drlhf.exp_manager.reward_function = None
+        pretrain_env = drlhf.exp_manager.create_envs(n_envs=drlhf.rl_agent.n_envs, eval_env=False, no_log=True)
+        drlhf.exp_manager.reward_function = saved_reward_fn
+
+        # Swap the agent onto the GT env, train, then restore the RLHF env.
+        rlhf_env = drlhf.rl_agent.get_env()
+        drlhf.rl_agent.set_env(pretrain_env)
+        _pt_callbacks = list(drlhf.exp_manager.callbacks) if drlhf.exp_manager and drlhf.exp_manager.callbacks else None
+        drlhf.rl_agent.learn(total_timesteps=args.pretrain_steps, reset_num_timesteps=True, callback=_pt_callbacks)
+
+        # Transfer VecNormalize obs running stats so the policy still sees correctly
+        # scaled observations after we swap back to the RLHF env.
+        pretrain_vn = drlhf.rl_agent.get_vec_normalize_env()
+        drlhf.rl_agent.set_env(rlhf_env)
+        if pretrain_vn is not None:
+            rlhf_vn = drlhf.rl_agent.get_vec_normalize_env()
+            if rlhf_vn is not None:
+                rlhf_vn.obs_rms = pretrain_vn.obs_rms
+                print(f"  Transferred VecNormalize obs stats from pre-training env.")
+
+        pretrain_env.close()
+        print(f"Pre-training complete. RLHF loop starting with warmed policy.")
 
     # --- Step 6: Phase loop ---
     for phase in range(args.num_phases):
@@ -802,16 +850,19 @@ def main():
             else:
                 drlhf.sample_feedback_random(trajectories, initial_states)
 
-            print(f"  Training reward models ({args.reward_epochs} epochs)...")
-            metrics = drlhf.train_reward_models()
-            print(f"  Reward model losses: { {k: f'{v:.4f}' for k, v in metrics.items()} }")
-            drlhf.print_reward_model_diagnostics()
+            if not args.use_gt_reward:
+                print(f"  Training reward models ({args.reward_epochs} epochs)...")
+                metrics = drlhf.train_reward_models()
+                print(f"  Reward model losses: { {k: f'{v:.4f}' for k, v in metrics.items()} }")
+                drlhf.print_reward_model_diagnostics()
 
             print(f"  Training RL agent ({args.rl_steps} steps)...")
             # reset_num_timesteps=True resets the timestep counter so PPO's linear
             # lr schedule restarts from lr_init each phase.  Without this the schedule
             # computes lr * (1 - elapsed/n_timesteps) and hits 0 after phase 1.
-            drlhf.rl_agent.learn(total_timesteps=args.rl_steps, reset_num_timesteps=True)
+            # Pass exp_manager callbacks (incl. EvalCallback) so eval actually fires.
+            _callbacks = list(drlhf.exp_manager.callbacks) if drlhf.exp_manager and drlhf.exp_manager.callbacks else None
+            drlhf.rl_agent.learn(total_timesteps=args.rl_steps, reset_num_timesteps=True, callback=_callbacks)
 
     gen_env.close()
     print(f"\nDone! {args.num_phases} phases complete.")

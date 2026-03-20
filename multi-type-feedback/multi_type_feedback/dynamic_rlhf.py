@@ -64,6 +64,30 @@ def vectorized_one_hot_vector(k, max_val):
     return vec
 
 
+class _EpochLossLogger(pytorch_lightning.Callback):
+    """Records train_loss and val_loss at every epoch for post-training inspection."""
+
+    def __init__(self):
+        self.history: list[tuple[int, float, float]] = []  # (epoch, train, val)
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        if trainer.sanity_checking:
+            return
+        m = trainer.callback_metrics
+        train = float(m.get("train_loss", float("nan")))
+        val = float(m.get("val_loss", float("nan")))
+        self.history.append((trainer.current_epoch, train, val))
+
+    def print_history(self, label: str = "") -> None:
+        if not self.history:
+            return
+        prefix = f"  [{label}] " if label else "  "
+        print(f"{prefix}epoch  train_loss   val_loss")
+        for epoch, tl, vl in self.history:
+            gap = "" if (vl != vl or tl != tl) else f"  gap={vl - tl:+.4f}"
+            print(f"{prefix}{epoch:>5}  {tl:>10.4f}  {vl:>10.4f}{gap}")
+
+
 class QuantileNormalizer:
     """
     Running quantile normalizer that maps each feedback type's reward to [0, 1]
@@ -205,6 +229,8 @@ class DynamicRLHF:
         reward_batch_size: int = 0,  # 0 = auto (8 for film-unified, 1 otherwise)
         reward_model_hidden_dim: int = 256,
         reward_model_layer_num: int = 6,
+        use_gt_reward: bool = False,
+        oversample_rewards: bool = False,
     ):
         self.oracle = oracle
         self.env_name = env_name
@@ -233,6 +259,8 @@ class DynamicRLHF:
         self.reward_batch_size = reward_batch_size
         self.reward_model_hidden_dim = reward_model_hidden_dim
         self.reward_model_layer_num = reward_model_layer_num
+        self.use_gt_reward = use_gt_reward
+        self.oversample_rewards = oversample_rewards
 
         self.reward_model_type = reward_model_type
         self.shared_layer_num = shared_layer_num
@@ -263,12 +291,14 @@ class DynamicRLHF:
         if apply_random_response_handling:
             self._apply_random_response_handling()
 
-        # Create reward function wrapper
-        self.reward_function = DynamicRLHFRewardFunction(self, uncertainty_penalty=self.uncertainty_penalty)
-
-        # Update the experiment manager with our reward function
-        if self.exp_manager:
-            self.exp_manager.reward_function = self.reward_function
+        # Create reward function wrapper (skipped in gt-reward debug mode)
+        if not self.use_gt_reward:
+            self.reward_function = DynamicRLHFRewardFunction(self, uncertainty_penalty=self.uncertainty_penalty)
+            if self.exp_manager:
+                self.exp_manager.reward_function = self.reward_function
+        else:
+            self.reward_function = None
+            print("  [GT-REWARD MODE] Reward model disabled — using environment ground-truth reward.")
 
         # (1) Compute n_feedback_per_iteration immediately (based on budget only)
         if n_feedback_per_iteration is None:
@@ -831,15 +861,17 @@ class DynamicRLHF:
                     batch_size=self.num_ensemble_models,
                     shuffle=False,
                     pin_memory=False,
-                    drop_last=True,
+                    drop_last=False,
                 )
 
                 # Configure callbacks and trainer
+                loss_logger = _EpochLossLogger()
                 callbacks = [
                     L2RegulationCallback(initial_l2=0.01),
                     pytorch_lightning.callbacks.EarlyStopping(
                         monitor="val_loss", patience=3, mode="min"
                     ),
+                    loss_logger,
                 ]
 
                 _acc, _devs = self._pl_accelerator()
@@ -870,10 +902,10 @@ class DynamicRLHF:
                 val_loss = float(final_metrics.get("val_loss", -1.0))
 
                 reward_metrics[feedback_type] = val_loss
+                reward_metrics[f"{feedback_type}_train"] = train_loss
 
-                print(
-                    f"{feedback_type} training complete: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}"
-                )
+                print(f"{feedback_type} training complete: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}")
+                loss_logger.print_history(label=feedback_type)
 
         elif self.reward_model_type == "multi-head":
             # Multi-head implementation
@@ -901,17 +933,18 @@ class DynamicRLHF:
             if not dataloaders:
                 return {}
 
-            # Configure callbacks
-            callbacks = [
-                L2RegulationCallback(initial_l2=0.01),
-                pytorch_lightning.callbacks.EarlyStopping(
-                    monitor="val_loss", patience=3, mode="min"
-                ),
-            ]
-
             # Train for each feedback type separately (but using the shared model)
             for feedback_type, (train_loader, val_loader) in dataloaders.items():
                 print(f"Training multi-head model for {feedback_type}")
+
+                loss_logger = _EpochLossLogger()
+                callbacks = [
+                    L2RegulationCallback(initial_l2=0.01),
+                    pytorch_lightning.callbacks.EarlyStopping(
+                        monitor="val_loss", patience=3, mode="min"
+                    ),
+                    loss_logger,
+                ]
 
                 # Configure trainer
                 _acc, _devs = self._pl_accelerator()
@@ -938,10 +971,13 @@ class DynamicRLHF:
 
                 # Extract final metrics
                 final_metrics = trainer.callback_metrics
+                train_loss = float(final_metrics.get("train_loss", -1.0))
                 val_loss = float(final_metrics.get(f"val_loss_{feedback_type}", -1.0))
                 reward_metrics[feedback_type] = val_loss
+                reward_metrics[f"{feedback_type}_train"] = train_loss
 
-                print(f"{feedback_type} training complete: val_loss={val_loss:.4f}")
+                print(f"{feedback_type} training complete: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}")
+                loss_logger.print_history(label=feedback_type)
 
         elif self.reward_model_type in ("unified", "film-unified"):
             # Unified / FiLM-unified implementation
@@ -962,21 +998,34 @@ class DynamicRLHF:
             if self.reward_batch_size > 0:
                 effective_batch_size = self.reward_batch_size
             else:
-                # Auto: film-unified defaults to 8 for ResponseRank grouping, others to 1
-                effective_batch_size = 8 if self.reward_model_type == "film-unified" else 1
+                # Auto: Masksemble requires batch_size > n_masks to avoid
+                # mask collapse (near-zero train_loss, premature early stopping).
+                # Use at least 4× the ensemble count; film-unified uses the same
+                # heuristic (previously was 8, which was also too small for 4 masks).
+                effective_batch_size = max(self.num_ensemble_models * 4, 16)
+            # Recompute accum_grad using the actual unified batch size.
+            # The value computed above used num_ensemble_models as the batch-size
+            # proxy (correct for separate/multi-head), but unified now uses a
+            # larger effective_batch_size, so there are far fewer batches per
+            # epoch.  Without this correction accum_grad was overestimated by
+            # ~4× resulting in only 1 real gradient step per epoch.
+            _batches_unified = max(1, train_size_est // max(1, effective_batch_size))
+            accum_grad = max(1, min(32, _batches_unified // 4))
             train_dataloader, val_dataloader = create_unified_dataloaders(
                 self.feedback_buffers,
                 batch_size=effective_batch_size,
                 val_split=0.368,
                 partition_size=4,
+                oversample_rewards=self.oversample_rewards,
             )
 
-            # Configure callbacks
+            loss_logger = _EpochLossLogger()
             callbacks = [
                 L2RegulationCallback(initial_l2=0.01),
                 pytorch_lightning.callbacks.EarlyStopping(
                     monitor="val_loss", patience=3, mode="min"
                 ),
+                loss_logger,
             ]
 
             _acc, _devs = self._pl_accelerator()
@@ -1003,19 +1052,23 @@ class DynamicRLHF:
 
             # Extract final metrics for each feedback type
             final_metrics = trainer.callback_metrics
+            final_train_loss = float(final_metrics.get("train_loss", float("nan")))
 
             for feedback_type in self.feedback_types:
                 val_loss_key = f"val_loss_{feedback_type}"
                 if val_loss_key in final_metrics:
                     reward_metrics[feedback_type] = float(final_metrics[val_loss_key])
 
-            # Also add overall val_loss
+            # Overall val and train loss
             if "val_loss" in final_metrics:
                 reward_metrics["overall"] = float(final_metrics["val_loss"])
+            reward_metrics["overall_train"] = final_train_loss
 
-            print(f"Unified model training complete")
+            print(f"Unified model training complete (train_loss={final_train_loss:.4f})")
             for fb_type, loss in reward_metrics.items():
-                print(f"  {fb_type}: val_loss={loss:.4f}")
+                tag = "train" if fb_type.endswith("_train") else "val"
+                print(f"  {fb_type}: {tag}_loss={loss:.4f}")
+            loss_logger.print_history(label="unified")
 
         return reward_metrics
 
@@ -1710,11 +1763,12 @@ class DynamicRLHF:
                     obs_r = obs.repeat(*rep)
                     act_r = actions.repeat(*rep)
                     out = model(obs_r, act_r)
-                    totals = (out * masks.repeat(*rep)).sum(dim=2).squeeze(-1)
+                    # squeeze output dim (1) then sum over time → (ensemble*B,)
+                    totals = (out * masks.repeat(*rep)).squeeze(-1).sum(dim=1)
                     mean_r, unc = compute_grouped(totals, model.ensemble_count)
                 else:
                     out = model(obs, actions)
-                    totals = (out * masks).sum(dim=2).squeeze(-1)
+                    totals = (out * masks).squeeze(-1).sum(dim=1)
                     mean_r, unc = totals, torch.zeros_like(totals)
             elif self.reward_model_type == "multi-head":
                 model = list(self.reward_models.values())[0]
@@ -1722,7 +1776,7 @@ class DynamicRLHF:
                 obs_r = obs.repeat(*rep)
                 act_r = actions.repeat(*rep)
                 out = model(obs_r, act_r, feedback_type)
-                totals = (out * masks.repeat(*rep)).sum(dim=2).squeeze(-1)
+                totals = (out * masks.repeat(*rep)).squeeze(-1).sum(dim=1)
                 mean_r, unc = compute_grouped(totals, model.ensemble_count)
             else:  # unified
                 model = list(self.reward_models.values())[0]
@@ -1730,7 +1784,7 @@ class DynamicRLHF:
                 obs_r = obs.repeat(*rep)
                 act_r = actions.repeat(*rep)
                 out = model(obs_r, act_r, feedback_type)
-                totals = (out * masks.repeat(*rep)).sum(dim=2).squeeze(-1)
+                totals = (out * masks.repeat(*rep)).squeeze(-1).sum(dim=1)
                 mean_r, unc = compute_grouped(totals, model.ensemble_count)
         return mean_r.cpu().numpy(), unc.cpu().numpy()
 

@@ -538,9 +538,7 @@ class UnifiedNetwork(LightningModule):
                 obs2 = obs2.repeat(*obs_repeat)
                 actions2 = actions2.repeat(*act_repeat)
                 mask2 = mask2.repeat(*mask_repeat)
-                preferred_indices = preferred_indices.repeat(
-                    self.ensemble_count, 1
-                ).squeeze()
+                preferred_indices = preferred_indices.repeat(self.ensemble_count)
 
             # Compute network outputs for both trajectories
             outputs1 = self.forward(obs1, actions1, feedback_type)
@@ -561,6 +559,18 @@ class UnifiedNetwork(LightningModule):
             # Handle scalar feedback
             (observations, actions, masks), targets = data
 
+            targets = targets.float()
+
+            # For supervised feedback, normalize targets per-batch so the model
+            # must predict relative reward magnitudes rather than collapsing to
+            # the near-zero mean (mean-collapse on sparse Metaworld rewards).
+            # Skip normalization when the batch has no variance (all-zero rewards)
+            # to avoid NaN and wasteful zero-gradient updates.
+            if feedback_type == "supervised":
+                t_std = targets.std()
+                if t_std > 1e-4:
+                    targets = (targets - targets.mean()) / (t_std + 1e-8)
+
             # For ensemble models, use optimized batch repetition
             if self.ensemble_count > 1:
                 # Create repeat pattern once
@@ -573,8 +583,8 @@ class UnifiedNetwork(LightningModule):
                 actions = actions.repeat(*act_repeat)
                 masks = masks.repeat(*mask_repeat)
 
-                # Convert targets to float and repeat
-                targets = targets.float().repeat(self.ensemble_count, 1).squeeze()
+                # Repeat targets: shape (B,) → (ensemble*B,)
+                targets = targets.repeat(self.ensemble_count)
 
             # Network output: (batch_size, segment_length, output_dim)
             outputs = self.forward(observations, actions, feedback_type)
