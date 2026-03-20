@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import logging
 import os
 from typing import Any
@@ -434,7 +435,25 @@ async def reset_sampler(request: Request):
     experiment: Experiment = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
     environment = await db_handler.get_single_entry(database, Environment, key=experiment.env_id, key_column="registration_id")
 
-    session_id = await request.app.state.logger.reset(experiment, environment)
+    logger.info(
+        "reset_sampler start: experiment_id=%s env_id=%s sampling_strategy=%s",
+        experiment_id,
+        experiment.env_id,
+        sampling_strategy,
+    )
+
+    try:
+        session_id = await asyncio.wait_for(request.app.state.logger.reset(experiment, environment), timeout=15.0)
+    except asyncio.TimeoutError as exc:
+        logger.error(
+            "reset_sampler timeout while resetting logger. "
+            "This is often caused by Google Sheets connectivity issues. "
+            "Set RLHFBLENDER_LOGGER_TYPE=csv to disable remote sheets logging."
+        )
+        raise HTTPException(
+            status_code=504,
+            detail="Logger reset timed out (possible Google Sheets connectivity issue).",
+        ) from exc
 
     print("Resetting sampler:", experiment_id, experiment.env_id, sampling_strategy)
 
