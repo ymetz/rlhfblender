@@ -21,7 +21,7 @@ USER $MAMBA_USER
 
 # Install micromamba env and dependencies
 RUN micromamba install -n base -y python=$PYTHON_VERSION \
-    pytorch $PYTORCH_DEPS opencv -c conda-forge -c pytorch -c nvidia && \
+    pytorch $PYTORCH_DEPS -c conda-forge -c pytorch -c nvidia && \
     micromamba install -c conda-forge libgcc-ng libstdcxx-ng && \
     micromamba clean --all --yes
 
