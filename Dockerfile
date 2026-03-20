@@ -10,9 +10,11 @@ ARG MAMBA_DOCKERFILE_ACTIVATE=1  # (otherwise python will not be found)
 #USER $MAMBA_USER
 
 # Install micromamba env and dependencies
-RUN micromamba install -n base -y python=$PYTHON_VERSION \
-    pytorch $PYTORCH_DEPS opencv -c conda-forge -c pytorch -c nvidia && \
-    micromamba install -c conda-forge glew mesalib glfw && \
+RUN micromamba install -n base -y \
+    python=$PYTHON_VERSION \
+    pytorch $PYTORCH_DEPS \
+    glew mesalib glfw \
+    -c conda-forge -c pytorch -c nvidia && \
     micromamba clean --all --yes
 
 ENV CODE_DIR=/home/${MAMBA_USER}
