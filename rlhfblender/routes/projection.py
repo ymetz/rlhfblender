@@ -442,7 +442,7 @@ async def load_grid_projection_image(
             if not isinstance(oc, np.ndarray):
                 oc = np.array(oc)
             # Trigger recompute if render version changed
-            version_mismatch = image_data.get("render_version", 1) != 2
+            version_mismatch = image_data.get("render_version", 1) != 3
             if oc.size > 0 and "x_range" in image_data and "y_range" in image_data:
                 x_min_c, x_max_c = float(np.min(oc[:, 0])), float(np.max(oc[:, 0]))
                 y_min_c, y_max_c = float(np.min(oc[:, 1])), float(np.max(oc[:, 1]))
@@ -483,7 +483,7 @@ async def load_grid_projection_image(
                             global_x_range=global_x_range,
                             global_y_range=global_y_range,
                         )
-                    image_data["render_version"] = 2
+                    image_data["render_version"] = 3
                     # Overwrite cache with updated image
                     with open(data_path, "w") as f:
                         json.dump(image_data, f)
@@ -521,7 +521,7 @@ async def load_grid_projection_image(
             )
 
         # Save the image
-        image_data["render_version"] = 2
+        image_data["render_version"] = 3
         with open(data_path, "w") as f:
             json.dump(image_data, f)
 
