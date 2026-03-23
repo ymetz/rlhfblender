@@ -1,0 +1,30 @@
+{
+    "id": "8db3c247",
+    "name": "Cluster-Rating",
+    "description": "",
+    "uiComponents": {
+        "progressBar": true,
+        "interactiveEpisodeSelect": false,
+        "episodePreview": false,
+        "episodeItem": true,
+        "episodeItemVideo": true,
+        "horizontalRanking": true,
+        "bestOfK": true,
+        "showProposedFeedback": false,
+        "uncertaintyLine": false,
+        "actionLabels": false
+    },
+    "feedbackComponents": {
+        "rating": false,
+        "ranking": false,
+        "comparison": false,
+        "demonstration": false,
+        "correction": false,
+        "clusterRating": true,
+        "featureSelection": false,
+        "text": false
+    },
+    "max_ranking_elements": 1,
+    "customInput": "",
+    "created_at": "2026-03-18 14:41:46"
+}
