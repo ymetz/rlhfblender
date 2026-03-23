@@ -1,3 +1,23 @@
+# Dash-driving: continuous control (obs=Box(10,), act=Box(3,))
+# n_envs=1 because each env requires a Playwright browser instance
+dash-driving-v0:
+  n_envs: 1
+  n_timesteps: !!float 1e6
+  policy: 'MlpPolicy'
+  n_steps: 512
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  learning_rate: !!float 3e-4
+  clip_range: 0.2
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  use_sde: true
+  sde_sample_freq: 4
+  normalize: true
+
 atari:
   env_wrapper:
     - stable_baselines3.common.atari_wrappers.AtariWrapper
