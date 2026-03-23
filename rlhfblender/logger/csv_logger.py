@@ -35,14 +35,20 @@ class CSVLogger(Logger):
         self.init_complete = asyncio.Event()
         self.init_complete.set()  # CSV logger doesn't need lengthy initialization
 
-    async def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
+    async def reset(
+        self,
+        exp: Experiment,
+        env: Environment,
+        suffix: str = None,
+        custom_logger_id: str | None = None,
+    ) -> str:
         """
         Resets the logger asynchronously
 
         :return: The logger ID
         """
         # Reset base logger
-        await super().reset(exp, env, suffix)
+        await super().reset(exp, env, suffix, custom_logger_id=custom_logger_id)
 
         # Reset paths and state
         self.logger_csv_path = "logs/" + self.logger_id + ".csv"
@@ -58,9 +64,13 @@ class CSVLogger(Logger):
                 # Create the directory if it doesn't exist
                 os.makedirs(os.path.dirname(self.logger_csv_path), exist_ok=True)
 
-                # Create empty CSV files (will be populated with headers on first write)
-                open(self.logger_csv_path, "w").close()
-                open(self.raw_logger_csv_path, "w").close()
+                # Create files only when missing.
+                # Important: do not truncate existing files so multi-checkpoint
+                # feedback for the same phase/session is appended.
+                if not os.path.exists(self.logger_csv_path):
+                    open(self.logger_csv_path, "w").close()
+                if not os.path.exists(self.raw_logger_csv_path):
+                    open(self.raw_logger_csv_path, "w").close()
 
             await loop.run_in_executor(None, _create_files)
 

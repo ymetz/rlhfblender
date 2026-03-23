@@ -102,16 +102,22 @@ class RewardUncertaintyPredictor:
         # Try loading with different network architectures
         try:
             # First try SingleCnnNetwork for CNN environments
-            self.reward_model = SingleCnnNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device, weights_only=False)
+            self.reward_model = SingleCnnNetwork.load_from_checkpoint(
+                self.reward_model_path, map_location=self.device, weights_only=False
+            )
         except Exception:
             try:
                 # Then try SingleNetwork for other environments
-                self.reward_model = SingleNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device, weights_only=False)
+                self.reward_model = SingleNetwork.load_from_checkpoint(
+                    self.reward_model_path, map_location=self.device, weights_only=False
+                )
             except Exception:
                 # Finally try unified network
                 from multi_type_feedback.unified_networks import UnifiedNetwork
 
-                self.reward_model = UnifiedNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device, weights_only=False)
+                self.reward_model = UnifiedNetwork.load_from_checkpoint(
+                    self.reward_model_path, map_location=self.device, weights_only=False
+                )
 
         self.reward_model.eval()
 
@@ -331,7 +337,9 @@ class RewardUncertaintyPredictor:
             available_types.append(fb_type)
 
         if not available_types:
-            available_types = [t for t in getattr(uni_model, "feedback_types", []) if not model_supported or t in model_supported]
+            available_types = [
+                t for t in getattr(uni_model, "feedback_types", []) if not model_supported or t in model_supported
+            ]
 
         if not available_types:
             zeros = torch.zeros(batch_size, device=self.device)

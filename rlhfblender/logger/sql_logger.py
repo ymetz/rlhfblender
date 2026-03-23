@@ -52,7 +52,13 @@ class SQLLogger(Logger):
             # Set the event anyway to avoid hanging
             self.init_complete.set()
 
-    async def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
+    async def reset(
+        self,
+        exp: Experiment,
+        env: Environment,
+        suffix: str = None,
+        custom_logger_id: str | None = None,
+    ) -> str:
         """
         Resets the logger asynchronously
 
@@ -67,7 +73,7 @@ class SQLLogger(Logger):
                 pass
 
         # Reset the base logger
-        await super().reset(exp, env, suffix)
+        await super().reset(exp, env, suffix, custom_logger_id=custom_logger_id)
 
         # Reset state
         self.sql_table = self.logger_id

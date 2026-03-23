@@ -931,8 +931,10 @@ def compute_inverse_projection(
 
         results = {"inverse_model_info": inverse_model_info, "grid_samples": grid_samples, "model_path": saved_model_path}
 
-        print(f"Inverse projection completed. Grid: {inverse_options.grid_resolution}x{inverse_options.grid_resolution}, "
-              f"recon shape: {grid_recon.shape}")
+        print(
+            f"Inverse projection completed. Grid: {inverse_options.grid_resolution}x{inverse_options.grid_resolution}, "
+            f"recon shape: {grid_recon.shape}"
+        )
         return results
 
     except Exception as e:

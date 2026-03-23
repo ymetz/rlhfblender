@@ -1,5 +1,5 @@
-import base64
 import asyncio
+import base64
 import logging
 import os
 from typing import Any
@@ -428,6 +428,8 @@ async def reset_sampler(request: Request):
     """
     experiment_id = request.query_params.get("experiment_id", None)
     sampling_strategy = request.query_params.get("sampling_strategy", None)
+    session_name = request.query_params.get("session_name", None)
+    phase = request.query_params.get("phase", None)
 
     if experiment_id is None:
         return "No experiment id given"
@@ -436,14 +438,29 @@ async def reset_sampler(request: Request):
     environment = await db_handler.get_single_entry(database, Environment, key=experiment.env_id, key_column="registration_id")
 
     logger.info(
-        "reset_sampler start: experiment_id=%s env_id=%s sampling_strategy=%s",
+        "reset_sampler start: experiment_id=%s env_id=%s sampling_strategy=%s session_name=%s phase=%s",
         experiment_id,
         experiment.env_id,
         sampling_strategy,
+        session_name,
+        phase,
     )
 
+    custom_logger_id = None
+    if session_name:
+        custom_logger_id = session_name
+        if phase:
+            custom_logger_id = f"{session_name}_phase_{phase}"
+
     try:
-        session_id = await asyncio.wait_for(request.app.state.logger.reset(experiment, environment), timeout=15.0)
+        session_id = await asyncio.wait_for(
+            request.app.state.logger.reset(
+                experiment,
+                environment,
+                custom_logger_id=custom_logger_id,
+            ),
+            timeout=15.0,
+        )
     except asyncio.TimeoutError as exc:
         logger.error(
             "reset_sampler timeout while resetting logger. "
