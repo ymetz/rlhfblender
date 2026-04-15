@@ -27,9 +27,16 @@ class FeedbackOracle:
         gamma: float = 0.99,
         noise_level: float = 0.0,
         n_clusters: int = 100,
+        deterministic_expert: bool = False,
     ):
         """
-        Generate on-the-fly oracle feedback for queries and different feedback types
+        Generate on-the-fly oracle feedback for queries and different feedback types.
+
+        deterministic_expert: if False (default), expert actions are sampled stochastically
+            from the policy distribution rather than taking the mean action. This is especially
+            important when --fix-start-state is used: with a fixed start and a deterministic
+            expert, every demonstration is identical, giving the reward model zero new signal.
+            Stochastic sampling produces diverse trajectories from the same start state.
         """
         self.expert_models = expert_models
         self.environment = environment
@@ -37,6 +44,7 @@ class FeedbackOracle:
         self.gamma = gamma
         self.noise_level = noise_level
         self.n_clusters = n_clusters
+        self.deterministic_expert = deterministic_expert
         self.action_one_hot = isinstance(
             self.environment.action_space, gym.spaces.Discrete
         )
@@ -60,8 +68,17 @@ class FeedbackOracle:
             obs = np.asarray(step[0])
             obs = np.squeeze(obs)          # drop singletons, e.g. (1,H,W)->(H,W)
             obs_flat = obs.reshape(-1)     # ALWAYS 1-D
-            act = np.asarray(step[1])
-            act_flat = np.atleast_1d(act)  # scalar or vector → 1-D
+            act = step[1]
+            if self.action_one_hot:
+                act_sq = np.squeeze(np.asarray(act))
+                if act_sq.ndim == 1 and act_sq.shape[0] == self.one_hot_dim:
+                    # Already one-hot encoded (e.g. from generate_feedback.py)
+                    act_flat = act_sq.astype(float)
+                else:
+                    # Raw integer action (e.g. from generate_reference_data)
+                    act_flat = one_hot_vector(int(act_sq), self.one_hot_dim)
+            else:
+                act_flat = np.atleast_1d(np.asarray(act))  # scalar or vector → 1-D
             return np.concatenate((obs_flat, act_flat), axis=0)
     
         states_actions_list, rewards_list = [], []
@@ -295,19 +312,19 @@ class FeedbackOracle:
             return (
                 (trajectory1_obs, trajectory1_actions, mask1),
                 (trajectory2_obs, trajectory2_actions, mask2),
-            ), 0
+            ), 0, 0.0
 
         diff = abs(return1 - return2) / total_return
         if return1 > return2:
             return (
                 (trajectory2_obs, trajectory2_actions, mask2),
                 (trajectory1_obs, trajectory1_actions, mask1),
-            ), 1
+            ), 1, diff
         else:
             return (
                 (trajectory1_obs, trajectory1_actions, mask1),
                 (trajectory2_obs, trajectory2_actions, mask2),
-            ), 1
+            ), 1, diff
 
     def get_demonstrative_feedback(
         self, initial_state
@@ -407,15 +424,23 @@ class FeedbackOracle:
             )
             mask_demo = torch.cat([mask_demo, torch.zeros(pad_size, 1)], dim=0)
 
+        total_return = abs(expert_return) + abs(trajectory_return)
+        if total_return == 0:
+            return (
+                (obs_orig, actions_orig, mask_traj),
+                (obs_expert, actions_expert, mask_demo),
+            ), 0, 0.0
+
+        diff = abs(expert_return - trajectory_return) / total_return
         if expert_return > trajectory_return:
             return (
                 (obs_orig, actions_orig, mask_traj),
                 (obs_expert, actions_expert, mask_demo),
-            ), 1
+            ), 1, diff
         return (
             (obs_expert, actions_expert, mask_demo),
             (obs_orig, actions_orig, mask_traj),
-        ), 1
+        ), 1, diff
 
     def get_descriptive_feedback(
         self, trajectory: List[Tuple[np.ndarray, np.ndarray, float, bool]]
@@ -553,7 +578,7 @@ class FeedbackOracle:
             for _ in range(self.segment_len):
                 action, _ = expert_model.predict(
                     exp_norm_env.normalize_obs(obs) if exp_norm_env else obs,
-                    deterministic=True,
+                    deterministic=self.deterministic_expert,
                 )
                 next_obs, reward, terminated, truncated, _ = self.environment.step(
                     action

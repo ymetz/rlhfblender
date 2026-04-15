@@ -45,6 +45,17 @@ try:
 except ImportError:
     pass
 
+try:
+    from gymnasium.envs.registration import register as _register
+
+    _register(
+        id="dash-driving-v0",
+        entry_point="rlhfblender.data_collection.dash_driving_gym_env:DashDrivingGymEnv",
+        max_episode_steps=500,
+    )
+except Exception:
+    pass
+
 
 # Register no vel envs
 def create_no_vel_env(env_id: str) -> Callable[[Optional[str]], gym.Env]:

@@ -12,6 +12,7 @@ FeedbackType = Union[
     Literal["demonstrative"],
     Literal["descriptive"],
     Literal["descriptive_preference"],
+    Literal["supervised"],
 ]
 
 SegmentT = List[Tuple[NDArray, NDArray, bool, float]]

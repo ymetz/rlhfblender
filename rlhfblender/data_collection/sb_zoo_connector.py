@@ -26,6 +26,74 @@ from rlhfblender.utils import process_env_name
 from rlhfblender.utils.read_sb3_configs import read_sb3_configs
 
 
+def _infer_algorithm(exp: Experiment) -> str | None:
+    """Infer SB3 algorithm from config path, DB metadata, or folder hints."""
+    config_candidates = [
+        os.path.join(exp.path, process_env_name(exp.env_id), "config.yml"),
+        os.path.join(exp.path, "config.yml"),
+    ]
+
+    for config_path in config_candidates:
+        if not os.path.isfile(config_path):
+            continue
+        try:
+            config = read_sb3_configs(config_path)
+            if config and "algo" in config and config["algo"]:
+                algo = str(config["algo"]).lower()
+                print(f"Found config file, inferred algorithm: {algo}")
+                return algo
+        except Exception:
+            continue
+
+    if exp.algorithm:
+        algo = exp.algorithm.lower()
+        print(f"Using algorithm from experiment metadata: {algo}")
+        return algo
+
+    lower_path = exp.path.lower()
+    if f"{os.sep}sac{os.sep}" in lower_path:
+        return "sac"
+    if f"{os.sep}ppo{os.sep}" in lower_path:
+        return "ppo"
+
+    return None
+
+
+def _candidate_algorithms(primary_algo: str | None, exp_algorithm: str | None) -> list[str]:
+    """Build de-duplicated candidate algorithm list for robust model loading."""
+    candidates = []
+    if primary_algo:
+        candidates.append(primary_algo)
+    if exp_algorithm:
+        candidates.append(exp_algorithm.lower())
+    candidates.extend(["sac", "ppo"])
+
+    seen = set()
+    return [algo for algo in candidates if not (algo in seen or seen.add(algo))]
+
+
+def _load_model_with_candidates(path: str, candidates: list[str], device: str):
+    """Try loading a model with candidate algorithms and return (model, algo)."""
+    last_error = None
+    for candidate_algo in candidates:
+        if candidate_algo not in ALGOS:
+            continue
+        try:
+            model = ALGOS[candidate_algo].load(
+                path,
+                device=device,
+                custom_objects={"learning_rate": 0.0, "clip_range": 0.0},
+            )
+            return model, candidate_algo
+        except Exception as load_error:
+            last_error = load_error
+            print(f"Failed loading model with algo '{candidate_algo}': {load_error}")
+
+    raise RuntimeError(
+        f"Could not load model at {path} with candidate algorithms {candidates}"
+    ) from last_error
+
+
 class StableBaselines3Agent(TrainedAgent):
     def __init__(
         self,
@@ -44,17 +112,14 @@ class StableBaselines3Agent(TrainedAgent):
         else:
             path = os.path.join(exp.path, f"{exp.env_id}.zip")
 
-        # try to infer algorithm from saved model
-        try:
-            config = read_sb3_configs(os.path.join(path, process_env_name(exp.env_id), "config.yml"))
-            print("Found config file")
-            algo = config["algo"]
-        except Exception:
-            print("Could not read an algorithm from the config file, defaulting to PPO")
-            algo = exp.algorithm.lower() if exp.algorithm else "ppo"
+        algo = _infer_algorithm(exp)
+        if algo is None:
+            algo = "ppo"
+            print("Could not infer algorithm from config/metadata; defaulting to PPO")
 
-        # for some models, we use schedules for training, but we don't need them here for inference, we set it to 0
-        self.model = ALGOS[algo].load(path, device=device, custom_objects={"learning_rate": 0.0, "clip_range": 0.0})
+        candidates = _candidate_algorithms(algo, exp.algorithm)
+        self.model, loaded_algo = _load_model_with_candidates(path=path, candidates=candidates, device=device)
+        print(f"Loaded model using algorithm: {loaded_algo}")
         self.agent_state = None
         if "deterministic" in kwargs:
             self.deterministic = kwargs["deterministic"]

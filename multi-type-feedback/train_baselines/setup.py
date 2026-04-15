@@ -24,6 +24,8 @@ setup(
         "train_baselines": [
             "py.typed",
             "version.txt",
+            "hyperparams/*.yml",
+            "hyperparams/python/*.py",
         ]
     },
     entry_points={"console_scripts": ["train_baselines=train_baselines.cli:main"]},

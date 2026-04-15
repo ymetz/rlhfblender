@@ -45,16 +45,26 @@ class Logger(ABC):
         Generate a unique logger ID based on timestamp and experiment name
         """
         self.logger_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + self.exp.exp_name + "_" + self.suffix
-        # Replace all spaces with underscores and sanitize the ID
-        self.logger_id = self.logger_id.replace(" ", "_").replace(":", "-").replace("/", "-")
+        self.logger_id = self._sanitize_logger_id(self.logger_id)
 
-    async def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
+    @staticmethod
+    def _sanitize_logger_id(logger_id: str) -> str:
+        return logger_id.replace(" ", "_").replace(":", "-").replace("/", "-")
+
+    async def reset(
+        self,
+        exp: Experiment,
+        env: Environment,
+        suffix: str = None,
+        custom_logger_id: str | None = None,
+    ) -> str:
         """
         Resets the logger asynchronously
 
         :param exp: The experiment object
         :param env: The environment object
         :param suffix: Optional suffix for the logger ID
+        :param custom_logger_id: Optional explicit logger/session id to use.
         :return: The new logger ID
         """
         self.exp = exp
@@ -62,7 +72,10 @@ class Logger(ABC):
         if suffix is not None:
             self.suffix = suffix
 
-        self._generate_logger_id()
+        if custom_logger_id is not None and custom_logger_id != "":
+            self.logger_id = self._sanitize_logger_id(custom_logger_id)
+        else:
+            self._generate_logger_id()
         return self.logger_id
 
     @abstractmethod

@@ -1,7 +1,10 @@
 import asyncio
 import base64
 import json
+import logging
 import os
+import pickle
+import re
 import time
 from dataclasses import dataclass
 from io import BytesIO
@@ -25,11 +28,14 @@ from rlhfblender.data_collection.demo_session import (
 from rlhfblender.data_collection.webrtc_demo_session import GymEnvironmentTrack
 from rlhfblender.data_handling import database_handler as db_handler
 from rlhfblender.data_models.global_models import Environment, Experiment
+from rlhfblender.projections.generate_projections import process_env_name
 from rlhfblender.projections.inverse_state_projection_handler import InverseStateProjectionHandler
+from rlhfblender.projections.joint_projection_metadata import select_joint_projection_metadata
 from rlhfblender.projections.projection_handler import ProjectionHandler
 from rlhfblender.utils.data_generation import encode_video
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/demo_generation")
 
@@ -69,8 +75,12 @@ def _build_projection_output_dir(environment_id: str, experiment_id: int | None,
 
 
 def _find_joint_projection_metadata(
-    environment_id: str, experiment_id: int | None, projection_method: str
-) -> tuple[Path | None, InverseStateProjectionHandler | None, str, Path | None]:
+    environment_id: str,
+    experiment_id: int | None,
+    projection_method: str,
+    checkpoint_step: int | None = None,
+    fallback_to_pca: bool = True,
+) -> tuple[Path | None, InverseStateProjectionHandler | None, str, Path | None, list[str]]:
     """
     Find the latest joint projection metadata for the given env/exp and return:
       (metadata_path, state_handler, effective_method, state_model_path)
@@ -81,40 +91,53 @@ def _find_joint_projection_metadata(
       in metadata; if not there, globs for a *_state_model.pkl with matching prefix.
     """
     if experiment_id is None:
-        return None, None, projection_method, None
+        return None, None, projection_method, None, []
 
-    env_component = _sanitize_component(environment_id)
-    exp_component = _sanitize_component(experiment_id)
-
-    joint_state_dir = Path("data") / "saved_projections" / "joint_obs_state"
-    joint_dir = Path("data") / "saved_projections" / "joint"
-
-    def _latest(globs: list[Path]) -> Path | None:
-        globs = [p for p in globs if p.exists()]
-        return max(globs, key=lambda p: p.stat().st_mtime) if globs else None
-
-    def _find_meta(method: str) -> Path | None:
-        pattern_state = f"{env_component}_{exp_component}_joint_obs_state_{method}_0_*_metadata.json"
-        pattern_joint = f"{env_component}_{exp_component}_joint_{method}_0_*_metadata.json"
-        candidates: list[Path] = []
-        if joint_state_dir.exists():
-            candidates.extend(joint_state_dir.glob(pattern_state))
-        if joint_dir.exists():
-            candidates.extend(joint_dir.glob(pattern_joint))
-        return _latest(candidates)
+    try:
+        checkpoint_step = int(checkpoint_step) if checkpoint_step is not None else None
+    except (TypeError, ValueError):
+        checkpoint_step = None
 
     # 1) try requested method
+    warnings: list[str] = []
     effective_method = projection_method or "PCA"
-    meta = _find_meta(effective_method)
+    meta = select_joint_projection_metadata(
+        environment_id,
+        effective_method,
+        experiment_id=experiment_id,
+        checkpoint_step=checkpoint_step,
+        prefer_obs_state=True,
+    )
 
     # 2) fallback to PCA if needed
-    if meta is None and effective_method != "PCA":
+    if fallback_to_pca and meta is None and effective_method != "PCA":
+        warning = (
+            f"No joint metadata found for method={effective_method}; "
+            "falling back to PCA metadata."
+        )
+        warnings.append(warning)
+        logger.warning(warning)
+        print(f"Warning: {warning}")
         effective_method = "PCA"
-        meta = _find_meta(effective_method)
+        meta = select_joint_projection_metadata(
+            environment_id,
+            effective_method,
+            experiment_id=experiment_id,
+            checkpoint_step=checkpoint_step,
+            prefer_obs_state=True,
+        )
 
     # Early out if still nothing
     if meta is None:
-        return None, None, effective_method, None
+        warning = (
+            f"No joint projection metadata found for env={environment_id}, exp={experiment_id}, "
+            f"checkpoint={checkpoint_step}, method={effective_method}. "
+            "A local projection fit may be used and can be misaligned."
+        )
+        warnings.append(warning)
+        logger.warning(warning)
+        print(f"Warning: {warning}")
+        return None, None, effective_method, None, warnings
 
     # 3) try to resolve a state model path
     state_model_path: Path | None = None
@@ -130,12 +153,12 @@ def _find_joint_projection_metadata(
 
     # 4) if metadata didn't have it (or file is missing), glob a sensible fallback
     if state_model_path is None:
-        # canonical prefix used across the codebase
+        joint_state_dir = Path("data") / "saved_projections" / "joint_obs_state"
+        env_component = _sanitize_component(environment_id)
+        exp_component = _sanitize_component(experiment_id)
         patt_state_model = f"{env_component}_{exp_component}_joint_obs_state_{effective_method}_*_state_model.pkl"
-        candidates: list[Path] = []
-        if joint_state_dir.exists():
-            candidates.extend(joint_state_dir.glob(patt_state_model))
-        state_model_path = _latest(candidates)
+        candidates = [p for p in joint_state_dir.glob(patt_state_model) if p.exists()] if joint_state_dir.exists() else []
+        state_model_path = max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
 
     # 5) create handler if we found a model
     state_handler: InverseStateProjectionHandler | None = None
@@ -147,12 +170,278 @@ def _find_joint_projection_metadata(
             print(f"Warning: failed to load inverse state model: {e}")
             state_handler = None
 
-    return meta, state_handler, effective_method, state_model_path
+    return meta, state_handler, effective_method, state_model_path, warnings
 
 
 def _load_npz_arrays(npz_path: Path) -> dict[str, np.ndarray]:
     with np.load(npz_path, allow_pickle=True) as data:
         return {key: data[key] for key in data.files}
+
+
+def _normalize_obs_for_projection(obs: np.ndarray) -> np.ndarray:
+    if isinstance(obs, np.ndarray) and obs.dtype == object:
+        if len(obs) == 0:
+            return np.zeros((0, 1), dtype=np.float32)
+        obs = np.stack(obs.astype(np.float32))
+    obs_array = np.array(obs, dtype=np.float32)
+    if obs_array.ndim == 0:
+        return obs_array.reshape(1, 1)
+    if obs_array.ndim == 1:
+        return obs_array.reshape(-1, 1)
+    if obs_array.ndim > 2:
+        return obs_array.reshape(obs_array.shape[0], -1)
+    return obs_array
+
+
+def _resolve_vecnormalize_stats_path(base_dir: str, checkpoint_step: int | None) -> Path | None:
+    if not base_dir:
+        return None
+    base_path = Path(base_dir)
+    if not base_path.exists():
+        return None
+
+    default_path = base_path / "vecnormalize.pkl"
+    parsed_checkpoint = checkpoint_step if isinstance(checkpoint_step, int) else None
+
+    if parsed_checkpoint is not None and parsed_checkpoint >= 0:
+        exact_path = base_path / f"vecnormalize_{parsed_checkpoint}_steps.pkl"
+        if exact_path.exists():
+            return exact_path
+
+        checkpoint_candidates: list[tuple[int, Path]] = []
+        for candidate in base_path.glob("vecnormalize_*_steps.pkl"):
+            match = re.search(r"vecnormalize_(\d+)_steps\.pkl$", candidate.name)
+            if not match:
+                continue
+            try:
+                step = int(match.group(1))
+            except ValueError:
+                continue
+            checkpoint_candidates.append((step, candidate))
+
+        if checkpoint_candidates:
+            earlier = [item for item in checkpoint_candidates if item[0] <= parsed_checkpoint]
+            if earlier:
+                return max(earlier, key=lambda item: item[0])[1]
+            return min(checkpoint_candidates, key=lambda item: abs(item[0] - parsed_checkpoint))[1]
+
+    if default_path.exists():
+        return default_path
+    return None
+
+
+def _resolve_track_vecnormalize_stats_path(track: GymEnvironmentTrack) -> Path | None:
+    exp_path = Path(getattr(track.exp, "path", "") or "")
+    if not exp_path:
+        return None
+
+    env_component = process_env_name(track.environment_id)
+    candidates = [
+        exp_path / env_component,
+        exp_path,
+    ]
+
+    checkpoint_step = track.current_checkpoint if isinstance(track.current_checkpoint, int) else None
+    for candidate in candidates:
+        stats_path = _resolve_vecnormalize_stats_path(str(candidate), checkpoint_step)
+        if stats_path is not None:
+            return stats_path
+    return None
+
+
+def _normalize_demo_obs_with_vecnormalize(
+    track: GymEnvironmentTrack,
+    obs_array: np.ndarray,
+) -> tuple[np.ndarray, str | None]:
+    env_config = getattr(track.exp, "environment_config", None)
+    normalize_enabled = bool(isinstance(env_config, dict) and env_config.get("normalize", False))
+    if not normalize_enabled:
+        return obs_array, None
+
+    stats_path = _resolve_track_vecnormalize_stats_path(track)
+    if stats_path is None:
+        return obs_array, "Environment is configured with normalization, but VecNormalize stats were not found."
+
+    try:
+        with stats_path.open("rb") as handle:
+            vecnormalize_obj = pickle.load(handle)
+    except Exception as exc:
+        return obs_array, f"Failed to load VecNormalize stats from {stats_path}: {exc}"
+
+    obs_rms = getattr(vecnormalize_obj, "obs_rms", None)
+    if obs_rms is None:
+        return obs_array, f"VecNormalize stats at {stats_path} did not contain obs_rms."
+
+    try:
+        mean = np.asarray(obs_rms.mean, dtype=np.float32).reshape(-1)
+        var = np.asarray(obs_rms.var, dtype=np.float32).reshape(-1)
+        epsilon = float(getattr(vecnormalize_obj, "epsilon", 1e-8))
+        clip_obs = float(getattr(vecnormalize_obj, "clip_obs", 10.0))
+    except Exception as exc:
+        return obs_array, f"Failed parsing VecNormalize stats from {stats_path}: {exc}"
+
+    if obs_array.ndim != 2:
+        return obs_array, "Observation array for normalization is not 2D; skipping VecNormalize transform."
+    if mean.shape[0] != obs_array.shape[1] or var.shape[0] != obs_array.shape[1]:
+        return (
+            obs_array,
+            f"VecNormalize dimensionality mismatch (obs_dim={obs_array.shape[1]} vs stats_dim={mean.shape[0]}).",
+        )
+
+    denom = np.sqrt(np.maximum(var, 1e-12) + epsilon)
+    normalized_obs = (obs_array - mean) / denom
+    normalized_obs = np.clip(normalized_obs, -clip_obs, clip_obs).astype(np.float32)
+    message = f"Applied VecNormalize observation transform using stats from {stats_path}."
+    return normalized_obs, message
+
+
+def _find_episode_directory(environment_id: str, experiment_id: int, checkpoint_step: int) -> Path | None:
+    processed_env = process_env_name(environment_id)
+    candidates = []
+    for env_component in {environment_id, processed_env, _sanitize_component(environment_id)}:
+        candidates.append(
+            Path("data")
+            / "episodes"
+            / env_component
+            / f"{env_component}_{experiment_id}_{checkpoint_step}"
+        )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _load_reference_projection_dataset(
+    environment_id: str,
+    experiment_id: int,
+    checkpoint_step: int,
+    projection_method: str,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    projection_cache_path = (
+        Path("data")
+        / "saved_projections"
+        / f"{process_env_name(environment_id)}_{experiment_id}_{checkpoint_step}_{projection_method}.npz"
+    )
+    if not projection_cache_path.exists():
+        return None
+
+    episode_dir = _find_episode_directory(environment_id, experiment_id, checkpoint_step)
+    if episode_dir is None:
+        return None
+
+    try:
+        with np.load(projection_cache_path, allow_pickle=True) as cached_projection:
+            if "projection_array" not in cached_projection:
+                return None
+            ref_coords = np.asarray(cached_projection["projection_array"], dtype=np.float32)
+    except Exception:
+        return None
+
+    if ref_coords.ndim != 2 or ref_coords.shape[1] < 2 or ref_coords.shape[0] == 0:
+        return None
+
+    def _episode_sort_key(path: Path) -> int:
+        try:
+            return int(path.stem.split("_")[-1])
+        except Exception:
+            return 10**9
+
+    episode_files = sorted(episode_dir.glob("benchmark_*.npz"), key=_episode_sort_key)
+    if not episode_files:
+        return None
+
+    obs_chunks: list[np.ndarray] = []
+    for episode_file in episode_files:
+        try:
+            with np.load(episode_file, allow_pickle=True) as episode_npz:
+                if "obs" not in episode_npz:
+                    continue
+                episode_obs = _normalize_obs_for_projection(episode_npz["obs"])
+                if episode_obs.shape[0] > 0:
+                    obs_chunks.append(episode_obs)
+        except Exception:
+            continue
+
+    if not obs_chunks:
+        return None
+
+    ref_obs = np.concatenate(obs_chunks, axis=0).astype(np.float32, copy=False)
+    n = min(ref_obs.shape[0], ref_coords.shape[0])
+    if n <= 1:
+        return None
+    return ref_obs[:n], ref_coords[:n, :2]
+
+
+def _project_demo_with_reference_knn(
+    demo_obs: np.ndarray,
+    environment_id: str,
+    experiment_id: int | None,
+    checkpoint_step: int | None,
+    projection_method: str,
+) -> tuple[np.ndarray | None, str | None]:
+    if experiment_id is None or checkpoint_step is None:
+        return None, None
+
+    reference_dataset = _load_reference_projection_dataset(
+        environment_id,
+        experiment_id,
+        checkpoint_step,
+        projection_method,
+    )
+    if reference_dataset is None:
+        return None, None
+
+    ref_obs, ref_coords = reference_dataset
+    demo_obs_array = _normalize_obs_for_projection(demo_obs)
+    if demo_obs_array.shape[0] == 0:
+        return None, None
+
+    common_dims = min(ref_obs.shape[1], demo_obs_array.shape[1])
+    if common_dims <= 0:
+        return None, None
+
+    ref_obs = ref_obs[:, :common_dims]
+    demo_obs_array = demo_obs_array[:, :common_dims]
+
+    # Feature-wise normalization stabilizes nearest-neighbor matching.
+    feature_mean = np.mean(ref_obs, axis=0)
+    feature_std = np.std(ref_obs, axis=0)
+    feature_std = np.where(feature_std < 1e-6, 1.0, feature_std)
+    ref_norm = (ref_obs - feature_mean) / feature_std
+    demo_norm = (demo_obs_array - feature_mean) / feature_std
+
+    try:
+        from sklearn.neighbors import NearestNeighbors
+    except Exception:
+        return None, None
+
+    neighbor_count = min(3, ref_norm.shape[0])
+    if neighbor_count <= 0:
+        return None, None
+
+    knn = NearestNeighbors(n_neighbors=neighbor_count, metric="euclidean")
+    knn.fit(ref_norm)
+    distances, indices = knn.kneighbors(demo_norm, return_distance=True)
+
+    if neighbor_count == 1:
+        projected = ref_coords[indices[:, 0]].astype(np.float32)
+    else:
+        weights = 1.0 / ((distances + 1e-6) ** 2)
+        weighted = (weights[:, :, None] * ref_coords[indices]).sum(axis=1)
+        normalization = np.maximum(weights.sum(axis=1, keepdims=True), 1e-6)
+        projected = (weighted / normalization).astype(np.float32)
+
+    # Light smoothing to avoid jitter in KNN lookup.
+    if projected.shape[0] > 1:
+        smooth_alpha = 0.75
+        for i in range(1, projected.shape[0]):
+            projected[i] = smooth_alpha * projected[i] + (1.0 - smooth_alpha) * projected[i - 1]
+
+    info = (
+        "Used nearest-neighbor alignment in observation space against cached "
+        f"{projection_method} checkpoint trajectories."
+    )
+    return projected, info
 
 
 def _compute_episode_indices(dones: np.ndarray) -> list[int]:
@@ -235,6 +524,8 @@ def _prepare_demo_artifacts(
     elif obs_array.ndim == 1:
         obs_array = obs_array.reshape(-1, 1)
 
+    obs_array, normalization_message = _normalize_demo_obs_with_vecnormalize(track, obs_array)
+
     # Prepare renders and encode video if available
     video_path: Path | None = None
     renders = demo_arrays.get("renders")
@@ -256,9 +547,16 @@ def _prepare_demo_artifacts(
     )
     projection_props = projection_props_override or track.projection_props
 
-    meta_path, _, projection_method, _ = _find_joint_projection_metadata(
-        track.environment_id, track.experiment_id, projection_method
+    meta_path, _, projection_method, _, metadata_warnings = _find_joint_projection_metadata(
+        track.environment_id,
+        track.experiment_id,
+        projection_method,
+        checkpoint_step=track.current_checkpoint,
+        fallback_to_pca=False,
     )
+    projection_warnings: list[str] = list(metadata_warnings)
+    if normalization_message:
+        projection_warnings.append(normalization_message)
 
     joint_metadata: dict[str, Any] = {}
     if meta_path and meta_path.exists():
@@ -269,28 +567,60 @@ def _prepare_demo_artifacts(
 
     projection_array = np.zeros((0, 2), dtype=np.float32)
     if meta_path is not None:
-        sequence_length = joint_metadata.get("sequence_length", 1)
         handler = ProjectionHandler(
             projection_method=projection_method,
             projection_props=projection_props,
             joint_projection_path=str(meta_path),
         )
         try:
-            projection_raw = handler.fit(
-                obs_array,
-                sequence_length=sequence_length,
-                step_range=None,
-                episode_indices=None,
-                actions=None,
-                suffix=f"user_demo_{track.session_id}",
-            )
+            # For pre-fitted joint projections, always use transform to keep points in the
+            # exact global frame without sequence-window reshaping.
+            if getattr(handler, "is_fitted", False) and hasattr(handler.embedding_method, "transform"):
+                projection_raw = handler.transform(np.asarray(obs_array, dtype=np.float32))
+            else:
+                sequence_length = joint_metadata.get("sequence_length", 1)
+                projection_raw = handler.fit(
+                    obs_array,
+                    sequence_length=sequence_length,
+                    step_range=None,
+                    episode_indices=None,
+                    actions=None,
+                    suffix=f"user_demo_{track.session_id}",
+                )
             projection_array = np.array(projection_raw, dtype=np.float32)
         except Exception as exc:
             print(f"Failed to project demo {demo_path.name}: {exc}")
             projection_array = np.zeros((0, 2), dtype=np.float32)
 
-    # Fallback: if we could not load a joint projection, generate a fresh 2D projection directly
+    if projection_array.size > 0 and projection_array.shape[0] != obs_array.shape[0]:
+        projection_warnings.append(
+            f"Joint projection returned {projection_array.shape[0]} points for {obs_array.shape[0]} observations; "
+            "falling back to reference alignment."
+        )
+
+    # Fallback 1: align with cached checkpoint trajectories in the same projection frame.
     if (projection_array.size == 0 or projection_array.shape[0] != obs_array.shape[0]) and obs_array.size > 0:
+        knn_projection, knn_info = _project_demo_with_reference_knn(
+            obs_array,
+            track.environment_id,
+            track.experiment_id,
+            track.current_checkpoint,
+            projection_method or "PCA",
+        )
+        if knn_projection is not None and knn_projection.shape[0] == obs_array.shape[0]:
+            projection_array = knn_projection
+            if knn_info:
+                projection_warnings.append(knn_info)
+
+    # Fallback 2: if everything else failed, generate a fresh 2D projection directly.
+    if (projection_array.size == 0 or projection_array.shape[0] != obs_array.shape[0]) and obs_array.size > 0:
+        warning = (
+            f"Projection fallback activated for demo {demo_path.name}. "
+            "Using a local fit because no suitable joint projection transform was available."
+        )
+        projection_warnings.append(warning)
+        logger.warning(warning)
+        print(f"Warning: {warning}")
         try:
             fallback_method = projection_method or "PCA"
             fallback_props = projection_props or {}
@@ -331,6 +661,7 @@ def _prepare_demo_artifacts(
         "total_reward": float(rewards.sum()) if rewards.size else 0.0,
         "num_steps": int(num_steps),
         "metadata": metadata_dict,
+        "warnings": projection_warnings,
     }
 
     with projection_json_path.open("w", encoding="utf-8") as proj_file:
@@ -788,6 +1119,12 @@ async def gym_offer(request: Request):
         checkpoint = params.get("checkpoint")
         projection_method = params.get("projection_method")
         projection_props = params.get("projection_props")
+        checkpoint_step: int | None = None
+        if checkpoint is not None:
+            try:
+                checkpoint_step = int(checkpoint)
+            except (TypeError, ValueError):
+                checkpoint_step = None
 
         print("Received WebRTC offer for session:", session_id, "experiment:", experiment_id, " environment:", environment_id)
         if coordinate:
@@ -829,8 +1166,11 @@ async def gym_offer(request: Request):
         initial_state = None
         if coordinate:
             try:
-                meta_path, state_handler, method, model_path = _find_joint_projection_metadata(
-                    environment_id, experiment_id, projection_method or "PCA"
+                meta_path, state_handler, method, model_path, _ = _find_joint_projection_metadata(
+                    environment_id,
+                    experiment_id,
+                    projection_method or "PCA",
+                    checkpoint_step=checkpoint_step,
                 )
                 if not state_handler:
                     raise HTTPException(404, detail="No inverse state projection model found for this experiment/environment")
@@ -847,8 +1187,6 @@ async def gym_offer(request: Request):
         elif episode_num is not None and step is not None:
             try:
                 # Load env_state from saved episode data
-                import numpy as np
-
                 # Construct the episode file path
                 episode_file_path = f"data/env_states/{environment_id}/{environment_id}_{experiment_id}_{checkpoint}/env_states_{episode_num}.npy"
 
@@ -900,6 +1238,15 @@ async def gym_offer(request: Request):
             print(f"Session cleanup warning: {e}")
 
         # Reuse existing track if available and not expired
+        # If a specific initial_state was requested (e.g. inverse projection coordinate),
+        # recreate the track so the state is guaranteed to be applied.
+        if session_id in webrtc_demo_session.gym_sessions and initial_state is not None:
+            try:
+                webrtc_demo_session.gym_sessions[session_id].stop()
+            except Exception:
+                pass
+            del webrtc_demo_session.gym_sessions[session_id]
+
         if session_id in webrtc_demo_session.gym_sessions:
             gym_track = webrtc_demo_session.gym_sessions[session_id]
             print(f"Reusing existing environment for session {session_id}")
@@ -920,17 +1267,14 @@ async def gym_offer(request: Request):
                 db_env=db_env,
                 seed=42,
                 initial_state=initial_state,
+                checkpoint_step=checkpoint_step,
                 target_width=480,
                 target_height=360,
                 target_fps=15,
             )
             # Small delay to ensure track is properly initialized
             await asyncio.sleep(0.1)
-            if checkpoint is not None:
-                try:
-                    gym_track.current_checkpoint = int(checkpoint)
-                except (TypeError, ValueError):
-                    gym_track.current_checkpoint = None
+            gym_track.current_checkpoint = checkpoint_step
             if projection_method:
                 gym_track.projection_method = projection_method
             if projection_props:
@@ -1086,7 +1430,9 @@ async def coordinate_to_render(request: Request):
         if db_env is None:
             raise HTTPException(status_code=404, detail=f"Environment {env_id} not found")
 
-        meta_path, state_handler, method, model_path = _find_joint_projection_metadata(env_id, exp_id, "PCA")
+        meta_path, state_handler, method, model_path, _ = _find_joint_projection_metadata(
+            env_id, exp_id, "PCA", checkpoint_step=None
+        )
         if not state_handler:
             raise HTTPException(status_code=404, detail="No inverse state projection model found")
 
@@ -1153,6 +1499,13 @@ async def initialize_demo_from_coordinate(request: Request):
         exp_id = request_data.get("exp_id")
         seed = request_data.get("seed", 42)
         session_id = request_data.get("session_id")
+        checkpoint = request_data.get("checkpoint")
+        checkpoint_step: int | None = None
+        if checkpoint is not None:
+            try:
+                checkpoint_step = int(checkpoint)
+            except (TypeError, ValueError):
+                checkpoint_step = None
 
         if not all([joint_projection_path, coordinates is not None, env_id, exp_id, session_id]):
             raise HTTPException(status_code=400, detail="Missing required parameters")
@@ -1188,7 +1541,12 @@ async def initialize_demo_from_coordinate(request: Request):
         # Create WebRTC demo session with the predicted state as initial_state
         try:
             gym_track = GymEnvironmentTrack(
-                session_id=session_id, exp=exp, db_env=db_env, seed=int(seed), initial_state=target_state
+                session_id=session_id,
+                exp=exp,
+                db_env=db_env,
+                seed=int(seed),
+                initial_state=target_state,
+                checkpoint_step=checkpoint_step,
             )
 
             # Store the track in the global sessions dict

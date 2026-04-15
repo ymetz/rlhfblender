@@ -490,7 +490,7 @@ class MetaWorldMonitor(gym.Wrapper):
         self.rewards.append(reward)
         self.episode_success = max(self.episode_success, info["success"])
 
-        if terminated:
+        if terminated or truncated:
             self.needs_reset = True
             ep_rew = sum(self.rewards)
             ep_len = len(self.rewards)

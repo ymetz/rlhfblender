@@ -99,24 +99,33 @@ class RewardUncertaintyPredictor:
         """Load the reward model from checkpoint"""
         print(f"Loading reward model from {self.reward_model_path}")
 
-        # Fix PyTorch Lightning version issue if present
-        self._fix_checkpoint_version()
-
         # Try loading with different network architectures
         try:
             # First try SingleCnnNetwork for CNN environments
-            self.reward_model = SingleCnnNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
+            self.reward_model = SingleCnnNetwork.load_from_checkpoint(
+                self.reward_model_path, map_location=self.device, weights_only=False
+            )
         except Exception:
             try:
                 # Then try SingleNetwork for other environments
-                self.reward_model = SingleNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
+                self.reward_model = SingleNetwork.load_from_checkpoint(
+                    self.reward_model_path, map_location=self.device, weights_only=False
+                )
             except Exception:
                 # Finally try unified network
                 from multi_type_feedback.unified_networks import UnifiedNetwork
 
-                self.reward_model = UnifiedNetwork.load_from_checkpoint(self.reward_model_path, map_location=self.device)
+                self.reward_model = UnifiedNetwork.load_from_checkpoint(
+                    self.reward_model_path, map_location=self.device, weights_only=False
+                )
 
         self.reward_model.eval()
+
+        # For unified/multi-head models, authoritative feedback_types come from the model itself.
+        # Only fall back to the model's list when the session state didn't already provide one.
+        if not self.feedback_types and hasattr(self.reward_model, "feedback_types"):
+            self.feedback_types = list(self.reward_model.feedback_types)
+
         if not self.feedback_types:
             self.feedback_types = [
                 "evaluative",
@@ -167,7 +176,7 @@ class RewardUncertaintyPredictor:
 
     def _fix_checkpoint_version(self):
         """Fix missing pytorch-lightning_version in checkpoint"""
-        checkpoint = torch.load(self.reward_model_path, map_location=self.device)
+        checkpoint = torch.load(self.reward_model_path, map_location=self.device, weights_only=False)
 
         if "pytorch-lightning_version" not in checkpoint:
             import pytorch_lightning as pl
@@ -282,8 +291,9 @@ class RewardUncertaintyPredictor:
             if len(action_tensor.shape) == 2:  # (batch_size, action_dim)
                 action_tensor = action_tensor.unsqueeze(1)
 
-            # Unified reward models require combining predictions across feedback types
-            if self.reward_model_type == "unified" and hasattr(self.reward_model, "feedback_type_map"):
+            # Unified reward models require combining predictions across feedback types.
+            # Detect by model attribute so the routing works even if reward_model_type wasn't passed.
+            if hasattr(self.reward_model, "feedback_type_map"):
                 return self._predict_unified(obs_tensor, action_tensor)
             if self.reward_model_type == "multi-head":
                 return self._predict_multi_head(obs_tensor, action_tensor)
@@ -314,15 +324,22 @@ class RewardUncertaintyPredictor:
         ensemble_count = getattr(uni_model, "ensemble_count", 1)
         batch_size = obs_tensor.shape[0]
 
+        model_supported = set(getattr(uni_model, "feedback_type_map", {}).keys())
+
+        candidate_types = self.feedback_types or list(getattr(uni_model, "feedback_types", []))
         available_types = []
-        for fb_type in self.feedback_types or list(getattr(uni_model, "feedback_types", [])):
+        for fb_type in candidate_types:
+            if model_supported and fb_type not in model_supported:
+                continue
             buffer = self.feedback_buffers.get(fb_type)
             if buffer is not None and len(buffer) == 0:
                 continue
             available_types.append(fb_type)
 
         if not available_types:
-            available_types = list(getattr(uni_model, "feedback_types", []))
+            available_types = [
+                t for t in getattr(uni_model, "feedback_types", []) if not model_supported or t in model_supported
+            ]
 
         if not available_types:
             zeros = torch.zeros(batch_size, device=self.device)
@@ -536,22 +553,32 @@ class RewardUncertaintyPredictor:
         with open(inverse_projection_file) as f:
             projection_data = json.load(f)
 
-        if "inverse_results" not in projection_data or not projection_data["inverse_results"]:
-            raise ValueError("No inverse projection results found in file.")
+        # Check whether inverse results / reconstructions are available.
+        # Missing reconstructions can happen when compute_inverse_projection failed
+        # (e.g. size mismatch between stale projection cache and fresh episode data).
+        # In that case we still produce predictions for the original episode data;
+        # the grid-level predictions are simply omitted.
+        has_grid = False
+        grid_reconstructions = np.array([])
+        grid_coordinates = np.array([])
+        grid_x = np.array([])
+        grid_y = np.array([])
 
-        # Extract grid data
-        grid_samples = projection_data["inverse_results"]["grid_samples"]
-        if "reconstructions" not in grid_samples:
-            raise ValueError("No reconstructions found in inverse projection results.")
+        if "inverse_results" in projection_data and projection_data["inverse_results"]:
+            grid_samples = projection_data["inverse_results"].get("grid_samples", {})
+            if "reconstructions" in grid_samples and grid_samples["reconstructions"]:
+                grid_reconstructions = np.array(grid_samples["reconstructions"])
+                grid_coordinates = np.array(grid_samples["coords"])
+                grid_x = np.array(grid_samples["grid_x"])
+                grid_y = np.array(grid_samples["grid_y"])
+                has_grid = True
+            else:
+                print("Warning: inverse_results present but no reconstructions found — skipping grid predictions.")
+        else:
+            print("Warning: no inverse_results in projection file — skipping grid predictions.")
 
         # Extract original data from the projection data
         original_coordinates = np.array(projection_data.get("projection", []))
-
-        # Extract grid reconstructions
-        grid_reconstructions = np.array(grid_samples["reconstructions"])
-        grid_coordinates = np.array(grid_samples["coords"])
-        grid_x = np.array(grid_samples["grid_x"])
-        grid_y = np.array(grid_samples["grid_y"])
 
         results = {
             "grid_coordinates": grid_coordinates.tolist(),
@@ -590,31 +617,33 @@ class RewardUncertaintyPredictor:
             results["original_uncertainties"] = []
             results["original_actions"] = []
 
-        # Predict for grid data
-        print(f"Predicting rewards and uncertainty for {len(grid_reconstructions)} grid points")
-        if self.policy_model is not None:
-            # Predict actions for each reconstructed observation
-            grid_actions = self.predict_actions(grid_reconstructions)
-        else:
-            # Use random actions if no policy model is available
-            if action_space_size is None:
-                # Assume a default action space size
-                action_space_size = 4
-
-            if len(grid_reconstructions.shape) > 3:  # Image observations
-                # Probably a discrete action space
-                grid_actions = np.random.randint(0, action_space_size, size=grid_reconstructions.shape[0])
+        # Predict for grid data (only when reconstructions are available)
+        if has_grid:
+            print(f"Predicting rewards and uncertainty for {len(grid_reconstructions)} grid points")
+            if self.policy_model is not None:
+                # Predict actions for each reconstructed observation
+                grid_actions = self.predict_actions(grid_reconstructions)
             else:
-                # Probably a continuous action space with dim=1
-                grid_actions = np.random.uniform(-1, 1, size=(grid_reconstructions.shape[0], 1))
+                # Use random actions if no policy model is available
+                if action_space_size is None:
+                    action_space_size = 4
 
-        grid_rewards, grid_uncertainties = self.predict_rewards_and_uncertainty(
-            grid_reconstructions, grid_actions, action_space_size
-        )
+                if len(grid_reconstructions.shape) > 3:  # Image observations
+                    grid_actions = np.random.randint(0, action_space_size, size=grid_reconstructions.shape[0])
+                else:
+                    grid_actions = np.random.uniform(-1, 1, size=(grid_reconstructions.shape[0], 1))
 
-        results["grid_predictions"] = grid_rewards.tolist()
-        results["grid_uncertainties"] = grid_uncertainties.tolist()
-        results["grid_actions"] = grid_actions.tolist() if isinstance(grid_actions, np.ndarray) else grid_actions
+            grid_rewards, grid_uncertainties = self.predict_rewards_and_uncertainty(
+                grid_reconstructions, grid_actions, action_space_size
+            )
+
+            results["grid_predictions"] = grid_rewards.tolist()
+            results["grid_uncertainties"] = grid_uncertainties.tolist()
+            results["grid_actions"] = grid_actions.tolist() if isinstance(grid_actions, np.ndarray) else grid_actions
+        else:
+            results["grid_predictions"] = []
+            results["grid_uncertainties"] = []
+            results["grid_actions"] = []
 
         # Include file info for reference
         results["source_file"] = os.path.basename(inverse_projection_file)
@@ -826,15 +855,14 @@ def main():
         state_file=args.state_file,
     )
 
-    loop = asyncio.get_event_loop()
-    db_experiment: Experiment = loop.run_until_complete(
-        get_single_entry(
-            database,
-            Experiment,
-            args.experiment_name,
-            key_column="exp_name",
-        )
-    )
+    async def _lookup_experiment():
+        await database.connect()
+        try:
+            return await get_single_entry(database, Experiment, args.experiment_name, key_column="exp_name")
+        finally:
+            await database.disconnect()
+
+    db_experiment: Experiment = asyncio.run(_lookup_experiment())
     env_name = process_env_name(db_experiment.env_id)
 
     if args.episode_path:

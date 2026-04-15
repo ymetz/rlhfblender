@@ -152,8 +152,16 @@ class InverseProjectionHandler:
         train_size = len(dataset) - val_size
         train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+        # drop_last=True prevents BatchNorm1d from receiving a single-sample batch
+        # (which would raise "Expected more than 1 value per channel when training").
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, drop_last=False)
+
+        if len(train_loader) == 0:
+            raise ValueError(
+                f"Training dataset ({train_size} samples) is too small for batch_size={self.batch_size}. "
+                "Reduce batch_size or collect more data."
+            )
 
         # Calculate total steps for scheduler
         total_steps = len(train_loader) * self.num_epochs
@@ -368,7 +376,7 @@ class InverseProjectionHandler:
             raise FileNotFoundError(f"Model file not found: {model_path}")
 
         # Load the checkpoint
-        checkpoint = torch.load(model_path, map_location=self.device)
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
 
         # Extract model information
         model_type = checkpoint.get("model_type", "mlp")
@@ -634,18 +642,19 @@ class InverseProjectionHandler:
         return color1 + frac * (color2 - color1)
 
     @staticmethod
-    def generate_vsup_colormap(resolution=256, num_bins=5):
+    def generate_vsup_colormap(resolution=256, num_bins=5, base_brightening=0.12):
         """
         Generate a Value-Suppressing Uncertainty Palette matching frontend VSUP logic:
-        - Uses BrBG color scheme for prediction values
+        - Uses the projection value color scheme for prediction values
         - Uses interpolation to white for uncertainty (matching VSUP "usl" mode)
-        - uncertainty=0 -> full color, uncertainty=1 -> white
+        - uncertainty=0 -> slightly brightened base color, uncertainty=1 -> white
         - Optional quantization into discrete bins
 
         Parameters:
         -----------
         resolution: Resolution of the colormap
         num_bins: Number of discrete bins (set to 0 for continuous map)
+        base_brightening: White-mix factor applied even at minimum uncertainty.
 
         Returns:
         --------
@@ -653,6 +662,8 @@ class InverseProjectionHandler:
         """
         # Create grid
         grid = np.zeros((resolution, resolution, 3))
+        white = np.array([1.0, 1.0, 1.0])
+        low_uncertainty_whitening = float(np.clip(base_brightening, 0.0, 0.95))
 
         # Apply discretization if requested
         if num_bins > 1:
@@ -671,9 +682,9 @@ class InverseProjectionHandler:
                     base_color = InverseProjectionHandler.interpolate_brbg(v_center)
 
                     # Apply uncertainty effect - interpolate with white
-                    # uncertainty=0 -> full color, uncertainty=1 -> white
-                    white = np.array([1.0, 1.0, 1.0])
-                    adjusted_color = (1 - u_center) * base_color + u_center * white
+                    # uncertainty=0 -> slightly brightened base color, uncertainty=1 -> white
+                    suppress = low_uncertainty_whitening + (1.0 - low_uncertainty_whitening) * u_center
+                    adjusted_color = (1.0 - suppress) * base_color + suppress * white
 
                     # Fill the bin area with this color
                     v_min, v_max = int(value_bins[j] * resolution), int(value_bins[j + 1] * resolution)
@@ -697,10 +708,9 @@ class InverseProjectionHandler:
                     base_color = InverseProjectionHandler.interpolate_brbg(v)
 
                     # Apply uncertainty effect - interpolate with white
-                    # This matches VSUP's: d3.interpolateLab(vcolor, "#fff")(uScale(data.u))
-                    # uncertainty=0 -> full color, uncertainty=1 -> white
-                    white = np.array([1.0, 1.0, 1.0])
-                    adjusted_color = (1 - u) * base_color + u * white
+                    # uncertainty=0 -> slightly brightened base color, uncertainty=1 -> white
+                    suppress = low_uncertainty_whitening + (1.0 - low_uncertainty_whitening) * u
+                    adjusted_color = (1.0 - suppress) * base_color + suppress * white
 
                     grid[i, j] = adjusted_color
 
@@ -856,6 +866,10 @@ class InverseProjectionHandler:
             "image": img_str,
             "min_value": float(min(preds)),
             "max_value": float(max(preds)),
+            "prediction_min_value": float(np.min(preds)),
+            "prediction_max_value": float(np.max(preds)),
+            "uncertainty_min_value": float(np.min(uncertainties)),
+            "uncertainty_max_value": float(np.max(uncertainties)),
             "x_range": [float(x_min) - x_buffer, float(x_max) + x_buffer],
             "y_range": [float(y_min) - y_buffer, float(y_max) + y_buffer],
             "point_count": len(coords),

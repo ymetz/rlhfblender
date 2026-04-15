@@ -308,11 +308,10 @@ class ExperimentManager:
             model.learn(self.n_timesteps, **kwargs)
         except KeyboardInterrupt:
             # this allows to save the model when interrupting training
-            pass
-        finally:
-            # Clean progress bar
+            # Clean progress bar (SB3 won't have called on_training_end in this case)
             if len(self.callbacks) > 0:
                 self.callbacks[0].on_training_end()
+        finally:
             # Release resources
             try:
                 assert model.env is not None
@@ -441,6 +440,10 @@ class ExperimentManager:
         self, hyperparams: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], Optional[Callable], List[BaseCallback], Optional[Callable]]:
         self.n_envs = hyperparams.get("n_envs", 1)
+        # Allow callers to pin n_envs (e.g. n_envs=1 for short RLHF phases) by setting
+        # _n_envs_override before setup_experiment() is called.
+        if getattr(self, "_n_envs_override", None) is not None:
+            self.n_envs = self._n_envs_override
 
         if self.verbose > 0:
             print(f"Using {self.n_envs} environments")
@@ -696,9 +699,10 @@ class ExperimentManager:
         ):
             self.monitor_kwargs = dict(info_keywords=("is_success",))
 
-        if "metaworld" not in self.env_name:
-            spec = gym.spec(self.env_name.gym_id)
+        if "metaworld" in self.env_name:
             self.monitor_kwargs = dict(info_keywords=("success",))
+        else:
+            spec = gym.spec(self.env_name.gym_id)
 
         # Define make_env here, so it works with subprocesses
         # when the registry was modified with `--gym-packages`
@@ -735,6 +739,7 @@ class ExperimentManager:
                 vec_env_kwargs=self.vec_env_kwargs,
                 monitor_kwargs=self.monitor_kwargs,
                 seed=self.seed,
+                env_kwargs=env_kwargs,
             )
         else:
             env = make_vec_env(

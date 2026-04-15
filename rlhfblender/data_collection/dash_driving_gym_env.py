@@ -26,6 +26,7 @@ class _DashRuntime:
         viewport_height: int = 768,
     ) -> None:
         self.url = url
+        self.resolved_url = url
         self.headless = headless
         self.rl_config = rl_config
         self.viewport_width = viewport_width
@@ -63,6 +64,20 @@ class _DashRuntime:
         self._ready.set()
         self._loop.run_forever()
 
+    @staticmethod
+    def _candidate_urls(url: str) -> list[str]:
+        candidates = [url]
+        if "127.0.0.1" in url:
+            candidates.append(url.replace("127.0.0.1", "localhost"))
+        elif "localhost" in url:
+            candidates.append(url.replace("localhost", "127.0.0.1"))
+
+        deduped: list[str] = []
+        for candidate in candidates:
+            if candidate not in deduped:
+                deduped.append(candidate)
+        return deduped
+
     async def _ainit(self) -> None:
         from playwright.async_api import async_playwright
 
@@ -72,20 +87,44 @@ class _DashRuntime:
             viewport={"width": self.viewport_width, "height": self.viewport_height}
         )
 
-        # Prevent Dash welcome modal in fresh sessions
+        # Prevent Dash welcome modal in fresh sessions.
         await self._context.add_init_script("() => { window.localStorage.setItem('dash_WelcomeModal', 'hide'); }")
 
         self._page = await self._context.new_page()
-        await self._page.goto(self.url, wait_until="domcontentloaded")
 
-        # Optional hardening in case modal was already toggled by timing/race
-        await self._page.evaluate("""
+        # Some setups expose only one loopback hostname. Try both localhost and 127.0.0.1.
+        last_error: Exception | None = None
+        tried_urls = self._candidate_urls(self.url)
+        for candidate in tried_urls:
+            for _ in range(30):
+                try:
+                    await self._page.goto(candidate, wait_until="domcontentloaded")
+                    self.resolved_url = candidate
+                    last_error = None
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    await asyncio.sleep(0.25)
+            if last_error is None:
+                break
+
+        if last_error is not None:
+            tried = ", ".join(tried_urls)
+            raise RuntimeError(
+                f"Could not reach Dash player. Tried URLs: {tried}. "
+                "Make sure `npm run preview` or `npm run dev` is running and DASH_PLAYER_URL matches it."
+            ) from last_error
+
+        # Optional hardening in case modal was already toggled by timing/race.
+        await self._page.evaluate(
+            """
             () => {
-            window.localStorage.setItem('dash_WelcomeModal', 'hide');
-            const modal = document.getElementById('welcome-modal');
-            if (modal) modal.classList.remove('is-active');
+                window.localStorage.setItem('dash_WelcomeModal', 'hide');
+                const modal = document.getElementById('welcome-modal');
+                if (modal) modal.classList.remove('is-active');
             }
-        """)
+            """
+        )
 
         await self._page.wait_for_function(
             "window.simulator && typeof window.simulator.envReset === 'function' && typeof window.simulator.envStep === 'function'"
@@ -155,11 +194,23 @@ class DashDrivingGymEnv(gym.Env):
         if render_mode not in self.metadata["render_modes"]:
             raise ValueError(f"Unsupported render_mode={render_mode}")
 
-        self.url = url or os.environ.get("DASH_PLAYER_URL", "http://localhost:5173")
+        self.url = url or os.environ.get("DASH_PLAYER_URL", "http://localhost:4173")
         self.render_mode = render_mode
+
+        ui_mode = os.environ.get("DASH_UI_MODE")
+        if ui_mode is None and self.render_mode != "none":
+            ui_mode = "gym"
+        if ui_mode and "ui=" not in self.url:
+            separator = "&" if "?" in self.url else "?"
+            self.url = f"{self.url}{separator}ui={ui_mode}"
+
         # Keep browser headless for non-human modes by default.
         self.headless = (render_mode != "human") if headless is None else headless
-        self.default_reset_options = default_reset_options or {"startMode": "manual", "clearRecording": True}
+        self.default_reset_options = default_reset_options or {
+            "scenarioName": "rough_road",
+            "startMode": "manual",
+            "clearRecording": True,
+        }
         self._rl_config = rl_config
 
         self._playwright = None

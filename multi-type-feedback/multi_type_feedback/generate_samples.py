@@ -153,8 +153,7 @@ def generate_samples(
         final_segment_indices = sorted(set(sample_indices))
 
         if model_file != "random":
-            # Use specified checkpoint index
-            checkpoint_
+            # Use a random checkpoint index from available checkpoints
             model_path = checkpoints_dir.replace("_1", f"_{random.choice(possible_checkpoint_indices)}")
             model = model_class.load(
                 os.path.join(model_path, model_file),

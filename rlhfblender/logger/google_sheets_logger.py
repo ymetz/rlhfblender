@@ -115,7 +115,13 @@ class GoogleSheetsLogger(Logger):
             # Set the event anyway to avoid hanging
             self.init_complete.set()
 
-    async def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
+    async def reset(
+        self,
+        exp: Experiment,
+        env: Environment,
+        suffix: str = None,
+        custom_logger_id: str | None = None,
+    ) -> str:
         """
         Resets the logger asynchronously
 
@@ -125,12 +131,15 @@ class GoogleSheetsLogger(Logger):
         if hasattr(self, "_init_task") and not self._init_task.done():
             self._init_task.cancel()
             try:
-                await self._init_task
+                # Do not block reset indefinitely if Google initialization hangs.
+                await asyncio.wait_for(self._init_task, timeout=2.0)
             except asyncio.CancelledError:
                 pass
+            except asyncio.TimeoutError:
+                print("GoogleSheetsLogger reset: previous init task did not cancel within timeout; continuing.")
 
         # Reset the base logger
-        await super().reset(exp, env, suffix)
+        await super().reset(exp, env, suffix, custom_logger_id=custom_logger_id)
 
         # Reset state
         self.spreadsheet_name = f"Survey_Results_{self.logger_id}"

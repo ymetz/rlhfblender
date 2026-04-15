@@ -28,7 +28,7 @@ if __name__ == "__main__":
         "--max-steps-per-episode",
         type=int,
         help="Maximum number of environment steps per episode during benchmark recording.",
-        default=200,
+        default=250,
     )
 
     group = parser.add_mutually_exclusive_group()
@@ -109,6 +109,65 @@ if __name__ == "__main__":
         "--consistent-start-state",
         action="store_true",
         help="Use the same start state across all checkpoints for consistent comparison.",
+    )
+    parser.add_argument(
+        "--train-reward-models",
+        action="store_true",
+        help="Enable supervised reward model training per checkpoint.",
+    )
+    parser.add_argument(
+        "--reward-model-trajectories",
+        type=int,
+        default=100,
+        help="Number of trajectories sampled per checkpoint for supervised reward model training.",
+    )
+    parser.add_argument(
+        "--reward-model-save-dir",
+        type=str,
+        default="multi-type-feedback/reward_models/checkpoints",
+        help="Output directory for trained reward models.",
+    )
+    parser.add_argument(
+        "--reward-model-max-epochs",
+        type=int,
+        default=100,
+        help="Maximum number of training epochs for each checkpoint reward model.",
+    )
+    parser.add_argument(
+        "--reward-model-patience",
+        type=int,
+        default=8,
+        help="Early-stopping patience for reward model training.",
+    )
+    parser.add_argument(
+        "--reward-model-val-split",
+        type=float,
+        default=0.2,
+        help="Validation split ratio used when training reward models.",
+    )
+    parser.add_argument(
+        "--reward-model-batch-size",
+        type=int,
+        default=64,
+        help="Batch size for supervised reward model training.",
+    )
+    parser.add_argument(
+        "--reward-model-learning-rate",
+        type=float,
+        default=1e-5,
+        help="Learning rate for reward model optimization.",
+    )
+    parser.add_argument(
+        "--reward-model-ensemble-count",
+        type=int,
+        default=4,
+        help="Ensemble count for the reward model network (set to 1 to disable Masksembles).",
+    )
+    parser.add_argument(
+        "--reward-model-seed",
+        type=int,
+        default=42,
+        help="Random seed for reward model training.",
     )
 
     args = parser.parse_args()
@@ -192,6 +251,20 @@ if __name__ == "__main__":
                 "framework": "random" if use_random_policy else args.framework,
                 "consistent_start_state": args.consistent_start_state,
                 "max_steps": args.max_steps_per_episode,
+                "train_reward_model": (
+                    args.train_reward_models
+                    and not use_random_policy
+                    and args.reward_model_trajectories > 0
+                ),
+                "reward_model_trajectories": args.reward_model_trajectories,
+                "reward_model_save_dir": args.reward_model_save_dir,
+                "reward_model_max_epochs": args.reward_model_max_epochs,
+                "reward_model_patience": args.reward_model_patience,
+                "reward_model_val_split": args.reward_model_val_split,
+                "reward_model_batch_size": args.reward_model_batch_size,
+                "reward_model_learning_rate": args.reward_model_learning_rate,
+                "reward_model_ensemble_count": args.reward_model_ensemble_count,
+                "reward_model_seed": args.reward_model_seed,
             }
         )
 

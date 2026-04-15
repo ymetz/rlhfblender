@@ -1,5 +1,7 @@
 import importlib
 import os
+import re
+from glob import glob
 from typing import Any
 
 import gymnasium as gym
@@ -98,6 +100,7 @@ def get_environment(
     n_envs: int = 1,
     environment_config: dict | None = None,
     norm_env_path: str | None = None,
+    checkpoint_step: int | str | None = None,
     additional_packages: list = (),
     gym_entry_point: str | None = "",
 ) -> VecEnv:
@@ -167,19 +170,62 @@ def get_environment(
         vec_env_wrapper = get_wrapper_class(environment_config, "vec_env_wrapper")
         env = vec_env_wrapper(env)
 
+    def _resolve_vecnormalize_stats_path(base_dir: str, checkpoint: int | str | None) -> str | None:
+        """Resolve the best matching VecNormalize stats file for a checkpoint."""
+        default_path = os.path.join(base_dir, "vecnormalize.pkl")
+
+        parsed_checkpoint: int | None = None
+        if checkpoint is not None:
+            try:
+                parsed_checkpoint = int(checkpoint)
+            except (TypeError, ValueError):
+                parsed_checkpoint = None
+
+        if parsed_checkpoint is not None and parsed_checkpoint >= 0:
+            exact_checkpoint_path = os.path.join(base_dir, f"vecnormalize_{parsed_checkpoint}_steps.pkl")
+            if os.path.isfile(exact_checkpoint_path):
+                return exact_checkpoint_path
+
+            candidate_paths = glob(os.path.join(base_dir, "vecnormalize_*_steps.pkl"))
+            checkpoint_candidates: list[tuple[int, str]] = []
+            for candidate in candidate_paths:
+                match = re.search(r"vecnormalize_(\d+)_steps\.pkl$", os.path.basename(candidate))
+                if not match:
+                    continue
+                try:
+                    step = int(match.group(1))
+                except ValueError:
+                    continue
+                checkpoint_candidates.append((step, candidate))
+
+            if checkpoint_candidates:
+                # Prefer the closest earlier stats snapshot (most stable for checkpoint replay),
+                # then fall back to nearest absolute checkpoint if all are later.
+                earlier = [item for item in checkpoint_candidates if item[0] <= parsed_checkpoint]
+                if earlier:
+                    return max(earlier, key=lambda item: item[0])[1]
+                return min(checkpoint_candidates, key=lambda item: abs(item[0] - parsed_checkpoint))[1]
+
+        if os.path.isfile(default_path):
+            return default_path
+
+        return None
+
     # Load saved stats for normalizing input and rewards
     # And optionally stack frames
     if norm_env_path and environment_config.get("normalize", False):
+        normalize_kwargs = environment_config.get("normalize_kwargs", {})
         print("Loading running average")
-        print(f"with params: {environment_config['normalize_kwargs']}")
-        path_ = os.path.join(norm_env_path, "vecnormalize.pkl")
-        if os.path.exists(path_):
-            env = VecNormalize.load(path_, env)
+        print(f"with params: {normalize_kwargs}")
+        stats_path = _resolve_vecnormalize_stats_path(norm_env_path, checkpoint_step)
+        if stats_path and os.path.exists(stats_path):
+            print(f"Loading VecNormalize stats from: {stats_path}")
+            env = VecNormalize.load(stats_path, env)
             # Deactivate training and reward normalization
             env.training = False
             env.norm_reward = False
         else:
-            raise ValueError(f"VecNormalize stats {path_} not found")
+            raise ValueError(f"VecNormalize stats not found in {norm_env_path}")
 
     n_stack = environment_config.get("frame_stack", 0)
     try:

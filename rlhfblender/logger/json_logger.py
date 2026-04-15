@@ -48,8 +48,12 @@ class JSONLogger(Logger):
 
             async def write_empty_json(file_path):
                 def _write():
-                    with open(file_path, "w") as f:
-                        f.write(json.dumps([]))
+                    # Only initialize if file does not exist.
+                    # This prevents overwriting existing per-phase logs when reset
+                    # is called multiple times within the same phase/session.
+                    if not os.path.exists(file_path):
+                        with open(file_path, "w") as f:
+                            f.write(json.dumps([]))
 
                 await loop.run_in_executor(None, _write)
 
@@ -64,7 +68,13 @@ class JSONLogger(Logger):
             # Set the event anyway to avoid hanging
             self.init_complete.set()
 
-    async def reset(self, exp: Experiment, env: Environment, suffix: str = None) -> str:
+    async def reset(
+        self,
+        exp: Experiment,
+        env: Environment,
+        suffix: str = None,
+        custom_logger_id: str | None = None,
+    ) -> str:
         """
         Resets the logger asynchronously
 
@@ -79,7 +89,7 @@ class JSONLogger(Logger):
                 pass
 
         # Reset base logger
-        await super().reset(exp, env, suffix)
+        await super().reset(exp, env, suffix, custom_logger_id=custom_logger_id)
 
         # Reset paths and state
         self.logger_json_path = "logs/" + self.logger_id + ".json"

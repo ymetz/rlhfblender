@@ -3,22 +3,33 @@ FROM $PARENT_IMAGE
 ARG PYTORCH_DEPS=cpuonly
 ARG PYTHON_VERSION=3.10
 ARG MAMBA_DOCKERFILE_ACTIVATE=1  # (otherwise python will not be found)
+ARG MUJOCO_GL_BACKEND=egl
 
-# Install OpenCV to encode video
-#USER root
-#RUN apt-get update && apt-get install -y ffmpeg
-#USER $MAMBA_USER
+# Install modern headless rendering libs for `mujoco` (new bindings):
+# default to EGL, with OSMesa available as fallback.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libegl1 \
+    libgl1 \
+    libgles2 \
+    libglvnd0 \
+    libglfw3 \
+    libosmesa6 \
+    libosmesa6-dev && \
+    rm -rf /var/lib/apt/lists/*
+USER $MAMBA_USER
 
 # Install micromamba env and dependencies
 RUN micromamba install -n base -y python=$PYTHON_VERSION \
-    pytorch $PYTORCH_DEPS opencv -c conda-forge -c pytorch -c nvidia && \
-    micromamba install -c conda-forge glew mesalib glfw && \
+    pytorch $PYTORCH_DEPS -c conda-forge -c pytorch -c nvidia && \
+    micromamba install -c conda-forge libgcc-ng libstdcxx-ng && \
     micromamba clean --all --yes
 
 ENV CODE_DIR=/home/${MAMBA_USER}
 ENV DISPLAY=:99
-ENV MUJOCO_GL=osmesa
-ENV PYOPENGL_PLATFORM=osmesa
+ENV MUJOCO_GL=${MUJOCO_GL_BACKEND}
+ENV PYOPENGL_PLATFORM=${MUJOCO_GL_BACKEND}
+ENV LD_LIBRARY_PATH=/opt/conda/lib:${LD_LIBRARY_PATH}
 # Disable numba JIT compilation as it causes problems in the docker container
 ENV NUMBA_DISABLE_JIT=1
 

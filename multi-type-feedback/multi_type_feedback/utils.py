@@ -68,6 +68,7 @@ class TrainingUtils:
                 "Meta-World/MT1",
                 env_name=environment_name,
                 seed=seed if seed is not None else random.randint(0, 10000),
+                disable_env_checker=True,  # suppress known Metaworld obs-space bound warnings
                 **(env_kwargs or {}),
             )
         else:
@@ -306,8 +307,9 @@ class L2RegulationCallback(pytorch_lightning.Callback):
             # Reduce regularization if validation is too close to training
             self.current_l2 = max(1e-6, self.current_l2 * 0.8)
 
-        # Log current L2 value
-        trainer.logger.log_metrics({"l2_regularization": self.current_l2})
+        # Log current L2 value (logger may be None when wandb is disabled)
+        if trainer.logger is not None:
+            trainer.logger.log_metrics({"l2_regularization": self.current_l2})
 
 
 class RewardFn(Protocol):

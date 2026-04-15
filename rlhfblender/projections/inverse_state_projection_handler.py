@@ -434,7 +434,7 @@ def collect_trajectory_states_from_episode(episode_data: dict[str, np.ndarray], 
 
 
 def collect_states_from_multiple_checkpoints(
-    db_experiment: str,
+    db_experiment: str | int,
     checkpoints: list[int],
     environment_name: str,
     environment_config: dict[str, Any] = None,
@@ -464,12 +464,31 @@ def collect_states_from_multiple_checkpoints(
     all_coordinates = []
     checkpoint_indices = []  # Track which checkpoint each state belongs to
 
+    try:
+        experiment_id = int(db_experiment)
+    except (TypeError, ValueError):
+        experiment_id = None
+
+    def _episode_index_from_path(file_path: str) -> int | None:
+        base = os.path.basename(file_path)
+        if not (base.startswith("env_states_") and base.endswith(".npy")):
+            return None
+        try:
+            return int(base[len("env_states_") : -len(".npy")])
+        except ValueError:
+            return None
+
     for checkpoint_idx, checkpoint in enumerate(checkpoints):
         logger.info(f"Processing checkpoint {checkpoint} ({checkpoint_idx+1}/{len(checkpoints)})")
 
         # Find env_states files for this checkpoint
-        env_states_pattern = os.path.join("data", "env_states", environment_name, f"*{checkpoint}", "env_states_*.npy")
-        env_states_files = glob.glob(env_states_pattern)
+        if experiment_id is not None:
+            run_dir = f"{environment_name}_{experiment_id}_{checkpoint}"
+            env_states_pattern = os.path.join("data", "env_states", environment_name, run_dir, "env_states_*.npy")
+        else:
+            env_states_pattern = os.path.join("data", "env_states", environment_name, f"*{checkpoint}", "env_states_*.npy")
+
+        env_states_files = sorted(glob.glob(env_states_pattern), key=lambda path: (_episode_index_from_path(path) or 10**9))
 
         if not env_states_files:
             logger.warning(f"No env_states files found for checkpoint {checkpoint}")
@@ -480,6 +499,17 @@ def collect_states_from_multiple_checkpoints(
 
         for env_states_file in files_to_process:
             try:
+                episode_idx = _episode_index_from_path(env_states_file)
+                run_dir_name = os.path.basename(os.path.dirname(env_states_file))
+                episode_file = (
+                    os.path.join("data", "episodes", environment_name, run_dir_name, f"benchmark_{episode_idx}.npz")
+                    if episode_idx is not None
+                    else None
+                )
+                if episode_file is not None and not os.path.isfile(episode_file):
+                    # Skip stale env_states (commonly the trailing incomplete episode).
+                    continue
+
                 # Load env_states from file
                 trajectory_states = load_env_states_from_file(env_states_file)
 

@@ -68,13 +68,26 @@ async def startup():
     await db_handler.create_table_from_model(database, TrackingItem)
 
     # initialize logger
-    logger_type = os.environ.get("RLHFBLENDER_LOGGER_TYPE", "csv")
+    logger_type = os.environ.get("RLHFBLENDER_LOGGER_TYPE", "csv").strip().lower()
     if logger_type == "sql":
         app.state.logger = SQLLogger(None, None, os.path.join("logs"))
     elif logger_type == "json":
         app.state.logger = JSONLogger(None, None, os.path.join("logs"))
+    elif logger_type == "csv":
+        app.state.logger = CSVLogger(None, None, os.path.join("logs"))
+    elif logger_type in {"google", "google_sheets", "gsheets"}:
+        credentials_file = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "google-service-account.json")
+        if os.path.isfile(credentials_file):
+            print("Using Google Sheets logger.")
+            app.state.logger = GoogleSheetsLogger(None, None, os.path.join("logs"), credentials_file)
+        else:
+            print(
+                "[WARN] RLHFBLENDER_LOGGER_TYPE requests Google Sheets logger but credentials file "
+                f"'{credentials_file}' is missing. Falling back to CSV logger."
+            )
+            app.state.logger = CSVLogger(None, None, os.path.join("logs"))
     else:
-        # check if credentials file is provided, if so use Google Sheets logger
+        # Auto mode for backwards compatibility: prefer Google Sheets when credentials are present.
         credentials_file = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "google-service-account.json")
         if os.path.isfile(credentials_file):
             print("Using Google Sheets logger.")

@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import logging
 import os
 from typing import Any
 
@@ -25,6 +27,7 @@ from rlhfblender.utils import convert_to_serializable, process_env_name
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
 router = APIRouter(prefix="/data")
+logger = logging.getLogger(__name__)
 
 
 @router.get("/get_available_frameworks", response_model=list[str])
@@ -103,16 +106,26 @@ async def get_uncertainty(
     episode_num: int,
 ):
     """Return step rewards a list for the selected episode"""
-    # Replace with your rewards file path
-    uncertainty = np.load(
-        os.path.join(
-            "data",
-            "uncertainty",
-            process_env_name(env_name),
-            f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
-            f"uncertainty_{episode_num}.npy",
-        ),
+    uncertainty_path = os.path.join(
+        "data",
+        "uncertainty",
+        process_env_name(env_name),
+        f"{process_env_name(env_name)}_{benchmark_id}_{checkpoint_step}",
+        f"uncertainty_{episode_num}.npy",
     )
+
+    if not os.path.exists(uncertainty_path):
+        logger.warning(
+            "Uncertainty file missing for env=%s benchmark=%s checkpoint=%s episode=%s (%s)",
+            env_name,
+            benchmark_id,
+            checkpoint_step,
+            episode_num,
+            uncertainty_path,
+        )
+        return []
+
+    uncertainty = np.load(uncertainty_path)
 
     return uncertainty.tolist()
 
@@ -182,25 +195,57 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     if db_env is not None:
         action_space = db_env.action_space_info
 
-    # Get the action distribution
-    episode_benchmark_data = np.load(
-        os.path.join(
-            "data",
-            "episodes",
-            process_env_name(request.env_name),
-            f"{process_env_name(request.env_name)}_{request.benchmark_id}_{request.checkpoint_step}",
-            f"benchmark_{request.episode_num}.npz",
-        ),
-        allow_pickle=True,
+    episode_path = os.path.join(
+        "data",
+        "episodes",
+        process_env_name(request.env_name),
+        f"{process_env_name(request.env_name)}_{request.benchmark_id}_{request.checkpoint_step}",
+        f"benchmark_{request.episode_num}.npz",
     )
 
     try:
-        action_distribution = episode_benchmark_data["probs"][request.step]
+        episode_benchmark_data = np.load(
+            episode_path,
+            allow_pickle=True,
+        )
+    except FileNotFoundError:
+        logger.warning("Episode file not found for single-step details: %s", episode_path)
+        return convert_to_serializable(
+            {
+                "action_distribution": [0.0],
+                "action": 0,
+                "reward": 0.0,
+                "info": {},
+                "action_space": action_space,
+            },
+        )
+
+    probs = episode_benchmark_data["probs"] if "probs" in episode_benchmark_data else []
+    actions = episode_benchmark_data["actions"] if "actions" in episode_benchmark_data else []
+    rewards = episode_benchmark_data["rewards"] if "rewards" in episode_benchmark_data else []
+    infos = episode_benchmark_data["infos"] if "infos" in episode_benchmark_data else []
+
+    if len(actions) == 0 or len(rewards) == 0 or len(infos) == 0:
+        logger.warning("Episode data incomplete for single-step details: %s", episode_path)
+        return convert_to_serializable(
+            {
+                "action_distribution": [0.0],
+                "action": 0,
+                "reward": 0.0,
+                "info": {},
+                "action_space": action_space,
+            },
+        )
+
+    safe_step = int(np.clip(request.step, 0, len(actions) - 1))
+
+    try:
+        action_distribution = probs[safe_step] if len(probs) > safe_step else [0.0]
     except IndexError:
         action_distribution = [0.0]
-    action = episode_benchmark_data["actions"][request.step]
-    reward = episode_benchmark_data["rewards"][request.step]
-    info = episode_benchmark_data["infos"][request.step]
+    action = actions[safe_step]
+    reward = rewards[safe_step]
+    info = infos[safe_step]
 
     return convert_to_serializable(
         {
@@ -383,6 +428,8 @@ async def reset_sampler(request: Request):
     """
     experiment_id = request.query_params.get("experiment_id", None)
     sampling_strategy = request.query_params.get("sampling_strategy", None)
+    session_name = request.query_params.get("session_name", None)
+    phase = request.query_params.get("phase", None)
 
     if experiment_id is None:
         return "No experiment id given"
@@ -390,7 +437,40 @@ async def reset_sampler(request: Request):
     experiment: Experiment = await db_handler.get_single_entry(database, Experiment, key=experiment_id)
     environment = await db_handler.get_single_entry(database, Environment, key=experiment.env_id, key_column="registration_id")
 
-    session_id = await request.app.state.logger.reset(experiment, environment)
+    logger.info(
+        "reset_sampler start: experiment_id=%s env_id=%s sampling_strategy=%s session_name=%s phase=%s",
+        experiment_id,
+        experiment.env_id,
+        sampling_strategy,
+        session_name,
+        phase,
+    )
+
+    custom_logger_id = None
+    if session_name:
+        custom_logger_id = session_name
+        if phase:
+            custom_logger_id = f"{session_name}_phase_{phase}"
+
+    try:
+        session_id = await asyncio.wait_for(
+            request.app.state.logger.reset(
+                experiment,
+                environment,
+                custom_logger_id=custom_logger_id,
+            ),
+            timeout=15.0,
+        )
+    except asyncio.TimeoutError as exc:
+        logger.error(
+            "reset_sampler timeout while resetting logger. "
+            "This is often caused by Google Sheets connectivity issues. "
+            "Set RLHFBLENDER_LOGGER_TYPE=csv to disable remote sheets logging."
+        )
+        raise HTTPException(
+            status_code=504,
+            detail="Logger reset timed out (possible Google Sheets connectivity issue).",
+        ) from exc
 
     print("Resetting sampler:", experiment_id, experiment.env_id, sampling_strategy)
 
