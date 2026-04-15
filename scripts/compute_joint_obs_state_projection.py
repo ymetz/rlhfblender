@@ -60,6 +60,24 @@ JOINT_PROJECTIONS_DIR.mkdir(parents=True, exist_ok=True)
 JOINT_OBS_STATE_DIR = Path("data/saved_projections/joint_obs_state")
 JOINT_OBS_STATE_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def to_json_serializable(value: Any) -> Any:
+    """
+    Recursively convert common non-JSON-native values (NumPy scalars/arrays, Path)
+    into plain Python types suitable for `json.dump`.
+    """
+    if isinstance(value, dict):
+        return {str(k): to_json_serializable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [to_json_serializable(v) for v in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
 def compute_margins(all_coords, margin_percent=0.15):
     """
     Compute uniform margins as a percentage of the maximum data range.
@@ -83,8 +101,8 @@ def compute_margins(all_coords, margin_percent=0.15):
     # Apply uniform margin based on maximum range
     uniform_margin = max_range * margin_percent
     
-    global_x_range = (x_min - uniform_margin, x_max + uniform_margin)
-    global_y_range = (y_min - uniform_margin, y_max + uniform_margin)
+    global_x_range = (float(x_min - uniform_margin), float(x_max + uniform_margin))
+    global_y_range = (float(y_min - uniform_margin), float(y_max + uniform_margin))
     
     return global_x_range, global_y_range
 
@@ -321,7 +339,7 @@ class JointProjectionComputer:
 
         metadata_path = JOINT_PROJECTIONS_DIR / f"{joint_filename}_metadata.json"
         with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
+            json.dump(to_json_serializable(metadata), f, indent=2)
         logger.info(f"Saved metadata to: {metadata_path}")
 
         return str(metadata_path)
@@ -382,7 +400,7 @@ class JointObservationStateProjectionComputer:
         feature_embedding: bool = True,
         additional_gym_packages: List[str] = None,
         max_trajectories_per_checkpoint: int = 50,
-        max_steps_per_trajectory: int = 200,
+        max_steps_per_trajectory: int = 300,
         state_network_params: Dict[str, Any] = None,
     ):
         self.experiment_name = experiment_name
@@ -442,7 +460,7 @@ class JointObservationStateProjectionComputer:
 
         logger.info("Loading environment states...")
         all_states, _, checkpoint_indices = collect_states_from_multiple_checkpoints(
-            db_experiment=self.experiment_name,
+            db_experiment=self.observation_computer.db_experiment.id,
             checkpoints=self.checkpoints,
             environment_name=self.env_name,
             environment_config=self.environment_config,
@@ -585,7 +603,7 @@ class JointObservationStateProjectionComputer:
 
         metadata_path = JOINT_OBS_STATE_DIR / f"{joint_filename}_metadata.json"
         with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
+            json.dump(to_json_serializable(metadata), f, indent=2)
         logger.info(f"Saved combined metadata to: {metadata_path}")
 
         return str(metadata_path)

@@ -1,6 +1,7 @@
 import os
 import pickle
 import random
+from copy import deepcopy
 from collections.abc import Callable
 from typing import Any
 
@@ -178,15 +179,21 @@ class EpisodeRecorder:
                 self.reset_info = {"mission": self.observations["mission"], "seed": seed}
 
     def update_buffers(self, actions, additional_outputs):
-        self.buffers["obs"].append(np.squeeze(self.observations))
-        self.buffers["actions"].append(np.squeeze(actions))
-        self.buffers["rewards"].append(np.squeeze(self.rewards))
-        self.buffers["dones"].append(np.squeeze(self.dones))
+        # Store immutable snapshots so later in-loop resets/updates do not
+        # mutate already-recorded trajectory entries.
+        self.buffers["obs"].append(np.array(np.squeeze(self.observations), copy=True))
+        self.buffers["actions"].append(np.array(np.squeeze(actions), copy=True))
+        self.buffers["rewards"].append(np.array(np.squeeze(self.rewards), copy=True))
+        self.buffers["dones"].append(np.array(np.squeeze(self.dones), copy=True))
         if "feature_extractor_output" in additional_outputs:
-            self.buffers["features"].append(np.squeeze(additional_outputs["feature_extractor_output"]))
+            self.buffers["features"].append(np.array(np.squeeze(additional_outputs["feature_extractor_output"]), copy=True))
         if "log_probs" in additional_outputs:
-            self.buffers["probs"].append(additional_outputs["log_probs"])
-        self.buffers["infos"].append(self.process_infos(additional_outputs))
+            log_probs = additional_outputs["log_probs"]
+            if isinstance(log_probs, np.ndarray):
+                self.buffers["probs"].append(np.array(log_probs, copy=True))
+            else:
+                self.buffers["probs"].append(deepcopy(log_probs))
+        self.buffers["infos"].append(deepcopy(self.process_infos(additional_outputs)))
 
         # Save environment state if the environment supports it
         if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
@@ -194,14 +201,14 @@ class EpisodeRecorder:
             env_states = []
             for i in range(self.n_envs):
                 if hasattr(self.env.envs[i], "save_state"):
-                    env_states.append(self.env.envs[i].save_state())
+                    env_states.append(deepcopy(self.env.envs[i].save_state()))
                 else:
                     env_states.append(None)
             self.buffers["env_states"].append(env_states)
         else:
             # For single environment
             if hasattr(self.env, "save_state"):
-                self.buffers["env_states"].append(self.env.save_state())
+                self.buffers["env_states"].append(deepcopy(self.env.save_state()))
             else:
                 self.buffers["env_states"].append(None)
 
@@ -294,6 +301,18 @@ class EpisodeRecorder:
             self.states[i] *= 0
 
     def reset_environment(self, i):
+        if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
+            # Always hard-reset the concrete sub-env when an episode ends.
+            # This clears wrapper-internal counters (e.g. TimeLimit elapsed steps)
+            # before optionally restoring a persistent initial state.
+            reset_result = self.env.envs[i].reset()
+            if isinstance(reset_result, tuple):
+                reset_obs = reset_result[0]
+            else:
+                reset_obs = reset_result
+            if reset_obs is not None:
+                self.observations[i] = reset_obs
+
         if self.reset_to_initial_state:
             if isinstance(self.env, VecEnv) and hasattr(self.env, "envs"):
                 # Use load_state method to reset to initial state for VecEnv
@@ -423,7 +442,7 @@ class EpisodeRecorder:
         os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
         print("[INFO] Saving episodes to", self.save_path + ".npz")
         with open(os.path.join(self.save_path + ".npz"), "wb") as f:
-            np.savez(
+            np.savez_compressed(
                 f,
                 obs=self.buffers["obs"],
                 rewards=self.buffers["rewards"],

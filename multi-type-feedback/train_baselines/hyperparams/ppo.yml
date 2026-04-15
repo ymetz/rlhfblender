@@ -652,15 +652,15 @@ metaworld-sweep-into-v3: &metaworld-defaults
     policy_kwargs: "dict(
         net_arch=dict(pi=[256, 256, 256], vf=[256, 256, 256])
     )"
-    batch_size: 64
-    gamma: 0.9
-    learning_rate: !!float 1e-5
-    n_envs: 1
-    n_steps: 2048
-    ent_coef: 0.0
+    batch_size: 4096
+    gamma: 0.99
+    learning_rate: !!float 3e-4
+    n_envs: 16
+    n_steps: 256
+    ent_coef: 0.001
     n_epochs: 20
-    clip_range: 0.2
-    gae_lambda: 0.9
+    clip_range: 0.4
+    gae_lambda: 0.92
     n_timesteps: !!float 1e6
 
 metaworld-button-press-v3:

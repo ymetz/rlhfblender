@@ -6,8 +6,8 @@
     "loggerMode": "local",
     "selectedUiConfigs": [
         {
-            "id": "8db3c247",
-            "name": "Cluster-Rating"
+            "id": "19302d54",
+            "name": "Comparative"
         },
         {
             "id": "2d410252",
@@ -18,8 +18,8 @@
             "name": "Demonstrative"
         },
         {
-            "id": "19302d54",
-            "name": "Comparative"
+            "id": "8db3c247",
+            "name": "Cluster-Rating"
         },
         {
             "id": "590e07bb",

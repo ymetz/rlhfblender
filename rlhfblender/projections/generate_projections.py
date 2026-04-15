@@ -617,6 +617,20 @@ async def compute_projection(
         Dictionary with projection results
     """
     try:
+        def _read_npz_scalar(data: Any, key: str, default: Any):
+            if key not in data:
+                return default
+            value = data[key]
+            try:
+                if isinstance(value, np.ndarray):
+                    if value.shape == ():
+                        return value.item()
+                    if value.size == 1:
+                        return value.reshape(-1)[0].item()
+                return value
+            except Exception:
+                return default
+
         # Convert step_range from string to list if provided
         step_range_list = None
         if step_range != "[]":
@@ -628,18 +642,77 @@ async def compute_projection(
             if os.path.exists(projection_save_path):
                 print(f"Loading cached projection from {projection_save_path}")
                 cached_projection = np.load(projection_save_path, allow_pickle=True)
-                return {
-                    "projection": cached_projection["projection_array"].tolist(),
-                    "labels": cached_projection["labels"].tolist(),
-                    "centroids": cached_projection["centroids"].tolist(),
-                    "merged_points": cached_projection["merged_points"].tolist(),
-                    "connections": cached_projection["connections"].tolist(),
-                    "feature_projection": cached_projection["feature_projection"].tolist(),
-                    "transition_projection": cached_projection["transition_projection"].tolist(),
-                    "actions": cached_projection["actions"].tolist(),
-                    "dones": cached_projection["dones"].tolist(),
-                    "episode_indices": cached_projection["episode_indices"].tolist(),
-                }
+                requested_props_json = json.dumps(projection_props or {}, sort_keys=True)
+                requested_joint_path = str(joint_projection_path or "")
+
+                has_cache_meta = all(
+                    key in cached_projection
+                    for key in (
+                        "meta_sequence_length",
+                        "meta_step_range",
+                        "meta_reproject",
+                        "meta_use_one_d_projection",
+                        "meta_append_time",
+                        "meta_projection_props",
+                        "meta_joint_projection_path",
+                    )
+                )
+
+                if not has_cache_meta:
+                    print(
+                        "Warning: Using legacy cached projection without request metadata. "
+                        f"hash={projection_hash}"
+                    )
+                    return {
+                        "projection": cached_projection["projection_array"].tolist(),
+                        "labels": cached_projection["labels"].tolist(),
+                        "centroids": cached_projection["centroids"].tolist(),
+                        "merged_points": cached_projection["merged_points"].tolist(),
+                        "connections": cached_projection["connections"].tolist(),
+                        "feature_projection": cached_projection["feature_projection"].tolist(),
+                        "transition_projection": cached_projection["transition_projection"].tolist(),
+                        "actions": cached_projection["actions"].tolist(),
+                        "dones": cached_projection["dones"].tolist(),
+                        "episode_indices": cached_projection["episode_indices"].tolist(),
+                    }
+
+                cached_sequence_length = int(_read_npz_scalar(cached_projection, "meta_sequence_length", 1))
+                cached_step_range = str(_read_npz_scalar(cached_projection, "meta_step_range", "[]"))
+                cached_reproject = bool(_read_npz_scalar(cached_projection, "meta_reproject", False))
+                cached_use_one_d = bool(_read_npz_scalar(cached_projection, "meta_use_one_d_projection", False))
+                cached_append_time = bool(_read_npz_scalar(cached_projection, "meta_append_time", False))
+                cached_props_json = str(_read_npz_scalar(cached_projection, "meta_projection_props", "{}"))
+                cached_joint_path = str(_read_npz_scalar(cached_projection, "meta_joint_projection_path", ""))
+
+                cache_matches_request = (
+                    cached_sequence_length == int(sequence_length)
+                    and cached_step_range == str(step_range)
+                    and cached_reproject == bool(reproject)
+                    and cached_use_one_d == bool(use_one_d_projection)
+                    and cached_append_time == bool(append_time)
+                    and cached_props_json == requested_props_json
+                    and cached_joint_path == requested_joint_path
+                )
+
+                if cache_matches_request:
+                    return {
+                        "projection": cached_projection["projection_array"].tolist(),
+                        "labels": cached_projection["labels"].tolist(),
+                        "centroids": cached_projection["centroids"].tolist(),
+                        "merged_points": cached_projection["merged_points"].tolist(),
+                        "connections": cached_projection["connections"].tolist(),
+                        "feature_projection": cached_projection["feature_projection"].tolist(),
+                        "transition_projection": cached_projection["transition_projection"].tolist(),
+                        "actions": cached_projection["actions"].tolist(),
+                        "dones": cached_projection["dones"].tolist(),
+                        "episode_indices": cached_projection["episode_indices"].tolist(),
+                    }
+
+                print(
+                    "Warning: Cached projection settings do not match current request. "
+                    f"Recomputing projection for hash={projection_hash}. "
+                    f"(cached sequence_length={cached_sequence_length}, requested sequence_length={sequence_length})"
+                )
 
         # Preprocess input data
         embedding_input, feature_input, transition_input, episode_indices = preprocess_input_data(
@@ -702,6 +775,13 @@ async def compute_projection(
                 actions=episode_data["actions"],
                 dones=episode_data["dones"],
                 episode_indices=episode_indices,
+                meta_sequence_length=np.array(int(sequence_length), dtype=np.int32),
+                meta_step_range=np.array(str(step_range)),
+                meta_reproject=np.array(bool(reproject)),
+                meta_use_one_d_projection=np.array(bool(use_one_d_projection)),
+                meta_append_time=np.array(bool(append_time)),
+                meta_projection_props=np.array(json.dumps(projection_props or {}, sort_keys=True)),
+                meta_joint_projection_path=np.array(str(joint_projection_path or "")),
             )
 
         # Return results

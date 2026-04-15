@@ -8,7 +8,7 @@
   - - env
     - metaworld-sweep-into-v3
   - - env_kwargs
-    - max_episode_steps: 150
+    - max_episode_steps: 200
   - - eval_env_kwargs
     - null
   - - eval_episodes

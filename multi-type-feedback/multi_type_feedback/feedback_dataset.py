@@ -430,7 +430,7 @@ class FeedbackDataset(Dataset):
                 [e * -1 for e in feedback_data["opt_gaps"]]
             ), np.max([e * -1 for e in feedback_data["opt_gaps"]])
             rew_diff = np.abs(rews_max - rews_min)
-            gamma = discount_factors[env_name]
+            gamma = discount_factor
 
             flipped = 0
             for comp in feedback_data["corrections"]:

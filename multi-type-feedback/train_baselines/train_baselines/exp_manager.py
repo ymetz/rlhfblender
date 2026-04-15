@@ -308,11 +308,10 @@ class ExperimentManager:
             model.learn(self.n_timesteps, **kwargs)
         except KeyboardInterrupt:
             # this allows to save the model when interrupting training
-            pass
-        finally:
-            # Clean progress bar
+            # Clean progress bar (SB3 won't have called on_training_end in this case)
             if len(self.callbacks) > 0:
                 self.callbacks[0].on_training_end()
+        finally:
             # Release resources
             try:
                 assert model.env is not None

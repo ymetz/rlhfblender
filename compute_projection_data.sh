@@ -4,13 +4,13 @@
 set -e
 
 # Default values
-EXPERIMENT_NAME="Metaworld-With-States"
-ENV_NAME="metaworld-sweep-into-v3"
+EXPERIMENT_NAME="Dash-Driving"
+ENV_NAME="dash-driving-v0"
 CHECKPOINTS=(0)
 PROJECTION_METHOD="PCA"
 OUTPUT_DIR="data/saved_projections"
 NUM_EPISODES=10
-EXPER_MODEL_PATH="multi-type-feedback/train_baselines/gt_agents/ppo/metaworld-sweep-into-v3_1"
+EXPER_MODEL_PATH="multi-type-feedback/train_baselines/gt_agents/ppo/dash-driving-v0_3"
 REWARD_MODEL="multi-type-feedback/reward_models/ppo_metaworld-sweep-into-v3_12_evaluative_12.ckpt"
 POLICY_MODEL="multi-type-feedback/train_baselines/gt_agents/ppo/metaworld-sweep-into-v3_1/best_model.zip"
 ADDITIONAL_GYM_PACKAGES="metaworld"

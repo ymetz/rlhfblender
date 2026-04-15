@@ -14,6 +14,7 @@ from multi_type_feedback.save_reset_wrapper import SaveResetEnvWrapper
 
 from rlhfblender.data_collection.environment_handler import get_environment
 from rlhfblender.data_models.global_models import Environment, Experiment
+from rlhfblender.utils import process_env_name
 
 
 def _sanitize_component(value: str | None) -> str:
@@ -66,6 +67,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
         db_env: Environment,
         seed: int = 42,
         initial_state: dict | None = None,
+        checkpoint_step: int | None = None,
         target_width: int = 480,
         target_height: int = 360,
         target_fps: int = 15,
@@ -142,11 +144,27 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self.experiment_id = getattr(exp, "id", None)
         self.experiment_name = getattr(exp, "exp_name", "")
         self.environment_id = getattr(db_env, "registration_id", "")
-        self.current_checkpoint: int | None = None
+        self.current_checkpoint: int | None = checkpoint_step
         self.projection_method: str | None = None
         self.projection_props: dict | None = None
         self.last_saved_path: Path | None = None
         self.last_saved_metadata_path: Path | None = None
+
+    def _resolve_norm_env_path(self) -> str | None:
+        model_path = getattr(self.exp, "path", "") or ""
+        if not model_path:
+            return None
+        env_component = process_env_name(self.db_env.registration_id)
+        candidates = [
+            Path(model_path) / env_component,
+            Path(model_path),
+        ]
+        for candidate in candidates:
+            if (candidate / "vecnormalize.pkl").is_file():
+                return str(candidate)
+            if list(candidate.glob("vecnormalize_*_steps.pkl")):
+                return str(candidate)
+        return None
 
     def touch(self):
         """Update last access time for session TTL handling."""
@@ -196,12 +214,24 @@ class GymEnvironmentTrack(VideoStreamTrack):
             else:
                 env_config = self.exp.environment_config.copy() if self.exp.environment_config else {}
             env_config["render_mode"] = "rgb_array"
+            norm_env_path = self._resolve_norm_env_path()
+            if norm_env_path and "normalize" not in env_config:
+                env_config["normalize"] = True
+                env_config.setdefault("normalize_kwargs", {})
+            if norm_env_path:
+                print(
+                    f"GymEnvironmentTrack {self.session_id}: using VecNormalize stats from "
+                    f"{norm_env_path} (checkpoint={self.current_checkpoint})"
+                )
+            else:
+                print(f"GymEnvironmentTrack {self.session_id}: no VecNormalize stats path resolved")
 
             env_wrapper = get_environment(
                 self.db_env.registration_id,
                 environment_config=env_config,
                 n_envs=1,
-                norm_env_path=None,
+                norm_env_path=norm_env_path,
+                checkpoint_step=self.current_checkpoint,
                 additional_packages=self.db_env.additional_gym_packages,
                 gym_entry_point=self.db_env.gym_entry_point,
             )

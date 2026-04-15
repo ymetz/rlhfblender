@@ -22,6 +22,7 @@ from rlhfblender.projections.generate_projections import (
     load_episode_data,
     process_env_name,
 )
+from rlhfblender.projections.joint_projection_metadata import select_joint_projection_metadata
 
 # Import projection handlers
 from rlhfblender.projections.inverse_projection_handler import InverseProjectionHandler
@@ -144,26 +145,8 @@ async def generate_projection(
     db_experiment = await get_single_entry(database, Experiment, benchmark_id)
     env_name = process_env_name(db_experiment.env_id)
 
-    # check if cached file exists (file name: data/saved_projections/envname_exp_id_checkpoint_step_projection_method.json)
+    # Projection hash used for cache persistence.
     projection_hash = f"{process_env_name(env_name)}_{db_experiment.id}_{checkpoint_step}_{projection_method}"
-
-    if projection_hash is not None:
-        projection_save_path = os.path.join("data", "saved_projections", f"{projection_hash}.npz")
-        if os.path.exists(projection_save_path):
-            print(f"Loading cached projection from {projection_save_path}")
-            cached_projection = np.load(projection_save_path, allow_pickle=True)
-            return {
-                "projection": cached_projection["projection_array"].tolist(),
-                "labels": cached_projection["labels"].tolist(),
-                "centroids": cached_projection["centroids"].tolist(),
-                "merged_points": cached_projection["merged_points"].tolist(),
-                "connections": cached_projection["connections"].tolist(),
-                "feature_projection": cached_projection["feature_projection"].tolist(),
-                "transition_projection": cached_projection["transition_projection"].tolist(),
-                "actions": cached_projection["actions"].tolist(),
-                "dones": cached_projection["dones"].tolist(),
-                "episode_indices": cached_projection["episode_indices"].tolist(),
-            }
 
     # Find available episodes
     episode_nums = get_available_episodes(experiment=db_experiment, checkpoint_step=checkpoint_step)
@@ -200,22 +183,24 @@ async def generate_projection(
     # Compute projection
     # Try to locate a joint projection metadata to ensure coordinates are in the
     # same global frame as any precomputed grid images
-    joint_metadata_path = None
-    try:
-        import glob
-
-        # Prefer joint obs-state metadata, then fall back to observation-only
-        joint_metadata_pattern = f"data/saved_projections/joint_obs_state/{db_experiment.env_id}_*_joint_obs_state_{projection_method}_*_metadata.json"
-        metadata_files = glob.glob(joint_metadata_pattern)
-        if not metadata_files:
-            joint_metadata_pattern = (
-                f"data/saved_projections/joint/{db_experiment.env_id}_*_joint_{projection_method}_*_metadata.json"
-            )
-            metadata_files = glob.glob(joint_metadata_pattern)
-        if metadata_files:
-            joint_metadata_path = max(metadata_files, key=os.path.getctime)
-    except Exception as e:
-        logger.warning(f"Failed to search for joint metadata: {e}")
+    joint_metadata_path = select_joint_projection_metadata(
+        db_experiment.env_id,
+        projection_method,
+        experiment_id=db_experiment.id,
+        checkpoint_step=checkpoint_step,
+        prefer_obs_state=True,
+    )
+    if joint_metadata_path is not None:
+        logger.info("Using joint projection metadata: %s", joint_metadata_path)
+    else:
+        logger.warning(
+            "No joint projection metadata found for env=%s exp=%s checkpoint=%s method=%s. "
+            "Projection may not align with existing global frame.",
+            db_experiment.env_id,
+            db_experiment.id,
+            checkpoint_step,
+            projection_method,
+        )
 
     forward_projection = await compute_projection(
         episode_data=episode_data,
@@ -227,7 +212,7 @@ async def generate_projection(
         append_time=append_time,
         projection_props=projection_props,
         projection_hash=projection_hash,
-        joint_projection_path=joint_metadata_path,
+        joint_projection_path=str(joint_metadata_path) if joint_metadata_path else None,
     )
 
     return forward_projection
@@ -295,6 +280,23 @@ async def load_grid_projection_data(
         if prediction_file.exists():
             with open(prediction_file) as f:
                 prediction_data = json.load(f)
+
+                # Attach episode-wise sequencing info from forward projection cache when available.
+                # This lets the frontend reconstruct trajectories even if the on-demand
+                # /generate_projection call returns an empty payload.
+                try:
+                    projection_cache_file = Path("data", "saved_projections", f"{projection_hash}.npz")
+                    if projection_cache_file.exists():
+                        with np.load(projection_cache_file, allow_pickle=True) as cached_projection:
+                            if "episode_indices" in cached_projection:
+                                prediction_data["episode_indices"] = cached_projection["episode_indices"].tolist()
+                            if "dones" in cached_projection:
+                                prediction_data["dones"] = cached_projection["dones"].tolist()
+                            if "actions" in cached_projection and "original_actions" not in prediction_data:
+                                prediction_data["original_actions"] = cached_projection["actions"].tolist()
+                except Exception as enrich_error:
+                    logger.warning("Failed to enrich grid projection data with episode indices: %s", enrich_error)
+
                 return prediction_data
 
         else:
@@ -403,7 +405,7 @@ async def load_grid_projection_image(
     db_experiment = await get_single_entry(database, Experiment, benchmark_id)
 
     # Load global bounds for consistent scaling across checkpoints
-    global_x_range, global_y_range = load_global_bounds(None, db_experiment.env_id, projection_method)
+    global_x_range, global_y_range = load_global_bounds(benchmark_id, None, projection_method)
     print(f"Global bounds: {global_x_range}, {global_y_range}")
 
     # grid_coordianates are lists of lists, convert to numpy array
@@ -442,7 +444,7 @@ async def load_grid_projection_image(
             if not isinstance(oc, np.ndarray):
                 oc = np.array(oc)
             # Trigger recompute if render version changed
-            version_mismatch = image_data.get("render_version", 1) != 3
+            version_mismatch = image_data.get("render_version", 1) != 4
             if oc.size > 0 and "x_range" in image_data and "y_range" in image_data:
                 x_min_c, x_max_c = float(np.min(oc[:, 0])), float(np.max(oc[:, 0]))
                 y_min_c, y_max_c = float(np.min(oc[:, 1])), float(np.max(oc[:, 1]))
@@ -483,7 +485,7 @@ async def load_grid_projection_image(
                             global_x_range=global_x_range,
                             global_y_range=global_y_range,
                         )
-                    image_data["render_version"] = 3
+                    image_data["render_version"] = 4
                     # Overwrite cache with updated image
                     with open(data_path, "w") as f:
                         json.dump(image_data, f)
@@ -521,9 +523,48 @@ async def load_grid_projection_image(
             )
 
         # Save the image
-        image_data["render_version"] = 3
+        image_data["render_version"] = 4
         with open(data_path, "w") as f:
             json.dump(image_data, f)
+
+    def _safe_range(values: Any) -> tuple[float, float]:
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        finite = arr[np.isfinite(arr)]
+        if finite.size == 0:
+            return 0.0, 1.0
+        vmin = float(np.min(finite))
+        vmax = float(np.max(finite))
+        if np.isclose(vmin, vmax):
+            eps = abs(vmin) * 1e-6 + 1e-6
+            return vmin - eps, vmax + eps
+        return vmin, vmax
+
+    def _normalize_values(values: Any, vmin: float, vmax: float) -> list[float]:
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        denom = float(vmax) - float(vmin)
+        if not np.isfinite(denom) or np.isclose(denom, 0.0):
+            return np.zeros(arr.shape, dtype=float).tolist()
+        norm = (arr - float(vmin)) / denom
+        norm = np.clip(norm, 0.0, 1.0)
+        norm = np.where(np.isfinite(norm), norm, 0.0)
+        return norm.tolist()
+
+    pred_min_default, pred_max_default = _safe_range(prediction_data.get("original_predictions", []))
+    uncert_min_default, uncert_max_default = _safe_range(prediction_data.get("original_uncertainties", []))
+
+    if map_type == "prediction":
+        pred_min = float(image_data.get("min_value", pred_min_default))
+        pred_max = float(image_data.get("max_value", pred_max_default))
+        uncert_min, uncert_max = uncert_min_default, uncert_max_default
+    elif map_type == "uncertainty":
+        pred_min, pred_max = pred_min_default, pred_max_default
+        uncert_min = float(image_data.get("min_value", uncert_min_default))
+        uncert_max = float(image_data.get("max_value", uncert_max_default))
+    else:  # map_type == "both"
+        pred_min = float(image_data.get("prediction_min_value", image_data.get("min_value", pred_min_default)))
+        pred_max = float(image_data.get("prediction_max_value", image_data.get("max_value", pred_max_default)))
+        uncert_min = float(image_data.get("uncertainty_min_value", uncert_min_default))
+        uncert_max = float(image_data.get("uncertainty_max_value", uncert_max_default))
 
     # Add projection bounds from the data
     image_data["projection_bounds"] = {
@@ -531,8 +572,10 @@ async def load_grid_projection_image(
         "x_max": image_data["x_range"][1],
         "y_min": image_data["y_range"][0],
         "y_max": image_data["y_range"][1],
-        "min_val": image_data["min_value"],
-        "max_val": image_data["max_value"],
+        "min_val": pred_min,
+        "max_val": pred_max,
+        "uncertainty_min_val": uncert_min,
+        "uncertainty_max_val": uncert_max,
     }
     # Also expose the original coordinates used for prediction, so the UI
     # can render trajectories exactly in the same coordinate frame as the
@@ -545,15 +588,14 @@ async def load_grid_projection_image(
             image_data["original_coordinates"] = list(prediction_data["original_coordinates"])
         except Exception:
             image_data["original_coordinates"] = []
-    # normalized original preds and uncertainties
-    image_data["original_predictions"] = (
-        (np.array(prediction_data["original_predictions"]) - np.min(prediction_data["original_predictions"]))
-        / (np.max(prediction_data["original_predictions"]) - np.min(prediction_data["original_predictions"]))
-    ).tolist()
-    image_data["original_uncertainties"] = (
-        (prediction_data["original_uncertainties"] - np.min(prediction_data["original_uncertainties"]))
-        / (np.max(prediction_data["original_uncertainties"]) - np.min(prediction_data["original_uncertainties"]))
-    ).tolist()
+    # Normalize trajectory values with the SAME ranges used by the background map.
+    image_data["original_predictions"] = _normalize_values(prediction_data.get("original_predictions", []), pred_min, pred_max)
+    image_data["original_uncertainties"] = _normalize_values(
+        prediction_data.get("original_uncertainties", []), uncert_min, uncert_max
+    )
+    # Optional sequencing data for trajectory reconstruction on the frontend.
+    image_data["episode_indices"] = prediction_data.get("episode_indices", [])
+    image_data["dones"] = prediction_data.get("dones", [])
 
     return image_data
 
@@ -653,7 +695,7 @@ async def load_uncertainty_difference(
     else:
         value_range = (-max_abs_diff, max_abs_diff)
 
-    global_x_range, global_y_range = load_global_bounds(None, db_experiment.env_id, projection_method)
+    global_x_range, global_y_range = load_global_bounds(benchmark_id, None, projection_method)
 
     def extend_bounds(existing_range: tuple[float, float] | None, values: np.ndarray) -> tuple[float, float] | None:
         if values.size == 0:
