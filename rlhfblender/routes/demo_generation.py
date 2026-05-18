@@ -32,7 +32,9 @@ from rlhfblender.projections.generate_projections import process_env_name
 from rlhfblender.projections.inverse_state_projection_handler import InverseStateProjectionHandler
 from rlhfblender.projections.joint_projection_metadata import select_joint_projection_metadata
 from rlhfblender.projections.projection_handler import ProjectionHandler
+from rlhfblender.utils import convert_to_serializable
 from rlhfblender.utils.data_generation import encode_video
+from rlhfblender.world_models import MineWorldLatentAdapter
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 logger = logging.getLogger(__name__)
@@ -72,6 +74,101 @@ def _build_projection_output_dir(environment_id: str, experiment_id: int | None,
     output_dir = Path("data") / "saved_projections" / "generated_demos" / env_component / exp_component / checkpoint_component
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
+
+
+def _build_painted_trajectory_output_dir(environment_id: str, experiment_id: int | None, checkpoint: int | None) -> Path:
+    env_component = _sanitize_component(environment_id)
+    exp_component = f"exp-{experiment_id}" if experiment_id is not None else "exp-unknown"
+    checkpoint_component = f"checkpoint-{checkpoint}" if checkpoint is not None else "checkpoint-unset"
+    output_dir = Path("data") / "saved_projections" / "painted_trajectories" / env_component / exp_component / checkpoint_component
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def _frame_to_base64(render_frame: np.ndarray) -> str:
+    if render_frame.dtype != np.uint8:
+        render_frame = (render_frame * 255).astype(np.uint8)
+    image = Image.fromarray(render_frame)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
+    x, y = float(point[0]), float(point[1])
+    inside = False
+    j = len(polygon) - 1
+    for i in range(len(polygon)):
+        xi, yi = float(polygon[i][0]), float(polygon[i][1])
+        xj, yj = float(polygon[j][0]), float(polygon[j][1])
+        intersects = (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi
+        if intersects:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _sample_points_in_polygon(polygon: np.ndarray, sample_count: int, seed: int | None = None) -> np.ndarray:
+    if polygon.ndim != 2 or polygon.shape[1] != 2 or len(polygon) < 3:
+        raise ValueError("polygon must be an array of at least three [x, y] coordinates")
+
+    rng = np.random.default_rng(seed)
+    min_xy = np.min(polygon, axis=0)
+    max_xy = np.max(polygon, axis=0)
+    samples: list[np.ndarray] = []
+    max_attempts = max(2000, sample_count * 500)
+
+    for _ in range(max_attempts):
+        candidate = rng.uniform(min_xy, max_xy)
+        if _point_in_polygon(candidate, polygon):
+            samples.append(candidate)
+            if len(samples) >= sample_count:
+                break
+
+    if not samples:
+        # Fallback to polygon centroid so tiny regions still produce something useful.
+        samples = [np.mean(polygon, axis=0)]
+
+    return np.asarray(samples, dtype=np.float32)
+
+
+def _render_states_to_video(
+    exp: Experiment,
+    db_env: Environment,
+    states: list[Any],
+    output_dir: Path,
+    stem: str,
+    seed: int = 42,
+) -> tuple[Path | None, list[str]]:
+    warnings: list[str] = []
+    renders: list[np.ndarray] = []
+
+    for index, state in enumerate(states):
+        try:
+            render_frame = webrtc_demo_session.create_render_from_state(exp, db_env, state, seed=seed)
+            if isinstance(render_frame, np.ndarray):
+                renders.append(render_frame)
+        except Exception as exc:
+            warning = f"Failed to render painted trajectory state {index}: {exc}"
+            warnings.append(warning)
+            logger.warning(warning)
+
+    if not renders:
+        return None, warnings
+
+    video_base = output_dir / stem
+    try:
+        encode_video(np.asarray(renders), str(video_base))
+        candidate_path = video_base.with_suffix(".mp4")
+        if candidate_path.exists():
+            return candidate_path, warnings
+        warnings.append(f"Video encoder did not create expected file: {candidate_path}")
+    except Exception as exc:
+        warning = f"Failed to encode painted trajectory video: {exc}"
+        warnings.append(warning)
+        logger.warning(warning)
+
+    return None, warnings
 
 
 def _find_joint_projection_metadata(
@@ -1481,6 +1578,287 @@ async def coordinate_to_render(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
+
+
+@router.post("/paint_latent_trajectory")
+async def paint_latent_trajectory(request: Request):
+    """
+    Persist a user-painted trajectory in projection space and inverse-project it
+    into the currently configured state/latent representation.
+
+    This is intentionally rollout-free: the projection UI can create a new target
+    trajectory without stepping a simulator. For direct simulator environments the
+    saved latent states are inverse-projected env states; for world-model adapters
+    the same artifact boundary can hold model latents.
+    """
+    try:
+        request_data = await request.json()
+
+        raw_coordinates = request_data.get("coordinates")
+        if not raw_coordinates:
+            raise HTTPException(status_code=400, detail="coordinates are required")
+
+        coordinates = np.asarray(raw_coordinates, dtype=np.float32)
+        if coordinates.ndim != 2 or coordinates.shape[1] != 2:
+            raise HTTPException(status_code=400, detail="coordinates must be an array of [x, y] pairs")
+
+        env_id = request_data.get("env_id")
+        exp_id_raw = request_data.get("exp_id")
+        session_id = request_data.get("session_id") or f"painted_{int(time.time() * 1000)}"
+        projection_method = request_data.get("projection_method") or "PCA"
+        world_model = request_data.get("world_model") or "inverse_state_projection"
+
+        if env_id is None:
+            raise HTTPException(status_code=400, detail="env_id is required")
+        if exp_id_raw is None:
+            raise HTTPException(status_code=400, detail="exp_id is required")
+
+        try:
+            exp_id = int(exp_id_raw)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="exp_id must be an integer") from exc
+
+        checkpoint_step: int | None = None
+        checkpoint = request_data.get("checkpoint")
+        if checkpoint is not None:
+            try:
+                checkpoint_step = int(checkpoint)
+            except (TypeError, ValueError):
+                checkpoint_step = None
+
+        exp = await db_handler.get_single_entry(database, Experiment, key=exp_id)
+        if exp is None:
+            raise HTTPException(status_code=404, detail=f"Experiment {exp_id} not found")
+        db_env = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
+        if db_env is None:
+            raise HTTPException(status_code=404, detail=f"Environment {env_id} not found")
+
+        meta_path, state_handler, effective_method, model_path, warnings = _find_joint_projection_metadata(
+            env_id,
+            exp_id,
+            projection_method,
+            checkpoint_step=checkpoint_step,
+        )
+
+        if not state_handler:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "No inverse state projection model found for this experiment/environment. "
+                    "Run joint obs-state projection first, or attach a world-model latent adapter."
+                ),
+            )
+
+        predicted_states = state_handler.predict(coordinates)
+        latent_metadata: dict[str, Any] = {
+            "world_model": world_model,
+            "latent_format": "inverse_projection_state",
+        }
+        if world_model == "mineworld":
+            latent_trajectory = MineWorldLatentAdapter().encode_projection_states(coordinates, predicted_states)
+            latent_states = latent_trajectory.latents
+            latent_metadata.update(latent_trajectory.metadata)
+        else:
+            latent_states = predicted_states
+
+        serializable_states = convert_to_serializable(latent_states)
+        state_keys = sorted(serializable_states[0].keys()) if serializable_states and isinstance(serializable_states[0], dict) else []
+
+        output_dir = _build_painted_trajectory_output_dir(env_id, exp_id, checkpoint_step)
+        safe_session_id = _sanitize_component(session_id)
+        timestamp_ms = int(time.time() * 1000)
+        stem = f"{safe_session_id}_{timestamp_ms}"
+        latent_states_path = output_dir / f"{stem}_latent_states.npy"
+        artifact_path = output_dir / f"{stem}.json"
+        video_path, render_warnings = _render_states_to_video(
+            exp=exp,
+            db_env=db_env,
+            states=latent_states,
+            output_dir=output_dir,
+            stem=stem,
+        )
+
+        np.save(
+            latent_states_path,
+            np.asarray(
+                [
+                    {
+                        "projection_coordinate": coordinates[index].tolist(),
+                        "latent_state": latent_states[index],
+                        "world_model": world_model,
+                    }
+                    for index in range(len(latent_states))
+                ],
+                dtype=object,
+            ),
+            allow_pickle=True,
+        )
+
+        dones = [False for _ in range(len(coordinates))]
+        if dones:
+            dones[-1] = True
+
+        payload: dict[str, Any] = {
+            "success": True,
+            "trajectory_id": stem,
+            "session_id": session_id,
+            "environment_id": env_id,
+            "experiment_id": exp_id,
+            "checkpoint": checkpoint_step,
+            "projection_method": effective_method,
+            "requested_projection_method": projection_method,
+            "joint_metadata_path": str(meta_path) if meta_path else None,
+            "state_model_path": str(model_path) if model_path else None,
+            "world_model": world_model,
+            "projection": coordinates.tolist(),
+            "episode_indices": [0 for _ in range(len(coordinates))],
+            "rewards": [0.0 for _ in range(len(coordinates))],
+            "dones": dones,
+            "state_keys": state_keys,
+            "latent_states_file": str(latent_states_path),
+            "artifact_file": str(artifact_path),
+            "video_path": str(video_path) if video_path else None,
+            "num_steps": int(len(coordinates)),
+            "metadata": {
+                "source": "latent_painter",
+                "coordinate_space": "projection",
+                "latent_storage": "inverse_projection_artifact",
+                **latent_metadata,
+            },
+            "warnings": [*warnings, *render_warnings],
+        }
+
+        payload["latent_states"] = serializable_states
+
+        with artifact_path.open("w", encoding="utf-8") as artifact_file:
+            json.dump(convert_to_serializable(payload), artifact_file, indent=2)
+
+        return JSONResponse(convert_to_serializable(payload))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to paint latent trajectory")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e!s}")
+
+
+@router.post("/sample_latent_region")
+async def sample_latent_region(request: Request):
+    """
+    Sample novel projection coordinates inside a lasso polygon, inverse-project
+    them, and return preview renders as a cluster-like selection.
+    """
+    try:
+        request_data = await request.json()
+        raw_polygon = request_data.get("polygon")
+        if not raw_polygon:
+            raise HTTPException(status_code=400, detail="polygon is required")
+
+        polygon = np.asarray(raw_polygon, dtype=np.float32)
+        if polygon.ndim != 2 or polygon.shape[1] != 2 or len(polygon) < 3:
+            raise HTTPException(status_code=400, detail="polygon must contain at least three [x, y] coordinates")
+
+        env_id = request_data.get("env_id")
+        exp_id_raw = request_data.get("exp_id")
+        projection_method = request_data.get("projection_method") or "PCA"
+        session_id = request_data.get("session_id") or f"lasso_{int(time.time() * 1000)}"
+        sample_count = int(request_data.get("sample_count") or 12)
+        sample_count = max(1, min(sample_count, 64))
+        seed = request_data.get("seed")
+        seed = int(seed) if seed is not None else None
+
+        if env_id is None:
+            raise HTTPException(status_code=400, detail="env_id is required")
+        if exp_id_raw is None:
+            raise HTTPException(status_code=400, detail="exp_id is required")
+
+        try:
+            exp_id = int(exp_id_raw)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="exp_id must be an integer") from exc
+
+        checkpoint_step: int | None = None
+        checkpoint = request_data.get("checkpoint")
+        if checkpoint is not None:
+            try:
+                checkpoint_step = int(checkpoint)
+            except (TypeError, ValueError):
+                checkpoint_step = None
+
+        exp = await db_handler.get_single_entry(database, Experiment, key=exp_id)
+        if exp is None:
+            raise HTTPException(status_code=404, detail=f"Experiment {exp_id} not found")
+        db_env = await db_handler.get_single_entry(database, Environment, key=env_id, key_column="registration_id")
+        if db_env is None:
+            raise HTTPException(status_code=404, detail=f"Environment {env_id} not found")
+
+        meta_path, state_handler, effective_method, model_path, warnings = _find_joint_projection_metadata(
+            env_id,
+            exp_id,
+            projection_method,
+            checkpoint_step=checkpoint_step,
+        )
+        if not state_handler:
+            raise HTTPException(
+                status_code=404,
+                detail="No inverse state projection model found for this experiment/environment.",
+            )
+
+        sampled_coordinates = _sample_points_in_polygon(polygon, sample_count=sample_count, seed=seed)
+        predicted_states = state_handler.predict(sampled_coordinates)
+
+        render_frames: list[str] = []
+        render_warnings: list[str] = []
+        for index, state in enumerate(predicted_states[:sample_count]):
+            try:
+                render_frame = webrtc_demo_session.create_render_from_state(exp, db_env, state, seed=42)
+                if isinstance(render_frame, np.ndarray):
+                    render_frames.append(f"data:image/png;base64,{_frame_to_base64(render_frame)}")
+            except Exception as exc:
+                warning = f"Failed to render sampled lasso state {index}: {exc}"
+                render_warnings.append(warning)
+                logger.warning(warning)
+
+        output_dir = _build_painted_trajectory_output_dir(env_id, exp_id, checkpoint_step)
+        safe_session_id = _sanitize_component(session_id)
+        timestamp_ms = int(time.time() * 1000)
+        stem = f"{safe_session_id}_lasso_{timestamp_ms}"
+        artifact_path = output_dir / f"{stem}.json"
+
+        payload: dict[str, Any] = {
+            "success": True,
+            "cluster_id": stem,
+            "session_id": session_id,
+            "environment_id": env_id,
+            "experiment_id": exp_id,
+            "checkpoint": checkpoint_step,
+            "projection_method": effective_method,
+            "requested_projection_method": projection_method,
+            "joint_metadata_path": str(meta_path) if meta_path else None,
+            "state_model_path": str(model_path) if model_path else None,
+            "polygon": polygon.tolist(),
+            "coordinates": sampled_coordinates.tolist(),
+            "render_frames": render_frames,
+            "latent_states": convert_to_serializable(predicted_states),
+            "artifact_file": str(artifact_path),
+            "metadata": {
+                "source": "latent_lasso",
+                "coordinate_space": "projection",
+                "sample_count": len(sampled_coordinates),
+            },
+            "warnings": [*warnings, *render_warnings],
+        }
+
+        with artifact_path.open("w", encoding="utf-8") as artifact_file:
+            json.dump(convert_to_serializable(payload), artifact_file, indent=2)
+
+        return JSONResponse(convert_to_serializable(payload))
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to sample latent region")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc!s}")
 
 
 @router.post("/initialize_demo_from_coordinate")

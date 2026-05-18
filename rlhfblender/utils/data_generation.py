@@ -901,6 +901,119 @@ def encode_video(renders: np.ndarray, path: str) -> None:
     out.release()
 
 
+def _is_open_oasis_benchmark(benchmark_run: dict) -> bool:
+    return str(benchmark_run.get("env", "")).lower().startswith("openoasis")
+
+
+def _as_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _episode_action_indices(actions: np.ndarray) -> list[int]:
+    action_array = np.asarray(actions)
+    if action_array.size == 0:
+        return []
+    if action_array.ndim == 0:
+        return [int(action_array.item())]
+    return [int(np.asarray(action).item()) for action in action_array]
+
+
+def _open_oasis_generate_render(benchmark_run: dict, actions: np.ndarray, output_path: str) -> str | None:
+    env_kwargs = benchmark_run.get("env_kwargs", {}) or {}
+    backend = str(env_kwargs.get("backend", "procedural"))
+    should_generate = backend in {"subprocess", "open_oasis"} or _as_bool(env_kwargs.get("generate_oasis_video"), False)
+    if not _is_open_oasis_benchmark(benchmark_run) or not should_generate:
+        return None
+
+    from rlhfblender.world_models.open_oasis.subprocess_backend import OpenOasisScriptConfig, OpenOasisSubprocessGenerator
+
+    config = OpenOasisScriptConfig(
+        open_oasis_dir=env_kwargs.get("open_oasis_dir"),
+        oasis_ckpt=str(env_kwargs.get("oasis_ckpt", "oasis500m.safetensors")),
+        vae_ckpt=str(env_kwargs.get("vae_ckpt", "vit-l-20.safetensors")),
+        prompt_path=env_kwargs.get("prompt_path"),
+        python_executable=env_kwargs.get("python_executable"),
+        fps=int(env_kwargs.get("fps", 20)),
+        ddim_steps=int(env_kwargs.get("ddim_steps", 10)),
+        n_prompt_frames=int(env_kwargs.get("n_prompt_frames", 1)),
+        video_offset=env_kwargs.get("video_offset"),
+        device=str(env_kwargs.get("device", "auto")),
+        dtype=str(env_kwargs.get("dtype", "auto")),
+    )
+    if config.video_offset is not None:
+        config.video_offset = int(config.video_offset)
+
+    generator = OpenOasisSubprocessGenerator(config)
+    generated_path = generator.generate_video(_episode_action_indices(actions), f"{output_path}.mp4")
+    return str(generated_path)
+
+
+def _is_mineworld_benchmark(benchmark_run: dict) -> bool:
+    return str(benchmark_run.get("env", "")).lower().startswith("mineworld")
+
+
+def _mineworld_generate_render(
+    benchmark_run: dict,
+    actions: np.ndarray,
+    renders: np.ndarray,
+    output_path: str,
+) -> str | None:
+    env_kwargs = benchmark_run.get("env_kwargs", {}) or {}
+    backend = str(env_kwargs.get("backend", "procedural"))
+    should_generate = backend in {"subprocess", "mineworld"} or _as_bool(env_kwargs.get("generate_mineworld_video"), False)
+    if not _is_mineworld_benchmark(benchmark_run) or not should_generate:
+        return None
+
+    from rlhfblender.world_models.mineworld_subprocess import MineWorldScriptConfig, MineWorldSubprocessGenerator
+
+    config = MineWorldScriptConfig(
+        mineworld_dir=env_kwargs.get("mineworld_dir", "mineworld"),
+        model_ckpt=str(env_kwargs.get("model_ckpt", "checkpoints/300M_16f.ckpt")),
+        config=str(env_kwargs.get("config", "configs/300M_16f.yaml")),
+        python_executable=env_kwargs.get("python_executable"),
+        fps=int(env_kwargs.get("fps", 6)),
+        top_k=env_kwargs.get("top_k", 50),
+        top_p=env_kwargs.get("top_p"),
+        accelerate_algo=str(env_kwargs.get("accelerate_algo", "naive")),
+        device=str(env_kwargs.get("device", "cuda")),
+        dtype=str(env_kwargs.get("dtype", "float16")),
+    )
+    if config.top_k is not None:
+        config.top_k = int(config.top_k)
+    if config.top_p is not None:
+        config.top_p = float(config.top_p)
+
+    if renders is None or len(renders) == 0:
+        raise ValueError("MineWorld generation needs at least one render frame as the prompt frame.")
+
+    prompt_frame = np.asarray(renders[0], dtype=np.uint8)
+    generator = MineWorldSubprocessGenerator(config)
+    generated_path = generator.generate_video(_episode_action_indices(actions), prompt_frame, f"{output_path}.mp4")
+    return str(generated_path)
+
+
+def _read_video_thumbnail(video_path: str) -> np.ndarray | None:
+    capture = cv2.VideoCapture(video_path)
+    try:
+        frame = None
+        while True:
+            success, candidate = capture.read()
+            if not success:
+                break
+            frame = candidate
+        if frame is None:
+            return None
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    finally:
+        capture.release()
+
+
 async def generate_data(benchmark_dicts: list[dict]):
     """Main async method to generate data."""
     requests = []
@@ -1008,7 +1121,20 @@ async def _process_benchmark_data(requests: list[dict], benchmarked_experiments:
             dir_name = f"data/renders/{os.path.splitext(save_file_name)[0]}"
             if not os.path.isdir(dir_name):
                 os.makedirs(dir_name)
-            encode_video(renders, f"{dir_name}/{episode_idx}")
+            generated_video_path = _open_oasis_generate_render(
+                benchmark_run,
+                episode_data["actions"][episode_idx],
+                f"{dir_name}/{episode_idx}",
+            )
+            if generated_video_path is None:
+                generated_video_path = _mineworld_generate_render(
+                    benchmark_run,
+                    episode_data["actions"][episode_idx],
+                    renders,
+                    f"{dir_name}/{episode_idx}",
+                )
+            if generated_video_path is None:
+                encode_video(renders, f"{dir_name}/{episode_idx}")
 
             dir_name = f"data/thumbnails/{os.path.splitext(save_file_name)[0]}"
             if not os.path.isdir(dir_name):
@@ -1024,9 +1150,13 @@ async def _process_benchmark_data(requests: list[dict], benchmarked_experiments:
                     episode_data["actions"][episode_idx],
                 )
             else:
-                if renders is not None and len(renders.shape) == 4 and renders.shape[0] > 1:
+                if generated_video_path is not None:
+                    save_image = _read_video_thumbnail(generated_video_path)
+                elif renders is not None and len(renders.shape) == 4 and renders.shape[0] > 1:
                     save_image = renders[-2]  # Use the second-to-last frame of the episode
                 else:
+                    save_image = None
+                if save_image is None:
                     save_image = np.zeros((128, 128, 3), dtype=np.uint8)  # Placeholder image
                 # Save first frame of the episode
             save_image = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)

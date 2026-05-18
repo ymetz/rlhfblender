@@ -5,6 +5,7 @@ These can the be loaded in the user interface for studies
 
 import argparse
 import asyncio
+import ast
 import os
 import sys
 import traceback
@@ -12,6 +13,62 @@ import traceback
 from rlhfblender.data_collection import framework_selector as framework_selector
 from rlhfblender.utils import process_env_name
 from rlhfblender.utils.data_generation import generate_data, init_db, register_env, register_experiment
+
+
+def _parse_env_kwarg_value(value: str):
+    lower_value = value.lower()
+    if lower_value == "true":
+        return True
+    if lower_value == "false":
+        return False
+    if lower_value == "none":
+        return None
+    try:
+        return ast.literal_eval(value)
+    except (SyntaxError, ValueError):
+        return value
+
+
+def _apply_open_oasis_defaults(args):
+    if args.env != "OpenOasis-v0":
+        return
+
+    from rlhfblender.world_models.open_oasis.registration import (
+        OPEN_OASIS_ADDITIONAL_PACKAGES,
+        OPEN_OASIS_ENTRY_POINT,
+    )
+    from rlhfblender.world_models.open_oasis.actions import action_names
+
+    if not args.env_gym_entrypoint:
+        args.env_gym_entrypoint = OPEN_OASIS_ENTRY_POINT
+    if not args.additional_gym_packages:
+        args.additional_gym_packages = OPEN_OASIS_ADDITIONAL_PACKAGES
+    if not args.action_names:
+        args.action_names = action_names()
+    if not args.env_display_name:
+        args.env_display_name = "Open-Oasis"
+    if not args.env_description:
+        args.env_description = "Open-Oasis world-model environment with VPT-style discrete Minecraft actions."
+
+
+def _apply_mineworld_defaults(args):
+    if args.env != "MineWorld-v0":
+        return
+
+    from rlhfblender.world_models.mineworld_actions import action_names
+    from rlhfblender.world_models.mineworld_registration import MINEWORLD_ADDITIONAL_PACKAGES, MINEWORLD_ENTRY_POINT
+
+    if not args.env_gym_entrypoint:
+        args.env_gym_entrypoint = MINEWORLD_ENTRY_POINT
+    if not args.additional_gym_packages:
+        args.additional_gym_packages = MINEWORLD_ADDITIONAL_PACKAGES
+    if not args.action_names:
+        args.action_names = action_names()
+    if not args.env_display_name:
+        args.env_display_name = "MineWorld"
+    if not args.env_description:
+        args.env_description = "MineWorld 300M world-model environment with discrete Minecraft action tokens."
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate data for RLHFBlender")
@@ -176,6 +233,9 @@ if __name__ == "__main__":
         print("Please specify an environment to generate data for.")
         sys.exit(1)
 
+    _apply_open_oasis_defaults(args)
+    _apply_mineworld_defaults(args)
+
     # Parse env_kwargs
     env_kwargs = {}
     if args.env_kwargs:
@@ -185,8 +245,8 @@ if __name__ == "__main__":
         # turn into dict
         for kwarg in args.env_kwargs:
             try:
-                key, value = kwarg.split(":")
-                env_kwargs[key] = value
+                key, value = kwarg.split(":", 1)
+                env_kwargs[key] = _parse_env_kwarg_value(value)
             except ValueError:
                 print(f"Invalid env_kwargs format: {kwarg}. Expected format is key:value.")
                 sys.exit(1)
