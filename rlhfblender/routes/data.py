@@ -1,7 +1,11 @@
 import asyncio
 import base64
+import importlib.util
 import logging
 import os
+import xml.etree.ElementTree as ET
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -28,6 +32,80 @@ database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender
 
 router = APIRouter(prefix="/data")
 logger = logging.getLogger(__name__)
+
+
+MUJOCO_MODEL_XML_BY_ENV = {
+    # Start deliberately small. This keeps the browser viewer path honest while
+    # leaving room to add more environments once their asset bundles are tested.
+    # MetaWorld's "sweep-into" task uses the special table-with-hole model.
+    # The similarly named sawyer_sweep_v3.xml is the plain sweep task.
+    "metaworld-sweep-into-v3": Path("sawyer_xyz") / "sawyer_table_with_hole.xml",
+}
+
+
+def _get_metaworld_assets_root() -> Path:
+    spec = importlib.util.find_spec("metaworld")
+    if spec is None or not spec.submodule_search_locations:  # pragma: no cover - depends on optional env package
+        raise HTTPException(status_code=404, detail="MetaWorld assets are not installed")
+    return Path(next(iter(spec.submodule_search_locations))).resolve() / "assets"
+
+
+def _get_mujoco_model_root_xml(env_name: str) -> tuple[Path, Path]:
+    normalized_env_name = process_env_name(env_name)
+    model_relpath = MUJOCO_MODEL_XML_BY_ENV.get(normalized_env_name)
+    if model_relpath is None:
+        raise HTTPException(status_code=404, detail=f"No browser MuJoCo model bundle registered for {env_name}")
+
+    assets_root = _get_metaworld_assets_root()
+    root_xml_path = (assets_root / model_relpath).resolve()
+    if not root_xml_path.is_file():
+        raise HTTPException(status_code=404, detail=f"MuJoCo model XML not found for {env_name}")
+    return assets_root, root_xml_path
+
+
+@lru_cache(maxsize=8)
+def _collect_mujoco_bundle_files(assets_root: Path, root_xml_path: Path) -> tuple[Path, ...]:
+    """
+    Collect the XML include graph and referenced binary assets for one model.
+
+    MetaWorld's XML asset paths are authored relative to the top-level task XML,
+    while `<include>` paths are relative to the XML file containing them. MuJoCo
+    follows that convention when the top-level XML is loaded from disk, so we
+    preserve it when building the browser-side virtual file system manifest.
+    """
+
+    xml_files: set[Path] = set()
+    asset_files: set[Path] = set()
+
+    def visit_xml(xml_path: Path) -> None:
+        resolved_xml_path = xml_path.resolve()
+        if resolved_xml_path in xml_files:
+            return
+        if not resolved_xml_path.is_file():
+            raise HTTPException(status_code=404, detail=f"MuJoCo XML include not found: {resolved_xml_path.name}")
+        if not resolved_xml_path.is_relative_to(assets_root):
+            raise HTTPException(status_code=400, detail="MuJoCo XML include escapes the asset root")
+
+        xml_files.add(resolved_xml_path)
+        tree = ET.parse(resolved_xml_path)
+        for element in tree.iter():
+            file_attr = element.get("file")
+            if not file_attr:
+                continue
+
+            if element.tag == "include":
+                visit_xml((resolved_xml_path.parent / file_attr).resolve())
+                continue
+
+            asset_path = (root_xml_path.parent / file_attr).resolve()
+            if not asset_path.is_relative_to(assets_root):
+                raise HTTPException(status_code=400, detail="MuJoCo asset path escapes the asset root")
+            if not asset_path.is_file():
+                raise HTTPException(status_code=404, detail=f"MuJoCo asset not found: {asset_path.name}")
+            asset_files.add(asset_path)
+
+    visit_xml(root_xml_path)
+    return tuple(sorted(xml_files | asset_files))
 
 
 @router.get("/get_available_frameworks", response_model=list[str])
@@ -148,6 +226,90 @@ async def get_video(
         ),
         media_type="video/mp4",
     )
+
+
+@router.get("/get_mujoco_model_manifest", response_model=dict[str, Any], tags=["DATA"])
+async def get_mujoco_model_manifest(env_name: str):
+    """
+    Return the XML/include/asset manifest needed to reconstruct a MuJoCo model
+    inside the browser's virtual filesystem.
+    """
+
+    assets_root, root_xml_path = _get_mujoco_model_root_xml(env_name)
+    bundle_files = _collect_mujoco_bundle_files(assets_root, root_xml_path)
+    return {
+        "env_name": process_env_name(env_name),
+        "root_xml": str(root_xml_path.relative_to(assets_root)),
+        "files": [str(path.relative_to(assets_root)) for path in bundle_files],
+    }
+
+
+@router.get("/get_mujoco_asset_file", response_class=FileResponse, tags=["DATA"])
+async def get_mujoco_asset_file(env_name: str, path: str):
+    """
+    Stream one file from a registered MuJoCo model bundle.
+
+    The manifest endpoint defines the allow-listed model root; requests are
+    still constrained to the MetaWorld asset directory to prevent traversal.
+    """
+
+    assets_root, root_xml_path = _get_mujoco_model_root_xml(env_name)
+    allowed_files = set(_collect_mujoco_bundle_files(assets_root, root_xml_path))
+    requested_path = (assets_root / path).resolve()
+    if not requested_path.is_relative_to(assets_root) or requested_path not in allowed_files:
+        raise HTTPException(status_code=404, detail="MuJoCo asset not found")
+    return FileResponse(requested_path)
+
+
+@router.get("/get_mujoco_trajectory", response_model=dict[str, Any], tags=["DATA"])
+async def get_mujoco_trajectory(
+    env_name: str,
+    benchmark_id: int,
+    checkpoint_step: int,
+    episode_num: int,
+):
+    """
+    Return a browser-friendly sequence of MuJoCo states for trajectory replay.
+
+    Existing MetaWorld recordings already store the exact state pair we need
+    (`qpos`, `qvel`) under `data/env_states`, so this keeps the first viewer path
+    compatible with data that has already been collected.
+    """
+
+    env_component = process_env_name(env_name)
+    env_states_path = (
+        Path("data")
+        / "env_states"
+        / env_component
+        / f"{env_component}_{benchmark_id}_{checkpoint_step}"
+        / f"env_states_{episode_num}.npy"
+    )
+    if not env_states_path.is_file():
+        raise HTTPException(status_code=404, detail="MuJoCo trajectory state file not found")
+
+    raw_states = np.load(env_states_path, allow_pickle=True)
+    states: list[dict[str, list[float]]] = []
+    for raw_state in raw_states:
+        try:
+            state_item = raw_state[0] if isinstance(raw_state, np.ndarray) else raw_state
+            state_payload = state_item.get("state") if isinstance(state_item, dict) else None
+            if not isinstance(state_payload, dict):
+                continue
+            qpos = np.asarray(state_payload.get("qpos"), dtype=float)
+            qvel = np.asarray(state_payload.get("qvel"), dtype=float)
+            if qpos.size == 0 or qvel.size == 0:
+                continue
+            states.append({"qpos": qpos.tolist(), "qvel": qvel.tolist()})
+        except (TypeError, ValueError, IndexError):
+            continue
+
+    if not states:
+        raise HTTPException(status_code=404, detail="No MuJoCo-compatible states found in trajectory")
+
+    return {
+        "env_name": env_component,
+        "states": states,
+    }
 
 
 @router.get("/get_thumbnail", response_class=FileResponse)
