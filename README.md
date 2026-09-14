@@ -35,8 +35,20 @@ to get both the main repository,user interface. If you want to download both the
 2. Docker-Installation
 
 ```bash
-docker-compose up
+python3 scripts/update_dockerignore.py
+docker compose up --build
 ```
+
+The backend `.dockerignore` allows only Git-tracked build inputs. Run the generator
+after adding or removing tracked files; `scripts/build_docker.sh` does this automatically.
+Edits to tracked files are included, while untracked files are excluded even inside
+source directories. The frontend has its own build context in `rlhfblender-ui`.
+
+Compose mounts local datasets (`remote_data`), models, training artifacts, and logs
+instead of baking them into the backend image. The database stays at
+`remote_data/rlhfblender.db`; changes made by the container persist locally. These
+directories must be accessible to the container user. Standalone `docker run` deployments
+must supply their own mounts for any required datasets or models.
 
 (3. Optional: Local/Dev. Install):
 

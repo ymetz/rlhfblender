@@ -1,4 +1,8 @@
 #!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+python3 scripts/update_dockerignore.py
 
 CPU_PARENT=mambaorg/micromamba:1.5-jammy
 GPU_PARENT=mambaorg/micromamba:1.5-jammy-cuda-11.7.1
@@ -6,7 +10,7 @@ GPU_PARENT=mambaorg/micromamba:1.5-jammy-cuda-11.7.1
 TAG=rlhfblender
 VERSION=$(cat ./rlhfblender/version.txt)
 
-if [[ ${USE_GPU} == "True" ]]; then
+if [[ ${USE_GPU:-False} == "True" ]]; then
   PARENT=${GPU_PARENT}
   PYTORCH_DEPS="pytorch-cuda=11.7"
 else
@@ -19,7 +23,7 @@ echo "docker build --build-arg PARENT_IMAGE=${PARENT} --build-arg PYTORCH_DEPS=$
 docker build --build-arg PARENT_IMAGE=${PARENT} --build-arg PYTORCH_DEPS=${PYTORCH_DEPS} -t ${TAG}:${VERSION} .
 docker tag ${TAG}:${VERSION} ${TAG}:latest
 
-if [[ ${RELEASE} == "True" ]]; then
+if [[ ${RELEASE:-False} == "True" ]]; then
   docker push ${TAG}:${VERSION}
   docker push ${TAG}:latest
 fi

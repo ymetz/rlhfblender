@@ -129,3 +129,10 @@ logs
 
 # Google Auth File
 rlhfblender/rlhf-blender-logging-714e89599cb1.json
+
+# Checkpoints
+multi-type-feedback/reward_models/checkpoints
+multi-type-feedback/feedback
+remote_data
+multi-type-feedback/gt_agents
+multi-type-feedback/train_baselines/gt_agents

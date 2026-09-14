@@ -30,4 +30,14 @@ services:
         - PYTORCH_DEPS=cpuonly
     ports:
       - "8080:8080"
-    command: ["python", "rlhfblender/app.py", "--port", "8080"]
+    command: ["python", "rlhfblender/app.py", "--port", "8080", "--db-host", "sqlite:///data/rlhfblender.db"]
+    volumes:
+      - ./remote_data/:/home/mambauser/rlhfblender/data/
+      - ./rlhfblender_model/:/home/mambauser/rlhfblender/rlhfblender_model/:ro
+      - ./logs/:/home/mambauser/rlhfblender/logs/
+      - ./multi-type-feedback/feedback/:/home/mambauser/rlhfblender/multi-type-feedback/feedback/
+      - ./multi-type-feedback/gt_agents/:/home/mambauser/rlhfblender/multi-type-feedback/gt_agents/:ro
+      - ./multi-type-feedback/reward_models/:/home/mambauser/rlhfblender/multi-type-feedback/reward_models/
+      - ./multi-type-feedback/samples/:/home/mambauser/rlhfblender/multi-type-feedback/samples/
+      - ./multi-type-feedback/train_baselines/gt_agents/:/home/mambauser/rlhfblender/multi-type-feedback/train_baselines/gt_agents/:ro
+      - ./multi-type-feedback/train_baselines/dynamic_rlhf_agents/:/home/mambauser/rlhfblender/multi-type-feedback/train_baselines/dynamic_rlhf_agents/
