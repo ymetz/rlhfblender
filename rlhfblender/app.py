@@ -317,15 +317,16 @@ async def load_setup(req: LoadSetupRequest):
 
 @app.get("/retrieve_logs", tags=["LOGS"])
 async def retrieve_logs():
-    # Return list of CSV files from logs directory, zip them and proide download link
+    # Include both the feedback logs and dedicated nested survey JSON files.
     logs = []
     try:
-        for filename in os.listdir("logs"):
-            if filename.endswith(".csv"):
-                logs.append(filename)
+        for root, _, filenames in os.walk("logs"):
+            for filename in filenames:
+                if filename.endswith((".csv", ".json")):
+                    logs.append(os.path.join(root, filename))
         with zipfile.ZipFile("logs.zip", "w") as zip:
             for log in logs:
-                zip.write(os.path.join("logs", log))
+                zip.write(log, arcname=os.path.relpath(log, "logs"))
         return FileResponse("logs.zip", media_type="application/zip", filename="logs.zip")
     except FileNotFoundError:
         return {"message": "No logs found."}

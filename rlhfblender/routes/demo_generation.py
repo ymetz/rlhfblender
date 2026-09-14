@@ -51,6 +51,7 @@ class DemoArtifactsContext:
     current_checkpoint: int | None = None
     projection_method: str | None = None
     projection_props: dict | None = None
+    exp: Experiment | None = None
 
 
 def _sanitize_component(value: Any | None) -> str:
@@ -230,10 +231,14 @@ def _resolve_vecnormalize_stats_path(base_dir: str, checkpoint_step: int | None)
     return None
 
 
-def _resolve_track_vecnormalize_stats_path(track: GymEnvironmentTrack) -> Path | None:
-    exp_path = Path(getattr(track.exp, "path", "") or "")
-    if not exp_path:
+def _resolve_track_vecnormalize_stats_path(
+    track: GymEnvironmentTrack | DemoArtifactsContext,
+) -> Path | None:
+    exp = getattr(track, "exp", None)
+    exp_path_value = getattr(exp, "path", "") or ""
+    if not exp_path_value:
         return None
+    exp_path = Path(exp_path_value)
 
     env_component = process_env_name(track.environment_id)
     candidates = [
@@ -250,11 +255,16 @@ def _resolve_track_vecnormalize_stats_path(track: GymEnvironmentTrack) -> Path |
 
 
 def _normalize_demo_obs_with_vecnormalize(
-    track: GymEnvironmentTrack,
+    track: GymEnvironmentTrack | DemoArtifactsContext,
     obs_array: np.ndarray,
 ) -> tuple[np.ndarray, str | None]:
-    env_config = getattr(track.exp, "environment_config", None)
-    normalize_enabled = bool(isinstance(env_config, dict) and env_config.get("normalize", False))
+    exp = getattr(track, "exp", None)
+    env_config = getattr(exp, "environment_config", None)
+    normalize_value = env_config.get("normalize", False) if isinstance(env_config, dict) else False
+    if isinstance(normalize_value, str):
+        normalize_enabled = normalize_value.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        normalize_enabled = bool(normalize_value)
     if not normalize_enabled:
         return obs_array, None
 
@@ -455,7 +465,7 @@ def _compute_episode_indices(dones: np.ndarray) -> list[int]:
 
 
 def _prepare_demo_artifacts(
-    track: GymEnvironmentTrack,
+    track: GymEnvironmentTrack | DemoArtifactsContext,
     demo_path: Path,
     *,
     projection_method_override: str | None = None,
@@ -675,6 +685,10 @@ def _next_demo_number_for_session(session_id: str, out_dir: Path) -> int:
     max_num = -1
     for path in out_dir.glob(pattern):
         stem = path.stem
+        recorder_match = re.search(r"_demo-(\d+)(?:_|$)", stem)
+        if recorder_match:
+            max_num = max(max_num, int(recorder_match.group(1)))
+            continue
         parts = stem.rsplit("_", 1)
         if len(parts) != 2:
             continue
@@ -709,6 +723,7 @@ def _save_dash_demo_payload(
     projection_props: dict | None,
     demo_number: int | None,
     dash_demo: dict,
+    exp: Experiment | None = None,
 ) -> tuple[int, Path, dict[str, Any]]:
     if not isinstance(dash_demo, dict):
         raise ValueError("dash_demo payload must be an object")
@@ -783,14 +798,223 @@ def _save_dash_demo_payload(
         current_checkpoint=checkpoint,
         projection_method=projection_method,
         projection_props=projection_props,
+        exp=exp,
     )
     artifacts = _prepare_demo_artifacts(
-        context,  # type: ignore[arg-type]
+        context,
         demo_path,
         projection_method_override=projection_method,
         projection_props_override=projection_props,
     )
     return int(demo_number), demo_path, artifacts
+
+
+def _save_browser_mujoco_payload(
+    *,
+    session_id: str,
+    experiment_id: int | None,
+    environment_id: str,
+    checkpoint: int | None,
+    projection_method: str | None,
+    projection_props: dict | None,
+    demo_number: int | None,
+    browser_demo: dict,
+    exp: Experiment | None = None,
+) -> tuple[int, Path, dict[str, Any]]:
+    """Persist a browser-simulated MuJoCo demo in the recorder-compatible format."""
+    if not isinstance(browser_demo, dict):
+        raise ValueError("browser_mujoco_demo payload must be an object")
+
+    obs = browser_demo.get("obs", [])
+    if not isinstance(obs, list) or len(obs) == 0:
+        raise ValueError("browser_mujoco_demo.obs must be a non-empty list")
+
+    target_len = len(obs)
+    actions = _normalize_dash_sequence(browser_demo.get("actions"), [[0.0, 0.0, 0.0, 0.0]], target_len)
+    rewards = _normalize_dash_sequence(browser_demo.get("rewards"), [0.0], target_len)
+    dones = _normalize_dash_sequence(browser_demo.get("dones"), [False], target_len)
+    episode_steps = _normalize_dash_sequence(
+        browser_demo.get("episode_steps"),
+        list(range(target_len)),
+        target_len,
+    )
+    infos = _normalize_dash_sequence(browser_demo.get("infos"), [{}], target_len)
+    env_states = _normalize_dash_sequence(browser_demo.get("env_states"), [None], target_len)
+    timestamps = _normalize_dash_sequence(browser_demo.get("timestamps"), [None], target_len)
+    dones[-1] = True
+
+    env_component = _sanitize_component(environment_id)
+    exp_component = f"exp-{experiment_id}" if experiment_id is not None else "exp-unknown"
+    checkpoint_component = f"checkpoint-{checkpoint}" if checkpoint is not None else "checkpoint-unset"
+    output_dir = Path("data") / "generated_demos" / env_component / exp_component / checkpoint_component
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if demo_number is None:
+        demo_number = _next_demo_number_for_session(session_id, output_dir)
+
+    timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    demo_path = output_dir / (
+        f"{_sanitize_component(session_id)}_demo-{int(demo_number):03d}_{timestamp}.npz"
+    )
+    rewards_array = np.asarray(rewards, dtype=np.float32)
+    np.savez(
+        demo_path,
+        obs=np.asarray(obs, dtype=np.float32),
+        actions=np.asarray(actions, dtype=np.float32),
+        rewards=rewards_array,
+        dones=np.asarray(dones, dtype=bool),
+        infos=np.asarray(infos, dtype=object),
+        env_states=np.asarray(env_states, dtype=object),
+        episode_steps=np.asarray(episode_steps, dtype=np.int32),
+        episode_rewards=np.asarray([float(rewards_array.sum())], dtype=np.float32),
+        episode_lengths=np.asarray([target_len], dtype=np.int32),
+        additional_metrics={},
+    )
+
+    metadata = {
+        "session_id": session_id,
+        "demo_number": int(demo_number),
+        "experiment_id": experiment_id,
+        "environment_id": environment_id,
+        "checkpoint": checkpoint,
+        "projection_method": projection_method,
+        "created_at": timestamp,
+        "total_steps": target_len,
+        "total_reward": float(rewards_array.sum()),
+        "episode_rewards": [float(rewards_array.sum())],
+        "episode_lengths": [target_len],
+        "source": "browser_mujoco",
+        "rendered_frames_saved": False,
+        "timestamps": timestamps,
+        "browser_metadata": browser_demo.get("metadata", {}),
+    }
+    metadata_path = demo_path.with_suffix(".json")
+    with metadata_path.open("w", encoding="utf-8") as meta_file:
+        json.dump(metadata, meta_file, indent=2)
+
+    context = DemoArtifactsContext(
+        session_id=session_id,
+        experiment_id=experiment_id,
+        environment_id=environment_id,
+        current_checkpoint=checkpoint,
+        projection_method=projection_method,
+        projection_props=projection_props,
+        exp=exp,
+    )
+    artifacts = _prepare_demo_artifacts(
+        context,
+        demo_path,
+        projection_method_override=projection_method,
+        projection_props_override=projection_props,
+    )
+    return int(demo_number), demo_path, artifacts
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+@router.post("/browser_demo_initial_state")
+async def browser_demo_initial_state(request: Request):
+    """Resolve one qpos/qvel state used to start an in-browser MuJoCo session."""
+    params = await request.json()
+    environment_id = params.get("environment_id")
+    experiment_id = _coerce_optional_int(params.get("experiment_id"))
+    checkpoint = _coerce_optional_int(params.get("checkpoint"))
+    coordinate = params.get("coordinate")
+    state_payload: Any = None
+
+    if not environment_id:
+        raise HTTPException(status_code=400, detail="environment_id is required")
+
+    if coordinate is not None:
+        if isinstance(coordinate, dict):
+            coordinate_values = [coordinate.get("x"), coordinate.get("y")]
+        else:
+            coordinate_values = coordinate
+        if (
+            not isinstance(coordinate_values, list)
+            or len(coordinate_values) != 2
+            or not all(isinstance(value, (int, float)) for value in coordinate_values)
+        ):
+            raise HTTPException(status_code=400, detail="coordinate must contain numeric x and y values")
+
+        _, state_handler, _, _, _ = _find_joint_projection_metadata(
+            environment_id,
+            experiment_id,
+            params.get("projection_method") or "PCA",
+            checkpoint_step=checkpoint,
+        )
+        if state_handler is None:
+            raise HTTPException(status_code=404, detail="No inverse state projection model found")
+        state_payload = state_handler.predict(
+            np.asarray([coordinate_values], dtype=np.float32),
+        )[0]
+    else:
+        benchmark_id = _coerce_optional_int(params.get("benchmark_id"))
+        if benchmark_id is None:
+            benchmark_id = experiment_id
+        episode_num = _coerce_optional_int(params.get("episode_num"))
+        step = _coerce_optional_int(params.get("step"))
+        if benchmark_id is None or checkpoint is None or episode_num is None:
+            raise HTTPException(status_code=400, detail="episode, benchmark, and checkpoint are required")
+        state_path = (
+            Path("data")
+            / "env_states"
+            / process_env_name(environment_id)
+            / f"{process_env_name(environment_id)}_{benchmark_id}_{checkpoint}"
+            / f"env_states_{episode_num}.npy"
+        )
+        if not state_path.is_file():
+            raise HTTPException(status_code=404, detail="Initial trajectory state file not found")
+        raw_states = np.load(state_path, allow_pickle=True)
+        state_index = max(0, min(step or 0, len(raw_states) - 1))
+        raw_state = raw_states[state_index]
+        state_item = raw_state[0] if isinstance(raw_state, np.ndarray) else raw_state
+        state_payload = state_item.get("state") if isinstance(state_item, dict) else None
+
+    if not isinstance(state_payload, dict):
+        raise HTTPException(status_code=404, detail="Initial state is not MuJoCo-compatible")
+    qpos = np.asarray(state_payload.get("qpos"), dtype=float)
+    qvel = np.asarray(state_payload.get("qvel", state_payload.get("qval")), dtype=float)
+    if qpos.size == 0 or qvel.size == 0:
+        raise HTTPException(status_code=404, detail="Initial state is missing qpos or qvel")
+    return {"state": {"qpos": qpos.tolist(), "qvel": qvel.tolist()}}
+
+
+@router.post("/save_browser_demo")
+async def save_browser_demo(request: Request):
+    """Save a complete browser-recorded MuJoCo trajectory without rendered frames."""
+    params = await request.json()
+    try:
+        experiment_id = _coerce_optional_int(params.get("experiment_id"))
+        exp = (
+            await db_handler.get_single_entry(database, Experiment, key=experiment_id)
+            if experiment_id is not None
+            else None
+        )
+        demo_number, saved_path, artifacts = _save_browser_mujoco_payload(
+            session_id=params["session_id"],
+            experiment_id=experiment_id,
+            environment_id=params["environment_id"],
+            checkpoint=_coerce_optional_int(params.get("checkpoint")),
+            projection_method=params.get("projection_method"),
+            projection_props=params.get("projection_props"),
+            demo_number=_coerce_optional_int(params.get("demo_number")),
+            browser_demo=params.get("browser_mujoco_demo"),
+            exp=exp,
+        )
+        return {
+            "success": True,
+            "message": f"Browser MuJoCo demo saved as {saved_path.name}",
+            "demo_number": demo_number,
+            "file_path": str(saved_path),
+            "artifacts": artifacts,
+        }
+    except (KeyError, TypeError, ValueError) as exc:
+        return {"success": False, "message": f"Error: {exc!s}"}
 
 
 async def create_expiring_turn_credential() -> dict[str, Any]:
@@ -1033,6 +1257,11 @@ async def save_webrtc_demo(request: Request):
                         exp_num = None
 
                 env_name = environment_id or "dash-driving-v0"
+                exp = (
+                    await db_handler.get_single_entry(database, Experiment, key=exp_num)
+                    if exp_num is not None
+                    else None
+                )
                 saved_demo_number, saved_path, artifacts = _save_dash_demo_payload(
                     session_id=session_id,
                     experiment_id=exp_num,
@@ -1042,6 +1271,7 @@ async def save_webrtc_demo(request: Request):
                     projection_props=projection_props,
                     demo_number=demo_number,
                     dash_demo=dash_demo,
+                    exp=exp,
                 )
                 return {
                     "success": True,

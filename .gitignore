@@ -129,3 +129,11 @@ logs
 
 # Google Auth File
 rlhfblender/rlhf-blender-logging-714e89599cb1.json
+
+# Blender-specific files not to be tracked
+multi-type-feedback/configs
+multi-type-feedback/feedback
+multi-type-feedback/reward_models
+multi-type-feedback/train_baselines/gt_agents/ppo
+open_oasis_dir
+dash_python_integration

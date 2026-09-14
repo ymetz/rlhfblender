@@ -1,12 +1,16 @@
 import asyncio
 import base64
 import importlib.util
+import json
 import logging
 import os
+import re
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from threading import Lock
+from typing import Any, Literal
 
 import cv2
 import numpy as np
@@ -32,6 +36,7 @@ database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender
 
 router = APIRouter(prefix="/data")
 logger = logging.getLogger(__name__)
+survey_file_lock = Lock()
 
 
 MUJOCO_MODEL_XML_BY_ENV = {
@@ -690,6 +695,143 @@ async def give_feedback(request: Request):
         request.app.state.feedback_translator.give_feedback(feedback.session_id, feedback)
 
     return "Feedback received"
+
+
+class StudySurveyPhase(BaseModel):
+    index: int
+    total: int
+    phase_type: Literal[
+        "preference-only",
+        "mixed-feedback",
+        "visual-interactive-feedback",
+        "standard",
+    ]
+    phase_kind: Literal["baseline", "mixed", "active-learning", "standard"]
+    label: str
+
+
+class StudySurveySubmission(BaseModel):
+    participant_id: str
+    session_id: str | None = None
+    survey_schema: str = "rlhfblender-study-survey-v1"
+    survey_type: Literal["demographics", "phase", "overall"]
+    submitted_at: str
+    responses: dict[str, Any]
+    phase: StudySurveyPhase | None = None
+
+
+def _survey_log_directory() -> Path:
+    return Path(os.environ.get("RLHFBLENDER_SURVEY_LOG_DIR", "logs/surveys"))
+
+
+def _read_survey_document(file_path: Path, participant_id: str, survey_schema: str) -> dict[str, Any]:
+    if not file_path.exists():
+        now = datetime.now(UTC).isoformat()
+        return {
+            "survey_schema": survey_schema,
+            "participant_id": participant_id,
+            "created_at": now,
+            "updated_at": now,
+            "source_session_ids": [],
+            "demographics": None,
+            "phases": {},
+            "overall": None,
+        }
+
+    try:
+        document = json.loads(file_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail="Existing survey file could not be read safely") from exc
+
+    if not isinstance(document, dict) or document.get("participant_id") != participant_id:
+        raise HTTPException(status_code=409, detail="Survey file does not match the submitted participant ID")
+
+    return document
+
+
+def _write_survey_document(file_path: Path, document: dict[str, Any]) -> None:
+    temporary_path = file_path.with_suffix(".json.tmp")
+    try:
+        temporary_path.write_text(
+            json.dumps(document, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_path, file_path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Survey responses could not be written") from exc
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+@router.post("/save_survey_response")
+def save_survey_response(submission: StudySurveySubmission):
+    """
+    Save one participant's integrated study survey to a dedicated JSON file.
+
+    Repeated submissions replace the matching survey section, so each
+    participant has one demographics record, one record per phase type, and one
+    overall-comparison record.
+    """
+    participant_id = submission.participant_id.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", participant_id):
+        raise HTTPException(
+            status_code=422,
+            detail="participant_id may only contain letters, numbers, dots, underscores, and hyphens",
+        )
+    if submission.survey_type == "phase" and submission.phase is None:
+        raise HTTPException(status_code=422, detail="Phase metadata is required for a phase survey")
+    if submission.phase is not None:
+        if submission.phase.index < 1 or submission.phase.total < submission.phase.index:
+            raise HTTPException(status_code=422, detail="Invalid phase index or total")
+
+    survey_directory = _survey_log_directory()
+    file_path = survey_directory / f"{participant_id}.json"
+    received_at = datetime.now(UTC).isoformat()
+    response_record = {
+        "submitted_at": submission.submitted_at,
+        "server_received_at": received_at,
+        "session_id": submission.session_id,
+        "responses": submission.responses,
+    }
+
+    with survey_file_lock:
+        try:
+            survey_directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Survey log directory could not be created") from exc
+
+        document = _read_survey_document(file_path, participant_id, submission.survey_schema)
+        document["survey_schema"] = submission.survey_schema
+        document["updated_at"] = received_at
+        source_session_ids = document.setdefault("source_session_ids", [])
+        if submission.session_id and submission.session_id not in source_session_ids:
+            source_session_ids.append(submission.session_id)
+
+        if submission.survey_type == "demographics":
+            document["demographics"] = response_record
+        elif submission.survey_type == "overall":
+            document["overall"] = response_record
+        else:
+            phase = submission.phase
+            assert phase is not None
+            document.setdefault("phases", {})[phase.phase_type] = {
+                **response_record,
+                "index": phase.index,
+                "total": phase.total,
+                "phase_type": phase.phase_type,
+                "phase_kind": phase.phase_kind,
+                "label": phase.label,
+            }
+
+        _write_survey_document(file_path, document)
+
+    return {
+        "status": "saved",
+        "participant_id": participant_id,
+        "survey_type": submission.survey_type,
+        "phase_type": submission.phase.phase_type if submission.phase else None,
+        "file": file_path.name,
+    }
 
 
 # Store for active human-in-the-loop training sessions (shared with dynamic_rlhf module)
