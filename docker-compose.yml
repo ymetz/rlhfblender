@@ -19,6 +19,28 @@ services:
       - ./rlhfblender-ui/:/usr/src/app/
       - node-modules:/usr/src/app/node_modules/
 
+  dash-driving:
+    container_name: dash-driving-ui
+    image: dash-driving-ui:latest
+    build:
+      context: ./dash-rl-env/
+      dockerfile: ./Dockerfile
+    ports:
+      - "5173:5173"
+    command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:5173/', r => { r.resume(); process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    environment:
+      - BACKEND_HOST=backend
+      - BACKEND_PORT=8080
+    volumes:
+      - ./dash-rl-env/:/usr/src/app/
+      - node-modules:/usr/src/app/node_modules/
+
   backend:
     container_name: rlhfblender-backend
     image: rlhfblender-backend:latest
@@ -30,6 +52,14 @@ services:
         - PYTORCH_DEPS=cpuonly
     ports:
       - "8080:8080"
+    environment:
+      - DASH_PLAYER_URL=http://dash-driving:5173
+      # The image's DISPLAY=:99 points to an X server that is not running.
+      # Clear it so headless Chromium can initialize software WebGL.
+      - DISPLAY=
+    depends_on:
+      dash-driving:
+        condition: service_healthy
     command: ["python", "rlhfblender/app.py", "--port", "8080", "--db-host", "sqlite:///data/rlhfblender.db"]
     volumes:
       - ./remote_data/:/home/mambauser/rlhfblender/data/

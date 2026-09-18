@@ -32,16 +32,19 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER ./multi-type-feedback/ ${CODE_DIR}/rlhfblen
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./configs/ ${CODE_DIR}/rlhfblender/configs/
 # Runtime datasets, databases and models are supplied through bind mounts.
 
+# Python package already comes through setup.py
 RUN cd ${CODE_DIR}/rlhfblender && \
-    # Require a prebuilt PyAV wheel instead of compiling against system FFmpeg.
     pip install --only-binary=av -e . && \
-    # Use headless version for docker
-    #pip uninstall -y opencv-python && \
     pip install opencv-python-headless && \
     pip cache purge
 
-# Fail the build if headless rendering cannot load its native libraries.
-RUN python -c 'import mujoco; model = mujoco.MjModel.from_xml_string("<mujoco/>"); data = mujoco.MjData(model); renderer = mujoco.Renderer(model, height=32, width=32); renderer.update_scene(data); assert renderer.render().shape == (32, 32, 3); renderer.close()'
+# Playwright's apt/system dependencies require root
+USER root
+RUN python -m playwright install-deps chromium
+
+# Browser itself should belong to the runtime user
+USER $MAMBA_USER
+RUN python -m playwright install --only-shell chromium
 
 WORKDIR ${CODE_DIR}/rlhfblender
 

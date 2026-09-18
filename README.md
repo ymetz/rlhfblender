@@ -103,6 +103,11 @@ python -m rlhfblender.generate_data \
 
 Dash-driving integration can be registered similarly:
 
+For local execution, first start the Dash player in `dash-rl-env` with `npm install` and `npm run dev`.
+The environment uses `http://localhost:5173` by default; set `DASH_PLAYER_URL` to use another address.
+The Gym wrapper adds `ui=gym` to the player URL by default, moving the HUD below the simulator,
+and suppresses the welcome modal. An explicit `ui` query parameter overrides the layout.
+
 ```bash
 python -m rlhfblender.generate_data \
   --env dash-driving-v0 \
@@ -110,6 +115,20 @@ python -m rlhfblender.generate_data \
   --random \
   --num-episodes 10
 ```
+
+For Docker, start the services and run data generation in the backend container:
+
+```bash
+docker-compose up -d --build
+docker-compose exec backend micromamba run -n base python -m rlhfblender.generate_data \
+  --env dash-driving-v0 \
+  --env-gym-entrypoint rlhfblender.data_collection.dash_driving_gym_env:DashDrivingGymEnv \
+  --random \
+  --num-episodes 1
+```
+
+Compose sets `DASH_PLAYER_URL=http://dash-driving:5173` for the backend and waits for the player to be ready.
+Inside the backend container, `localhost` refers to the backend itself. Open `http://localhost:5173` from your host browser to access Dash.
 
 For active-learning demo/correction UI, `dash-driving*` environments use the Dash iframe flow (instead of WebRTC).
 

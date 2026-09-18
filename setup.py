@@ -49,6 +49,7 @@ setup(
         "aiortc==1.12.0",
         "av",  # Note: For macOS, install with: pip install --no-binary av av
         "httpx",
+        "playwright",
     ],
     extras_require={
         "tests": [

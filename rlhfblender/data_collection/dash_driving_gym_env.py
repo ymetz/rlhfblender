@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import Future
 from io import BytesIO
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import gymnasium as gym
 import numpy as np
@@ -72,13 +73,17 @@ class _DashRuntime:
             viewport={"width": self.viewport_width, "height": self.viewport_height}
         )
 
-        # Prevent Dash welcome modal in fresh sessions
-        await self._context.add_init_script("() => { window.localStorage.setItem('dash_WelcomeModal', 'hide'); }")
+        # Init scripts execute source text; a bare arrow function would never run.
+        await self._context.add_init_script("window.localStorage.setItem('dash_WelcomeModal', 'hide');")
 
         self._page = await self._context.new_page()
         await self._page.goto(self.url, wait_until="domcontentloaded")
 
-        # Optional hardening in case modal was already toggled by timing/race
+        await self._page.wait_for_function(
+            "window.simulator && typeof window.simulator.envReset === 'function' && typeof window.simulator.envStep === 'function'"
+        )
+
+        # Dismiss any welcome modal after the simulator has finished initializing.
         await self._page.evaluate("""
             () => {
             window.localStorage.setItem('dash_WelcomeModal', 'hide');
@@ -86,10 +91,6 @@ class _DashRuntime:
             if (modal) modal.classList.remove('is-active');
             }
         """)
-
-        await self._page.wait_for_function(
-            "window.simulator && typeof window.simulator.envReset === 'function' && typeof window.simulator.envStep === 'function'"
-        )
 
         if self.rl_config:
             await self._page.evaluate("(cfg) => window.simulator.setRLConfig(cfg)", self.rl_config)
@@ -155,7 +156,14 @@ class DashDrivingGymEnv(gym.Env):
         if render_mode not in self.metadata["render_modes"]:
             raise ValueError(f"Unsupported render_mode={render_mode}")
 
-        self.url = url or os.environ.get("DASH_PLAYER_URL", "http://localhost:5173")
+        player_url = url or os.environ.get("DASH_PLAYER_URL", "http://localhost:5173")
+        url_parts = urlsplit(player_url)
+        query = parse_qsl(url_parts.query, keep_blank_values=True)
+        if not any(key == "ui" for key, _ in query):
+            # Keep simulator controls below the rendered scene, out of the camera view.
+            query.append(("ui", "gym"))
+            player_url = urlunsplit(url_parts._replace(query=urlencode(query)))
+        self.url = player_url
         self.render_mode = render_mode
         # Keep browser headless for non-human modes by default.
         self.headless = (render_mode != "human") if headless is None else headless
