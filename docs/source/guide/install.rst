@@ -1,64 +1,58 @@
-.. _run_experiment:
+.. _installation:
 
 ============
 Installation
 ============
 
+For this branch, use the :download:`Dash and MiniGrid project guide <../../new_project.md>`
+for complete, ordered Docker or local installation commands. Dash is bundled under
+``dash-rl-env/`` and is included in Compose; only ``rlhfblender-ui`` needs submodule
+initialization for the random-baseline walkthrough.
+
 Requirements
 ------------
 
-- Python 3.8 or higher
-- Node.js 16 or higher
-- Docker (optional)
+Docker installation requires Git and a running Docker daemon with Compose.
+For local installation, use Python 3.10+ and Node matching the frontend's
+``^20.19.0 || >=22.12.0`` requirement. MiniGrid is an optional Python dependency.
 
-You have the option to install rlhfblender either locally or via Docker. The Docker installation is recommended for users who do not have Python or Node.js installed on their system.
-
-
-Clone the repository
---------------------
+Docker startup
+--------------
 
 .. code-block:: bash
 
-    git clone https://github.com/ymetz/rlhfblender.git
+    git clone --branch dash_driving https://github.com/ymetz/rlhfblender.git
     cd rlhfblender
     git submodule update --init rlhfblender-ui
 
-to get both the main repository,user interface. If you want to download both the repository and demo models, you can also run ``git clone --recurse-submodules https://github.com/ymetz/rlhfblender.git``.
-
-
-Local Installation
-------------------
+Compose supplies the database and Dash URL defaults, including the frontend's
+build-time settings. No manual exports or frontend ``.env.local`` file are needed
+for local Docker use. Start the services:
 
 .. code-block:: bash
 
-    cd rlhfblender
-    pip install -r requirements.txt
-    # required for dash-driving environment integration
-    python -m playwright install chromium
-    python rlhfblender/app.py
+    docker-compose up -d --build
+    docker-compose ps
 
-and
+Use ``docker compose`` instead if your machine uses the Compose plugin.
+The UI is at http://localhost:3000, the API at http://localhost:8080/docs,
+and Dash at http://localhost:5173.
 
-.. code-block:: bash
+Compose sets ``RLHFBLENDER_DB_HOST=sqlite:///data/rlhfblender.db`` for the API and
+registration commands, including new backend shells opened with ``exec``.
+For remote browser access, set ``VITE_DASH_PLAYER_URL`` and
+``VITE_DASH_PLAYER_ORIGIN`` in the repository-root ``.env`` and rebuild; see the walkthrough.
+The Docker data directory maps to ``remote_data/`` on the host. Newly saved
+``configs/`` files need a separate backup before container recreation.
 
-    cd rlhfblender-ui
-    npm install
-    npm run start
+Local startup
+-------------
 
-Docker Installation
--------------------
-
-.. code-block:: bash
-
-    docker-compose up
-
-Usage
------
-
-After starting the aplication:
-The user interface is available at http://localhost:3000.
-The API is available at http://localhost:8080/docs.
-
+The walkthrough covers installing the package with ``pip install --only-binary=av -e .``,
+installing Playwright's Chromium browser, and starting the backend, frontend, and
+Dash player in separate terminals. Use the same working directory and database
+path for the API and registration CLI. MiniGrid additionally needs its package and
+observation wrapper; installing the base package alone is insufficient.
 
 Kubernetes Deployment
 ---------------------

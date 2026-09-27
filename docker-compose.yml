@@ -10,6 +10,9 @@ services:
     build:
       context: ./rlhfblender-ui/
       dockerfile: ./Dockerfile
+      args:
+        VITE_DASH_PLAYER_URL: ${VITE_DASH_PLAYER_URL:-http://localhost:5173}
+        VITE_DASH_PLAYER_ORIGIN: ${VITE_DASH_PLAYER_ORIGIN:-http://localhost:5173}
     ports:
       - "3000:3000"
     environment:
@@ -53,6 +56,8 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # Shared by the API and every `docker-compose exec` registration command.
+      - RLHFBLENDER_DB_HOST=${RLHFBLENDER_DB_HOST:-sqlite:///data/rlhfblender.db}
       - DASH_PLAYER_URL=http://dash-driving:5173
       # The image's DISPLAY=:99 points to an X server that is not running.
       # Clear it so headless Chromium can initialize software WebGL.
@@ -60,7 +65,7 @@ services:
     depends_on:
       dash-driving:
         condition: service_healthy
-    command: ["python", "rlhfblender/app.py", "--port", "8080", "--db-host", "sqlite:///data/rlhfblender.db"]
+    command: ["python", "rlhfblender/app.py", "--port", "8080"]
     volumes:
       - ./remote_data/:/home/mambauser/rlhfblender/data/
       - ./rlhfblender_model/:/home/mambauser/rlhfblender/rlhfblender_model/:ro

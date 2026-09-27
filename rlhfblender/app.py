@@ -369,7 +369,12 @@ def main(args):
     )
     parser.add_argument("--ui-config", type=str, default=None, help="Path to UI config file.")
     parser.add_argument("--backend-config", type=str, default=None, help="Path to backend config file.")
-    parser.add_argument("--db-host", type=str, default="sqlite:///rlhfblender.db", help="Path to database file.")
+    parser.add_argument(
+        "--db-host",
+        type=str,
+        default=os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"),
+        help="Database URL. Defaults to RLHFBLENDER_DB_HOST or sqlite:///rlhfblender.db.",
+    )
     parser.add_argument("--logger-type", type=str, default="csv", help="Type of logger to use (sql, json, csv).")
 
     args = parser.parse_args(args)

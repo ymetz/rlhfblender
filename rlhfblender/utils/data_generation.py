@@ -106,10 +106,21 @@ async def register_env(
         env.description = env_description
 
         await db_handler.add_entry(database, Environment, env.model_dump())
-        await add_to_project(project=project, env=env_id)
         print(f"Registered environment {env_name} in project {project}")
     else:
         print(f"Environment with id {env_id} already exists. Skipping registration.")
+    await add_to_project(project=project, env=env_id)
+
+
+def merge_environment_config(current: dict, updates: dict) -> dict:
+    """Merge explicit settings recursively, preserving unspecified experiment settings."""
+    merged = dict(current)
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_environment_config(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
 async def register_experiment(
@@ -121,9 +132,10 @@ async def register_experiment(
     framework: str = "StableBaselines3",
     exp_kwargs: dict | None = None,
     project: str | None = "RLHF-Blender",
+    environment_config: dict | None = None,
 ):
-    """Register an experiment in the database."""
-    env_kwargs = env_kwargs if env_kwargs is not None else {}
+    """Register or configure an experiment and attach it to the selected project."""
+    config_updates = merge_environment_config(environment_config or {}, {"env_kwargs": env_kwargs} if env_kwargs else {})
     exp_kwargs = exp_kwargs if exp_kwargs is not None else {}
 
     # Check if experiment is already registered
@@ -133,15 +145,27 @@ async def register_experiment(
             env_id=env_id,
             path=path,
             algorithm=algorithm.lower() if algorithm else "",
-            environment_config={"env_kwargs": env_kwargs},
+            environment_config=merge_environment_config({"env_kwargs": {}}, config_updates),
             framework=framework,
             **exp_kwargs,
         )
         await db_handler.add_entry(database, Experiment, exp.model_dump())
-        await add_to_project(project=project, exp=exp_name)
         print(f"Registered experiment {exp_name} in project {project}")
     else:
-        print(f"Experiment with name {exp_name} already exists. Skipping registration.")
+        exp = await db_handler.get_single_entry(database, Experiment, key=exp_name, key_column="exp_name")
+        if exp.env_id != env_id:
+            raise ValueError(f"Experiment {exp_name!r} belongs to {exp.env_id!r}, not {env_id!r}. Use a new experiment name.")
+        if config_updates:
+            await db_handler.update_entry(
+                database,
+                Experiment,
+                key=exp.id,
+                data={"environment_config": merge_environment_config(exp.environment_config, config_updates)},
+            )
+            print(f"Updated environment configuration for experiment {exp_name}")
+        else:
+            print(f"Experiment with name {exp_name} already exists. Keeping its configuration.")
+    await add_to_project(project=project, env=env_id, exp=exp_name)
 
 
 async def run_benchmark(requests: list[dict]) -> list[str]:
@@ -165,7 +189,7 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
                 database, Environment, key=benchmark_run["env"], key_column="registration_id"
             ):
                 # We lazily register the environment if it is not registered yet, this is only done once
-                await register_env(env_id=benchmark_run["env"])
+                await register_env(env_id=benchmark_run["env"], project=benchmark_run.get("project", "RLHF-Blender"))
             database_env = await db_handler.get_single_entry(
                 database, Environment, key=benchmark_run["env"], key_column="registration_id"
             )
@@ -178,6 +202,8 @@ async def run_benchmark(requests: list[dict]) -> list[str]:
                 algorithm=benchmark_run.get("algorithm", None),
                 framework=benchmark_run.get("framework", "random"),
                 env_kwargs=benchmark_run.get("env_kwargs", {}),
+                project=benchmark_run.get("project", "RLHF-Blender"),
+                environment_config=benchmark_run.get("environment_config"),
             )
             exp: Experiment = await db_handler.get_single_entry(database, Experiment, key=exp_name, key_column="exp_name")
 

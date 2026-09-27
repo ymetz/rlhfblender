@@ -4,233 +4,144 @@
 Generate Data and Add New Experiments
 ========================================
 
+For complete Dash and MiniGrid examples, use the
+:download:`new-project walkthrough <../../new_project.md>`.
+This reference describes the current ``dash_driving`` branch.
 
-Generate Data
-----------------------
+Run from the repository root
+----------------------------
 
-To generate data for your experiments and environments, you can use the ``generate_data.py`` script. This script handles both the registration of environments and experiments (if they are not already registered) and the data generation process.
-From the repository root, the equivalent module command is ``python -m rlhfblender.generate_data``.
+The entry point is ``python -m rlhfblender.generate_data``. The ``--env`` argument
+is required even when ``--exp`` already exists. Set ``RLHFBLENDER_DB_HOST`` to the
+same database used by the API before running registration or generation.
 
-Usage:
-
-You can run the script using the following command-line options:
-
-.. code-block:: bash
-
-    # Generate data for a new environment with a random policy
-    python generate_data.py --env MyEnv-v0 --random --num-episodes 10
-
-    # Generate data using a trained model and specific checkpoints
-    python generate_data.py --env MyEnv-v0 --exp MyExperiment --model-path path/to/checkpoints --checkpoints 100000 200000 300000
-
-    # Generate data for a pre-registered experiment and environment with a random policy
-    python generate_data.py --exp MyExperiment --random --num-episodes 10
-
-Command-line Arguments:
-
-    - ``--env``: The Gym environment ID (e.g., CartPole-v1). If the environment is not registered, it will be automatically registered.
-    - ``--exp``: The experiment name. If not provided, a default experiment name will be created based on the environment ID and benchmark type.
-    - ``--num-episodes``: The number of episodes to run for data generation. Default is 10.
-    - ``--random``: Use a random agent for data generation.
-    - ``--model-path``: The path to the trained model for inference. Required if not using --random.
-    - ``--checkpoints``: The checkpoint steps to use from the trained model. Default is ``-1`` (latest checkpoint).
-    - ``--project``: (Optional) The project name. Defaults to RLHF-Blender.
-
-Optional Arguments for Environment Registration:
-
-    - ``--env-gym-entrypoint``: The Gym entry point for the environment. Useful for custom environments.
-    - ``--env-display-name``: The display name for the environment.
-    - ``--additional-gym-packages``: Additional Gym packages to import for custom environments.
-    - ``--env-kwargs``: Environment keyword arguments in the format key:value. For example: ``--env-kwargs max_episode_steps:1000``.
-
-Example Usage:
+For Docker, Compose sets the database URL automatically. Open an activated shell:
 
 .. code-block:: bash
 
-    # Generate data for a custom environment with specific environment arguments
-    python generate_data.py --env MyCustomEnv-v0
-        --env-gym-entrypoint my_package.envs:MyCustomEnv
-        --additional-gym-packages my_package
-        --env-kwargs max_episode_steps:1000
-        --random
-        --num-episodes 10
+    docker-compose exec backend micromamba run -n base bash
 
-Notes:
+The remaining examples run in that shell, or from the repository root in an
+activated local Python environment. For local use of ``data/rlhfblender.db``, export
+``RLHFBLENDER_DB_HOST=sqlite:///data/rlhfblender.db`` in both terminals or start the
+API with ``--db-host sqlite:///data/rlhfblender.db``. An explicit ``--db-host`` takes
+precedence over the environment variable.
 
-    If the specified environment or experiment is not registered in the internal registry (handled via a SQLite database), the script will automatically register them.
-    The data generated will be stored in the data directory, organized into subdirectories for episodes, rewards, renders, and thumbnails.
-    The script supports both random agents and trained agents for data generation.
-
-Generating Data with a Trained Model:
-
-To generate data using a trained model, specify the --model-path to your trained model directory and provide the checkpoints you wish to use.
-
-.. code-block:: bash
-
-    python generate_data.py --env MyEnv-v0
-        --exp MyExperiment
-        --model-path path/to/model
-        --checkpoints 100000 200000
-        --num-episodes 10
-
-Environment Keyword Arguments:
-
-When using ``--env-kwargs``, you can pass environment-specific arguments that will be used during environment registration and data generation.
-
-Example:
-
-.. code-block:: bash
-
-    python generate_data.py --env MyEnv-v0 
-        --env-kwargs max_episode_steps:1000 reward_threshold:200 
-        --random 
-        --num-episodes 10
-
-Custom Environments:
-
-For custom environments, you may need to specify the entry point and any additional packages required.
-
-Example:
-
-.. code-block:: bash
-
-    python generate_data.py --env MyCustomEnv-v0 
-        --env-gym-entrypoint my_package.envs:MyCustomEnv 
-        --additional-gym-packages my_package 
-        --random 
-        --num-episodes 10
-
-Accessing the Generated Data:
-
-After running the script, the generated data will be available in the data directory:
-
-    - ``data/episodes``: Contains the episode data saved as .npz files.
-    - ``data/rewards``: Contains cumulative reward data for each episode.
-    - ``data/renders``: Contains rendered videos of the episodes.
-    - ``data/thumbnails``: Contains thumbnail images for each episode.
-
-This data is used by the RLHF-Blender UI to display episode information, rewards, and visualizations.
-
-Dash-driving example
-----------------------
-
-The Dash-driving environment can be registered as a custom Gym environment and benchmarked with:
+Register metadata
+-----------------
 
 .. code-block:: bash
 
     python -m rlhfblender.generate_data \
-        --env dash-driving-v0 \
-        --env-gym-entrypoint rlhfblender.data_collection.dash_driving_gym_env:DashDrivingGymEnv \
-        --random \
-        --num-episodes 10
+      --project "CartPole tutorial" \
+      --exp cartpole-tutorial-random \
+      --env CartPole-v1 \
+      --random \
+      --register-only
 
-For active-learning demos/corrections in the UI, ``dash-driving*`` environments use the Dash iframe demo path instead of the WebRTC demo component.
+``--project`` creates the project automatically and links the environment and
+experiment, including records that already exist. ``--register-only`` creates no
+episodes or checkpoints. Use ``--exp`` for a named baseline; it is required when
+configuring an experiment. Without ``--exp``, registration-only creates just the
+environment/project; generation creates an automatically named experiment.
 
+Environment IDs and experiment names are global. Existing environment metadata
+and experiment policy/model fields are preserved. Explicit configuration flags
+merge into the existing experiment; omitted configuration is preserved. Reusing
+an experiment name with a different environment is rejected. Use a new experiment
+name for independent settings or a different policy.
 
-Example with All Arguments:
-
-.. code-block:: bash
-
-    python generate_data.py --env MyCustomEnv-v0 
-        --exp MyExperiment 
-        --project MyProject 
-        --env-gym-entrypoint my_package.envs:MyCustomEnv 
-        --additional-gym-packages my_package 
-        --env-display-name "My Custom Environment" 
-        --env-kwargs max_episode_steps:1000 difficulty:"'hard'" 
-        --model-path path/to/model 
-        --checkpoints 50000 100000 
-        --num-episodes 20
-
-In this example:
-
-    A custom environment MyCustomEnv-v0 is registered with the specified entry point and additional packages.
-    Environment keyword arguments max_episode_steps and difficulty are set.
-    A new experiment MyExperiment under the project MyProject is registered.
-    Data is generated using the trained model at path/to/model using checkpoints at steps 50000 and 100000.
-    A total of 20 episodes are generated for each checkpoint.
-
-Troubleshooting:
-
-    Environment Registration Errors: Ensure that custom environments are correctly installed and accessible. The ``--env-gym-entrypoint`` should point to the correct module and class.
-    Model Loading Issues: Verify that the model path and checkpoints are correct and that the model files are not corrupted.
-    Additional Packages: When using custom environments that require additional packages, make sure those packages are installed in your environment and listed using ``--additional-gym-packages``.
-
-
-Using pre-generated data
-----------------------
-
-In case you want to use pre-generated data, you need to put the data in the ``data`` folder. The data needs to be in the following format:
-
-
-| data
-| ├── renders
-| │   ├── MyExperiment
-| │   │   ├── subfolder1
-| │   │   │   ├── 0.mp4
-| │   │   │   ├── 1.mp4
-| │   │   ...
-| ├── thumbnails
-| │   ├── MyExperiment
-| │   │   ├── subfolder1
-| │   │   │   ├── 0.png
-| │   │   │   ├── 1.png
-| │   │   ...
-| ├── episodes
-| │   ├── MyExperiment
-| │   │   ├── subfolder1
-| │   │   │   ├── 0.npz
-| │   │   │   ├── 1.npz
-| │   │   ...
-| ├── rewards
-| │   ├── MyExperiment
-| │   │   ├── subfolder1
-| │   │   │   ├── 0.npy
-| │   │   │   ├── 1.npy
-| │   │   ...
-| ├── uncertainty
-| │   ├── MyExperiment
-| │   │   ├── subfolder1
-| │   │   │   ├── 0.npy
-| │   │   │   ├── 1.npy
-| │   │   ...
-
-
-Adding action labels and images
--------------------------------
-
-When registering an environment, you can also add action labels and images. Text labels can be displayed in the UI
-and might help users to give proper feedback, e.g. for demonstrations.
-
-Action Labels are currently supported for flat action spaces (e.g. discrete actions or Box actions with a single dimension).
-To register the action labels, you can call the ``get_action_dims`` call followed by the ``set_action_labels`` call:
+Collect a random baseline
+-------------------------
 
 .. code-block:: bash
 
-    #! get the action dimensions for a pre-registered environment
-    python -m rlhfblender.register --env MyEnv-v0 --get-action-dims
+    python -m rlhfblender.generate_data \
+      --project "CartPole tutorial" \
+      --exp cartpole-tutorial-random \
+      --env CartPole-v1 \
+      --random \
+      --num-episodes 3 \
+      --max-steps-per-episode 100
 
-    #! Expected output:
-    #! Action dimensions: 1
+The recorded checkpoint is ``-1`` (shown as **Random** in the UI). This records a
+random policy; it does not train an agent or reward model. Reusing an experiment
+and checkpoint can overwrite existing artifacts; use a new experiment name to
+keep a separate dataset.
 
-    #! set the action labels for a pre-registered environment
-    python -m rlhfblender.register --env MyEnv-v0 --set-action-labels up down left right
-
-These action labels will be displayed in the UI and can be used for demonstrations. You can change them by calling the ``set_action_labels`` call again.
-
-To add visual action labels, you need to put the data in the ``data`` folder. The data needs to be in the following format:
-
-| data
-| ├── action_labels
-| │   ├── MyEnv-v0
-| │   │   ├── up.npy
-| │   │   ├── down.npy
-| │   │   ├── left.npy
-| │   │   ├── right.npy
-
-
-Running live training and inference
+Registration and generation options
 -----------------------------------
 
+- ``--env``: required Gymnasium environment ID.
+- ``--project``: project name; default ``RLHF-Blender``.
+- ``--exp``: experiment name; use an explicit, distinct name for each baseline.
+- ``--env-gym-entrypoint``: import path for a custom environment, such as
+  ``rlhfblender.data_collection.dash_driving_gym_env:DashDrivingGymEnv``.
+- ``--additional-gym-packages``: modules to import for Gym registrations, such as
+  ``minigrid``. Install these packages separately.
+- ``--env-display-name`` and ``--env-description``: human-readable environment metadata.
+- ``--action-names``: labels in action-index order. For Dash, use ``steer gas brake``;
+  for MiniGrid, ``left right forward pickup drop toggle done``.
+- ``--register-only``: register metadata without recording.
+- ``--env-config``: JSON object merged recursively into ``environment_config``;
+  supports typed and nested values. Requires ``--exp``.
+- ``--env-wrapper``: wrapper import path, stored at the top level of
+  ``environment_config``; requires ``--exp``.
+- ``--random``: record a random policy.
+- ``--num-episodes``: number of episodes, default ``10``.
+- ``--max-steps-per-episode``: recording limit per episode, default ``200``.
+- ``--consistent-start-state``: request persistent initial states where supported by
+  the environment; this does not add exact state restoration to Dash.
+- ``--model-path``, ``--algorithm``, ``--framework``, and ``--checkpoints``: trained
+  policy loading options. Use the format expected by the selected framework.
 
-Comming soon
+``--env-kwargs`` accepts ``key:value`` pairs as strings, preserves colons in values,
+and requires ``--exp``. For typed or nested constructor arguments, use
+``--env-config '{"env_kwargs":{"max_steps":100}}'``. Use ``--env-wrapper`` for a
+wrapper, rather than passing it through ``--env-kwargs``.
+
+Configure an existing experiment
+--------------------------------
+
+For Dash:
+
+.. code-block:: bash
+
+    python -m rlhfblender.generate_data \
+      --project "Dash tutorial" --exp dash-tutorial-random --env dash-driving-v0 \
+      --env-config '{"env_kwargs":{"default_reset_options":{"scenarioName":"rough_road","startMode":"manual","clearRecording":true}}}' \
+      --register-only
+
+For MiniGrid:
+
+.. code-block:: bash
+
+    python -m rlhfblender.generate_data \
+      --project "MiniGrid tutorial" --exp minigrid-tutorial-random --env MiniGrid-Empty-5x5-v0 \
+      --env-wrapper minigrid.wrappers.ImgObsWrapper \
+      --register-only
+
+Nested dictionaries are merged; supplied lists and scalars replace existing
+values. Dedicated ``--env-wrapper`` and ``--env-kwargs`` flags take precedence
+over the corresponding values in ``--env-config``. These flags also work during
+initial registration. No separate project-membership update is needed.
+
+Generated files
+---------------
+
+The pipeline writes ``data/<kind>/<environment>/<environment>_<experiment-id>_<checkpoint>/``:
+
+- ``episodes/``: ``benchmark_<episode>.npz`` observations, actions, and episode data.
+- ``renders/``: ``<episode>.mp4`` recordings.
+- ``thumbnails/``: ``<episode>.jpg`` preview images.
+- ``rewards/``: ``rewards_<episode>.npy`` per-step rewards.
+- ``uncertainty/`` and ``env_states/``: additional recorded data where available.
+
+Intermediate ``data/saved_benchmarks/`` files are removed after successful
+processing. With Docker, all these paths are under ``remote_data/`` on the host.
+When transferring pre-generated data, keep the associated database records and
+matching directory names; experiment IDs are part of the paths.
+
+The CLI exits with a nonzero status on recording errors. It prints
+``Data generation finished.`` only after successful processing. Check the generated
+artifacts before opening the project in the UI.

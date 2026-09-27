@@ -5,6 +5,7 @@ These can the be loaded in the user interface for studies
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 import traceback
@@ -13,7 +14,8 @@ from rlhfblender.data_collection import framework_selector as framework_selector
 from rlhfblender.utils import process_env_name
 from rlhfblender.utils.data_generation import generate_data, init_db, register_env, register_experiment
 
-if __name__ == "__main__":
+
+def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate data for RLHFBlender")
     parser.add_argument("--exp", type=str, help="The experiment name.", default="")
     parser.add_argument("--env", type=str, help="The environment id.", default="", required=True)
@@ -77,9 +79,17 @@ if __name__ == "__main__":
         "--env-kwargs",
         type=str,
         nargs="+",
-        help='Environment Kwargs (e.g. --env-kwargs key1:value1 key2:value2), e.g.: \
-            "env_wrapper:stable_baselines3.common.atari_wrappers.AtariWrapper frame_stack:4"',
+        help="Gym constructor arguments as key:value strings. Use --env-config for typed or nested values.",
         default=[],
+    )
+    parser.add_argument(
+        "--env-config",
+        help='Environment configuration as a JSON object, e.g. \'{"env_kwargs":{"max_steps":100}}\'. '
+        "Merges into the existing experiment configuration; requires --exp.",
+    )
+    parser.add_argument(
+        "--env-wrapper",
+        help="Wrapper import path, e.g. minigrid.wrappers.ImgObsWrapper. Requires --exp.",
     )
     parser.add_argument(
         "--framework",
@@ -103,7 +113,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--register-only",
         action="store_true",
-        help="Only register the environment and experiment, do not generate data.",
+        help="Register or configure metadata and project links without generating data.",
     )
     parser.add_argument(
         "--consistent-start-state",
@@ -111,26 +121,42 @@ if __name__ == "__main__":
         help="Use the same start state across all checkpoints for consistent comparison.",
     )
 
-    args = parser.parse_args()
+    return parser
 
-    if args.env == "":
-        print("Please specify an environment to generate data for.")
-        sys.exit(1)
 
-    # Parse env_kwargs
-    env_kwargs = {}
-    if args.env_kwargs:
-        if args.exp == "":
-            print("Please specify an experiment name if you want to register environment kwargs.")
-            sys.exit(1)
-        # turn into dict
-        for kwarg in args.env_kwargs:
-            try:
-                key, value = kwarg.split(":")
-                env_kwargs[key] = value
-            except ValueError:
-                print(f"Invalid env_kwargs format: {kwarg}. Expected format is key:value.")
-                sys.exit(1)
+def parse_environment_config(args: argparse.Namespace, parser: argparse.ArgumentParser) -> dict:
+    """Validate configuration before registration can change the database."""
+    if (args.env_config is not None or args.env_wrapper is not None or args.env_kwargs) and not args.exp:
+        parser.error("--exp is required when setting environment configuration")
+    config = {}
+    if args.env_config is not None:
+        try:
+            config = json.loads(args.env_config)
+        except json.JSONDecodeError as exc:
+            parser.error(f"--env-config must be a JSON object: {exc}")
+        if not isinstance(config, dict):
+            parser.error("--env-config must be a JSON object")
+        if "env_kwargs" in config and not isinstance(config["env_kwargs"], dict):
+            parser.error("env_kwargs in --env-config must be a JSON object")
+        if "env_wrapper" in config and not isinstance(config["env_wrapper"], str):
+            parser.error("env_wrapper in --env-config must be an import path string")
+    for kwarg in args.env_kwargs:
+        key, separator, value = kwarg.partition(":")
+        if not separator or not key:
+            parser.error(f"Invalid --env-kwargs value {kwarg!r}; expected key:value")
+        config.setdefault("env_kwargs", {})[key] = value
+    if args.env_wrapper is not None:
+        config["env_wrapper"] = args.env_wrapper
+    return config
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = create_parser()
+    args = parser.parse_args(argv)
+    if not args.env:
+        parser.error("Please specify an environment to generate data for")
+    environment_config = parse_environment_config(args, parser)
+    env_kwargs = environment_config.get("env_kwargs", {})
 
     # Initialize database
     asyncio.run(init_db())
@@ -173,6 +199,7 @@ if __name__ == "__main__":
                 algorithm=args.algorithm.lower() if args.algorithm else None,
                 framework="random" if args.random else args.framework,
                 project=args.project,
+                environment_config=environment_config,
             )
         )
 
@@ -188,6 +215,7 @@ if __name__ == "__main__":
                 "n_episodes": args.num_episodes,
                 "path": model_path,
                 "env_kwargs": env_kwargs,
+                "environment_config": environment_config,
                 "project": args.project,
                 "framework": "random" if use_random_policy else args.framework,
                 "consistent_start_state": args.consistent_start_state,
@@ -196,8 +224,8 @@ if __name__ == "__main__":
         )
 
     if args.register_only:
-        print("Registered environment and experiment. Did not generate data.")
-        sys.exit(0)
+        print(f"Registration/configuration complete for project {args.project}. Did not generate data.")
+        return 0
 
     try:
         asyncio.run(generate_data(benchmark_dicts))
@@ -205,5 +233,10 @@ if __name__ == "__main__":
         print(f"Error: {e} - Did not generate data.")
         # print stacktrace
         traceback.print_exc()
-    finally:
-        print("Data generation finished.")
+        return 1
+    print("Data generation finished.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
