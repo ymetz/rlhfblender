@@ -77,11 +77,13 @@ class Sampler:
 
         self.episode_buffer = []
         self.exp_checkpoint_list = experiment.checkpoint_list
+        # Generation stores artifacts by Gym ID; env_name is only a display label.
+        env_id = env.registration_id or env.env_name
         for checkpoint in self.exp_checkpoint_list:
             cp_path = os.path.join(
                 self.saved_episode_dir,
-                process_env_name(env.env_name),
-                process_env_name(env.env_name) + "_" + str(self.experiment.id) + "_" + str(checkpoint),
+                process_env_name(env_id),
+                process_env_name(env_id) + "_" + str(self.experiment.id) + "_" + str(checkpoint),
             )
             if not os.path.exists(cp_path):
                 continue
@@ -90,7 +92,7 @@ class Sampler:
                     episode_info = EpisodeID(
                         benchmark_id=self.experiment.id,
                         benchmark_type="trained",
-                        env_name=env.env_name,
+                        env_name=env_id,
                         checkpoint_step=checkpoint,
                         episode_num=file.split(".")[0],
                     )
@@ -126,13 +128,14 @@ class Sampler:
             else:
                 new_checkpoints = updated_experiment.checkpoint_list  # sample from all checkpoints if not online sampling
             self.exp_checkpoint_list = updated_experiment.checkpoint_list
+            env_id = self.env.registration_id or self.env.env_name
 
             # get the new episodes from the new checkpoint(s)
             for checkpoint in new_checkpoints:
                 cp_path = os.path.join(
                     self.saved_episode_dir,
-                    process_env_name(self.env.env_name),
-                    process_env_name(self.env.env_name) + "_" + str(self.experiment.id) + "_" + str(checkpoint),
+                    process_env_name(env_id),
+                    process_env_name(env_id) + "_" + str(self.experiment.id) + "_" + str(checkpoint),
                 )
                 if not os.path.exists(cp_path):
                     continue
@@ -141,7 +144,7 @@ class Sampler:
                         episode_info = EpisodeID(
                             benchmark_id=self.experiment.id,
                             benchmark_type="trained",
-                            env_name=self.env.env_name,
+                            env_name=env_id,
                             checkpoint_step=checkpoint,
                             episode_num=file.split(".")[0],
                         )

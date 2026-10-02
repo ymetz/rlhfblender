@@ -78,6 +78,8 @@ Compose mounts `remote_data/` on the host as `data/` in the backend. The shared 
 
 The backend reaches Dash at `http://dash-driving:5173`, configured by Compose. The browser uses `http://localhost:5173`, supplied through frontend build arguments. For remote access, see [Docker overrides](docs/new_project.md#docker-settings-and-overrides). Compose waits for Dash to be healthy and clears the image's invalid `DISPLAY` setting for headless WebGL. Gym captures suppress the welcome modal and put the HUD below the simulator.
 
+For Colima, start the VM with `colima start` first; the same Compose commands and service URLs apply. Dash's health check tests its service hostname, including DNS and Vite host validation. If you see `ERR_NAME_NOT_RESOLVED` or HTTP 403, follow the [Docker/Colima connectivity checks](docs/new_project.md#dockercolima-connectivity-checks).
+
 The backend build uses the checked-in `.dockerignore` allowlist. Edits to included source files are packaged on rebuild; new source files require corresponding allowlist entries. No regeneration is needed merely to follow this guide. Dash and the frontend have separate build contexts.
 
 Newly saved setup/configuration JSON files under `configs/` are **not bind-mounted** by Compose. See the [guide's backup instructions](docs/new_project.md#6-open-the-project-and-save-a-study-setup) before recreating a container containing a study you want to keep.

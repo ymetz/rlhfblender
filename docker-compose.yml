@@ -32,7 +32,8 @@ services:
       - "5173:5173"
     command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:5173/', r => { r.resume(); process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1))"]
+      # Exercise Docker DNS and Vite's host allowlist, as the backend does.
+      test: ["CMD", "node", "-e", "require('http').get('http://dash-driving:5173/', r => { r.resume(); process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1))"]
       interval: 5s
       timeout: 5s
       retries: 12

@@ -178,7 +178,7 @@ async def get_single_step_details(request: SingleStepDetailRequest):
     the info dict, and action space.
     """
     action_space = {}
-    db_env = await db_handler.get_single_entry(database, Environment, key=request.env_name, key_column="env_name")
+    db_env = await db_handler.get_single_entry(database, Environment, key=request.env_name, key_column="registration_id")
     if db_env is not None:
         action_space = db_env.action_space_info
 
