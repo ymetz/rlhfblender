@@ -81,6 +81,8 @@ class GymEnvironmentTrack(VideoStreamTrack):
         self.obs = None
         self.prev_obs = None
         self.episode_done = False
+        self.terminated = False
+        self.truncated = False
         self.step_count = 0
         self.initialization_done = False
 
@@ -544,7 +546,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
                 # Only print and step if there's an actual action
                 action_taken = False
-                if action is not None:
+                if action is not None and not self.episode_done:
                     # Check if this is a non-zero action (for continuous spaces) or valid action (for discrete)
                     is_active_action = False
                     if isinstance(action, list):
@@ -560,9 +562,13 @@ class GymEnvironmentTrack(VideoStreamTrack):
                         step_result = self.env.step(action)
                         if len(step_result) == 5:
                             self.obs, reward, terminated, truncated, info = step_result
-                            self.episode_done = terminated or truncated
+                            self.terminated = bool(terminated)
+                            self.truncated = bool(truncated)
                         else:
-                            self.obs, reward, self.episode_done, info = step_result
+                            self.obs, reward, done, info = step_result
+                            self.truncated = bool(done and info.get("TimeLimit.truncated", False))
+                            self.terminated = bool(done and not self.truncated)
+                        self.episode_done = self.terminated or self.truncated
 
                         self.step_count += 1
                         action_taken = True
@@ -576,15 +582,12 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
                         if self.episode_done:
                             logger.info(f"Episode completed after {self.step_count} steps")
-                            # Reset environment
-                            try:
-                                reset_result = self.env.reset()
-                            except TypeError:
-                                # If reset() doesn't accept parameters, use without
-                                reset_result = self.env.reset()
-                            self.obs = reset_result[0] if isinstance(reset_result, tuple) else reset_result
-                            self.episode_done = False
-                            self.step_count = 0
+                            # Keep the final state and recording available for
+                            # submission. A new session explicitly restarts it.
+                            self.pressed_keys.clear()
+                            while not self.action_queue.empty():
+                                self.action_queue.get_nowait()
+                        self.send_episode_status()
 
                 # Render environment to get current state (always render for visual feedback)
                 frame = self.env.render()
@@ -639,10 +642,31 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
         return video_frame
 
+    def send_episode_status(self):
+        """Report actual environment progress over the reliable data channel."""
+        channel = data_channels.get(self.session_id)
+        if channel is None or channel.readyState != "open":
+            return
+        try:
+            channel.send(json.dumps({
+                "type": "episode_status",
+                "step_count": self.step_count,
+                "done": self.episode_done,
+                "terminated": self.terminated,
+                "truncated": self.truncated,
+            }))
+        except Exception as exc:
+            logger.warning(f"Could not send episode status: {exc}")
+
     def handle_control_message(self, message_str: str):
         """Handle control messages from data channel."""
         try:
             data = json.loads(message_str)
+            if data.get("type") == "get_status":
+                self.send_episode_status()
+                return
+            if self.episode_done:
+                return
 
             if data.get("type") == "keydown":
                 key = data.get("key", "").lower()
