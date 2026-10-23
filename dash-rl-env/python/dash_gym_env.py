@@ -16,7 +16,7 @@ from playwright.sync_api import Playwright, sync_playwright
 class DashGymEnv(gym.Env):
     """Gymnasium wrapper for Dash via Playwright."""
 
-    metadata = {"render_modes": ["human", "none"], "render_fps": 60}
+    metadata = {"render_modes": ["human", "none"], "render_fps": 24}
 
     def __init__(
         self,

@@ -158,6 +158,17 @@ class GymEnvironmentTrack(VideoStreamTrack):
         """Get keyboard mappings for different environment types."""
         # Debug: print(f"[GYM_TRACK] Environment: {self.db_env.registration_id}")
 
+        if self.db_env.registration_id.lower().startswith(("minigrid-", "babyai-")):
+            return {
+                "arrowleft": 0, "a": 0,
+                "arrowright": 1, "d": 1,
+                "arrowup": 2, "w": 2,
+                "pageup": 3, "q": 3,
+                "pagedown": 4, "e": 4,
+                " ": 5, "space": 5,
+                "enter": 6,
+            }
+
         if "mujoco" in self.db_env.registration_id.lower() or "metaworld" in self.db_env.registration_id.lower():
             # Metaworld/MuJoCo action space: [dx, dy, dz, gripper]
             # dx: end-effector displacement in x direction (forward/backward)
@@ -469,6 +480,10 @@ class GymEnvironmentTrack(VideoStreamTrack):
 
     def _get_current_action(self):
         """Convert pressed keys to environment action."""
+        if self.db_env.registration_id.lower().startswith(("minigrid-", "babyai-")):
+            # Discrete grid actions are queued on keydown, not repeated at the
+            # video frame rate while a key is held.
+            return None
         if not self.pressed_keys:
             return (
                 [0.0] * 4
@@ -497,7 +512,7 @@ class GymEnvironmentTrack(VideoStreamTrack):
         # Wait for initialization if not done yet
         if not self.initialization_done:
             try:
-                await asyncio.wait_for(self._init_task, timeout=0.1)
+                await asyncio.wait_for(asyncio.shield(self._init_task), timeout=0.1)
             except asyncio.TimeoutError:
                 pass  # Continue with loading screen
 
@@ -630,20 +645,21 @@ class GymEnvironmentTrack(VideoStreamTrack):
             data = json.loads(message_str)
 
             if data.get("type") == "keydown":
-                key = data.get("key", "")
+                key = data.get("key", "").lower()
+                if self.db_env.registration_id.lower().startswith(("minigrid-", "babyai-")):
+                    if key in self.key_mappings and key not in self.pressed_keys:
+                        self.action_queue.put_nowait(self.key_mappings[key])
                 self.pressed_keys.add(key)
                 logger.debug(f"Key down: {key}")
 
             elif data.get("type") == "keyup":
-                key = data.get("key", "")
+                key = data.get("key", "").lower()
                 self.pressed_keys.discard(key)
                 logger.debug(f"Key up: {key}")
 
             elif data.get("type") == "action":
                 action = data.get("action")
-                task = asyncio.create_task(self.action_queue.put(action))
-                # Store task reference to avoid warning
-                task.add_done_callback(lambda t: None)
+                self.action_queue.put_nowait(action)
                 logger.debug(f"Direct action: {action}")
 
         except json.JSONDecodeError as e:

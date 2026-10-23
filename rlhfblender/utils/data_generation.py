@@ -293,14 +293,14 @@ def split_data(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     return episodes
 
 
-def encode_video(renders: np.ndarray, path: str) -> None:
+def encode_video(renders: np.ndarray, path: str, fps: int = 24) -> None:
     """Encodes renders into a .mp4 video and saves it at path."""
     # Create video in H264 format
     try:
         out = cv2.VideoWriter(
             f"{path}.mp4",
             cv2.VideoWriter_fourcc(*"avc1"),
-            24,
+            fps,
             (renders.shape[2], renders.shape[1]),
         )
     except Exception:
@@ -309,7 +309,7 @@ def encode_video(renders: np.ndarray, path: str) -> None:
             out = cv2.VideoWriter(
                 f"{path}.mp4",
                 cv2.VideoWriter_fourcc(*"mp4v"),
-                24,
+                fps,
                 (renders.shape[2], renders.shape[1]),
             )
         except Exception as e:

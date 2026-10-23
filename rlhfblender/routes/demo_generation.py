@@ -28,6 +28,7 @@ from rlhfblender.data_models.global_models import Environment, Experiment
 from rlhfblender.projections.inverse_state_projection_handler import InverseStateProjectionHandler
 from rlhfblender.projections.projection_handler import ProjectionHandler
 from rlhfblender.utils.data_generation import encode_video
+from rlhfblender.utils.observations import numeric_observations
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -189,10 +190,7 @@ def _prepare_demo_artifacts(
     episode_steps_raw = np.array(demo_arrays.get("episode_steps", np.arange(len(actions))))
     obs_array = demo_arrays.get("obs", np.array([]))
 
-    if isinstance(obs_array, np.ndarray) and obs_array.dtype == object:
-        obs_array = np.stack(obs_array.astype(np.float32)) if len(obs_array) else np.array([], dtype=np.float32)
-    else:
-        obs_array = np.array(obs_array)
+    obs_array = numeric_observations(obs_array)
 
     if obs_array.ndim == 0 and actions.shape[0] > 0:
         obs_array = np.repeat(obs_array[None], actions.shape[0], axis=0)

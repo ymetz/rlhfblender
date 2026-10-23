@@ -29,6 +29,7 @@ from rlhfblender.data_models.global_models import Experiment
 # Import the InverseProjectionHandler
 from rlhfblender.projections.inverse_projection_handler import InverseProjectionHandler
 from rlhfblender.projections.projection_handler import ProjectionHandler
+from rlhfblender.utils.observations import numeric_observations
 
 database = Database(os.environ.get("RLHFBLENDER_DB_HOST", "sqlite:///rlhfblender.db"))
 
@@ -308,7 +309,7 @@ def preprocess_input_data(
     Returns:
         Tuple containing (embedding_input, feature_input, transition_input, episode_indices)
     """
-    obs = episode_data["obs"]
+    obs = numeric_observations(episode_data["obs"])
     features = episode_data["features"]
     probs = episode_data["probs"]
     dones = episode_data["dones"]
@@ -325,22 +326,10 @@ def preprocess_input_data(
         if len(renders) > 0:
             renders = renders[start:end]
 
-    # Handle special preprocessing for multi-frame observations (e.g., Atari)
-    if len(obs.shape) > 3:
-        # ATARI specific, for the first four frames repeat the last frame (others are black by default)
-        if len(dones) > 0:
-            done_indices = np.argwhere(dones == 1)
-            # The first few frames should be initialized
-            if obs.shape[0] > 4:
-                obs[0:4] = obs[4]
-            # After each done state, initialize the next few frames
-            for i in done_indices[:-1]:
-                obs[i[0] + 1 : i[0] + 4] = obs[i[0] + 4]
-
-        # Subtract the "MEAN" image to keep relevant information (removes static UI elements)
-        embedding_input = obs - obs[0]
-    else:
-        embedding_input = obs
+    # Image dimensionality does not identify Atari frame stacks. Preserve the
+    # recorded states for MiniGrid and other image environments; the projection
+    # handler flattens each observation without changing the timestep axis.
+    embedding_input = obs
 
     # Handle reprojection if requested
     if reproject:
@@ -452,7 +441,7 @@ def compute_projections_and_clusters(
     print("Computing transition projection")
     if transition_input is not None and transition_input.shape[0] > 0:
         transition_projection = handler.fit(
-            np.squeeze(transition_input),
+            transition_input,
             sequence_length=sequence_length,
             step_range=step_range,
             episode_indices=None,
@@ -654,7 +643,8 @@ async def compute_projection(
         )
 
         # Compute projections
-        projection_results = compute_projections_and_clusters(
+        projection_results = await asyncio.to_thread(
+            compute_projections_and_clusters,
             embedding_input,
             feature_input,
             transition_input,
@@ -675,7 +665,9 @@ async def compute_projection(
         transition_projection = projection_results["transition_projection"]
 
         # Compute clusters and merged points
-        labels, centroids, merged_points, connections = compute_clusters_and_merging(projection_array)
+        labels, centroids, merged_points, connections = await asyncio.to_thread(
+            compute_clusters_and_merging, projection_array
+        )
 
         episode_indices = []
         current_episode = 0

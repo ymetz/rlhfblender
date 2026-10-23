@@ -153,18 +153,22 @@ class ProjectionHandler:
         if step_range:
             data = data[step_range[0] : step_range[1]]
 
-        if len(data.shape) <= 2:
-            # stack multiple sequence steps before t-SNE
-            data = np.vstack(
-                np.split(
-                    data,
-                    np.array([[i, i + sequence_length] for i in range(data.shape[0] - data.shape[1])]).reshape(-1),
-                )
-            ).reshape(-1, data.shape[1] * sequence_length)
+        # Estimators expect one row per timestep, including for grid/image
+        # observations and scalar transition probabilities. Never squeeze away
+        # the sample axis (e.g. a one-step demonstration).
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 0 or len(data) == 0:
+            raise ValueError("Cannot project empty observations")
+        data = data.reshape(len(data), -1)
+        if sequence_length > 1:
+            # Pad the history so projection rows stay aligned with actions and
+            # episode indices, even for sequences shorter than the window.
+            padded = np.pad(data, ((sequence_length - 1, 0), (0, 0)), mode="edge")
+            data = np.stack([padded[i : i + sequence_length].ravel() for i in range(len(data))])
 
         # If we have high dimensional data, first apply PCA before the UMAP embedding
         if np.prod(data.shape[1:]) > 100 and self.embedding_method.__class__.__name__ != "PCA":
-            pca = PCA(n_components=50)
+            pca = PCA(n_components=min(50, *data.shape))
             data = pca.fit_transform(data.reshape(data.shape[0], np.prod(data.shape[1:])))
 
         self.in_fitting = True
@@ -182,7 +186,7 @@ class ProjectionHandler:
 
             # For pre-fitted models, use transform instead of fit_transform
             if hasattr(self.embedding_method, "transform"):
-                projected_data = self.embedding_method.transform(np.squeeze(data))
+                projected_data = self.embedding_method.transform(data)
             else:
                 # Some methods don't have transform, need to use a different approach
                 print("Warning: Pre-fitted model doesn't support transform. Results may be inconsistent.")
@@ -195,10 +199,17 @@ class ProjectionHandler:
             # Normal fitting process
             if self.save_embedding_path != "" and (self.embedding_method.__class__.__name__ == "ParametricUMAP"):
                 # If a pre-trained model exists, use transform instead of fit
-                projected_data = self.embedding_method.transform(np.squeeze(data))
+                projected_data = self.embedding_method.transform(data)
             else:
                 # Fit the embedding method to the data
-                projected_data = self.embedding_method.fit_transform(data)
+                if isinstance(self.embedding_method, PCA):
+                    dimensions = self.embedding_method.n_components
+                    self.embedding_method.n_components = min(dimensions, *data.shape)
+                    projected_data = self.embedding_method.fit_transform(data)
+                    projected_data = np.pad(projected_data, ((0, 0), (0, dimensions - projected_data.shape[1])))
+                    self.embedding_method.n_components = dimensions
+                else:
+                    projected_data = self.embedding_method.fit_transform(data)
 
             # Store results consistently across all methods
             self.projection_results = projected_data

@@ -98,13 +98,14 @@ class SaveResetEnvWrapper(gym.Wrapper):
             state = u.clone_state()
         elif _is_minigrid(self):
             # MiniGrid (assignable attributes)
-            state = {
+            state = copy.deepcopy({
                 "grid": u.grid,
                 "carrying": u.carrying,
                 "agent_pos": u.agent_pos,
                 "agent_dir": u.agent_dir,
                 "mission": u.mission,
-            }
+                "step_count": u.step_count,
+            })
         elif hasattr(self.env, "get_state"):
             # Generic get_state API (incl. Gym3ToGymnasium inner envs)
             state = self.env.get_state()
@@ -147,11 +148,24 @@ class SaveResetEnvWrapper(gym.Wrapper):
         elif _is_atari(self):
             u.restore_state(state)
         elif _is_minigrid(self):
+            state = copy.deepcopy(state)
             u.grid = state["grid"]
             u.carrying = state["carrying"]
             u.agent_pos = state["agent_pos"]
             u.agent_dir = state["agent_dir"]
             u.mission = state["mission"]
+            u.step_count = state.get("step_count", 0)
+            if obs is None:
+                obs = u.gen_obs()
+                # Match the recording's observation wrappers (e.g. ImgObsWrapper).
+                wrappers = []
+                wrapped = self.env
+                while isinstance(wrapped, gym.Wrapper):
+                    wrappers.append(wrapped)
+                    wrapped = wrapped.env
+                for wrapper in reversed(wrappers):
+                    if isinstance(wrapper, gym.ObservationWrapper):
+                        obs = wrapper.observation(obs)
         elif hasattr(self.env, "set_state"):
             self.env.set_state(state)
         elif hasattr(u, "set_state"):
